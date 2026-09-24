@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router';
 import { useOrgFetch } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { hub_list, hub_payload } from '@/lib/hub_envelope';
@@ -441,7 +442,30 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
         return (
             <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center dark:border-slate-800">
                 <p className="text-slate-400 dark:text-slate-500">
-                    Create a channel first under Settings → Notifications.
+                    {realm_id ? (
+                        <>
+                            Create a{' '}
+                            <Link
+                                to="../channels"
+                                className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                            >
+                                channel
+                            </Link>
+                            {' '}
+                            for this realm before mapping notification rules.
+                        </>
+                    ) : (
+                        <>
+                            Create a channel first under{' '}
+                            <Link
+                                to="/settings?tab=channels"
+                                className="font-medium text-indigo-600 hover:underline dark:text-indigo-400"
+                            >
+                                Settings → Channels
+                            </Link>
+                            .
+                        </>
+                    )}
                 </p>
             </div>
         );

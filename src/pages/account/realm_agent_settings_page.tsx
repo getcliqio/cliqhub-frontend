@@ -456,7 +456,7 @@ export function Component() {
             <div className="mb-3">
                 <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Realm agent settings</h2>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    Agents used by teams in this realm. Overrides here apply only to this realm.{' '}
+                    Catalog credentials for this realm. Overrides here apply only here; unset keys inherit from the org.{' '}
                     <Globe className="inline h-3 w-3 text-slate-400" /> = inherited from org,{' '}
                     <Map className="inline h-3 w-3 text-indigo-400" /> = set at realm level.{' '}
                     <Link to="/settings?tab=agents" className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
@@ -484,7 +484,7 @@ export function Component() {
             ) : filtered.length === 0 ? (
                 <div className="rounded-xl border-2 border-dashed border-slate-200 py-10 text-center dark:border-slate-800">
                     <p className="text-slate-400 dark:text-slate-500">
-                        {q_filter ? 'No matching agents.' : 'No agents in use by this realm\u2019s teams.'}
+                        {q_filter ? 'No matching agents.' : 'No agents in the catalog.'}
                     </p>
                 </div>
             ) : (
