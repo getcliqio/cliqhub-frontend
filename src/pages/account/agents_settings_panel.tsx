@@ -296,8 +296,12 @@ function Agent_table({ rows, on_select }: { rows: Agent_summary[]; on_select: (n
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {rows.map((a) => (
-                        <tr key={a.name} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40">
+                    {rows.map((a) => {
+                        const required_total = a.required_total ?? 0;
+                        const optional_total = a.optional_total ?? 0;
+                        const row_key = `${a.name}@${a.version ?? 'unknown'}`;
+                        return (
+                        <tr key={row_key} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40">
                             <td className="px-3 py-2.5">
                                 <button
                                     type="button"
@@ -317,9 +321,9 @@ function Agent_table({ rows, on_select }: { rows: Agent_summary[]; on_select: (n
                                 {a.description ?? '—'}
                             </td>
                             <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">
-                                {a.required_total + a.optional_total === 0
+                                {required_total + optional_total === 0
                                     ? 'None'
-                                    : `${a.required_total} req · ${a.optional_total} opt`}
+                                    : `${required_total} req · ${optional_total} opt`}
                             </td>
                             <td className="px-3 py-2.5">
                                 {a.all_required_configured ? (
@@ -333,7 +337,8 @@ function Agent_table({ rows, on_select }: { rows: Agent_summary[]; on_select: (n
                                 )}
                             </td>
                         </tr>
-                    ))}
+                        );
+                    })}
                 </tbody>
             </table>
         </div>
@@ -422,9 +427,31 @@ export function Component() {
         () => filter_agents_by_query(agents, q_filter, agent_display_name),
         [agents, q_filter],
     );
+
+    /** Clamp offset when the list shrinks so we never render an empty page with a non-zero total. */
+    const safe_offset = filtered.length === 0
+        ? 0
+        : Math.min(offset, Math.max(0, filtered.length - 1));
+    const aligned_offset = safe_offset - (safe_offset % page_limit);
+
+    useEffect(() => {
+        if (aligned_offset === offset) return;
+        set_search_params(list_params({ offset: aligned_offset }), { replace: true });
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only realign when offset drifts past the list
+    }, [aligned_offset, offset, filtered.length, page_limit]);
+
+    /** Split before paging so a page is never "empty" while agents exist. */
+    const builtin_all = useMemo(() => filtered.filter((a) => a.is_system), [filtered]);
+    const custom_all = useMemo(() => filtered.filter((a) => !a.is_system), [filtered]);
+
+    /**
+     * Paginate the combined list (builtins first, then custom) so the
+     * table always mirrors `filtered` when data is present.
+     */
+    const ordered = useMemo(() => [...builtin_all, ...custom_all], [builtin_all, custom_all]);
     const page_rows = useMemo(
-        () => page_agents(filtered, offset, page_limit),
-        [filtered, offset, page_limit],
+        () => page_agents(ordered, aligned_offset, page_limit),
+        [ordered, aligned_offset, page_limit],
     );
     const builtin_agents = useMemo(() => page_rows.filter((a) => a.is_system), [page_rows]);
     const custom_agents = useMemo(() => page_rows.filter((a) => !a.is_system), [page_rows]);
@@ -478,9 +505,15 @@ export function Component() {
                             <Agent_table rows={custom_agents} on_select={open_agent} />
                         </div>
                     ) : null}
+                    {/* Defensive: if is_system is missing on the wire, still show the page. */}
+                    {builtin_agents.length === 0 && custom_agents.length === 0 && page_rows.length > 0 ? (
+                        <div className="mb-4">
+                            <Agent_table rows={page_rows} on_select={open_agent} />
+                        </div>
+                    ) : null}
                     <Pagination
                         total={filtered.length}
-                        offset={offset}
+                        offset={aligned_offset}
                         limit={page_limit}
                         on_change={(next_offset) => {
                             set_search_params(list_params({ offset: next_offset }), { replace: true });

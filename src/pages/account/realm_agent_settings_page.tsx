@@ -500,8 +500,12 @@ export function Component() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {page_rows.map((a) => (
-                                    <tr key={a.name} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40">
+                                {page_rows.map((a) => {
+                                    const required_total = a.required_total ?? 0;
+                                    const optional_total = a.optional_total ?? 0;
+                                    const row_key = `${a.name}@${a.version ?? 'unknown'}`;
+                                    return (
+                                    <tr key={row_key} className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40">
                                         <td className="px-3 py-2.5">
                                             <button
                                                 type="button"
@@ -521,9 +525,9 @@ export function Component() {
                                             {a.description ?? '—'}
                                         </td>
                                         <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">
-                                            {a.required_total + a.optional_total === 0
+                                            {required_total + optional_total === 0
                                                 ? 'None'
-                                                : `${a.required_total} req · ${a.optional_total} opt`}
+                                                : `${required_total} req · ${optional_total} opt`}
                                         </td>
                                         <td className="px-3 py-2.5">
                                             {a.all_required_configured ? (
@@ -537,7 +541,8 @@ export function Component() {
                                             )}
                                         </td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
