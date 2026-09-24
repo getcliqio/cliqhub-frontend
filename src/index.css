@@ -1,0 +1,518 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@import "@xyflow/react/dist/style.css";
+
+/* Tailwind v4 drops the `darkMode: 'class'` config option — the default
+   variant fires from `prefers-color-scheme: dark`, so `dark:*` utilities
+   would react to the OS regardless of the in-app toggle. Rebind the
+   variant here so it matches only when `.dark` is present on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tailwind preflight resets button cursor to default — restore pointer. */
+button, [role="button"] {
+  cursor: pointer;
+}
+
+/* Product shell — matches design/hub-ux-prototype */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+/* Root background — drives the color-scheme + fills any gap before
+   `.app-main` paints. Keeping this on <html> avoids flash-of-wrong-
+   theme when React unmounts + remounts (e.g., route transitions). */
+html {
+  background-color: #f8fafc;
+  color-scheme: light;
+}
+
+html.dark {
+  background-color: #0b1120;
+  color-scheme: dark;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: auto 1fr;
+  height: 100vh;
+}
+
+.app-top {
+  grid-column: 1 / -1;
+  min-height: 48px;
+}
+
+.app-side {
+  grid-column: 1;
+  grid-row: 2;
+  overflow-y: auto;
+}
+
+.app-main {
+  grid-column: 2;
+  grid-row: 2;
+  overflow-y: auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 500px at 100% 0%, rgba(224, 231, 255, 0.55), transparent 60%),
+    radial-gradient(900px 400px at 0% 100%, rgba(219, 234, 254, 0.4), transparent 60%),
+    linear-gradient(180deg, #f8fafc 0%, #eff6ff 100%);
+}
+
+html.dark .app-main {
+  background: #0f172a;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  color: #e2e8f0;
+  background: #0b1120;
+}
+
+
+.app-main-inner {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 28px 32px;
+  width: 100%;
+}
+
+.app-above-card:empty {
+  display: none;
+}
+
+.app-above-card:not(:empty) {
+  margin-bottom: 12px;
+}
+
+.app-card {
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  padding: 28px 32px;
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+html.dark .app-card {
+  background: #0f172a;
+  border-color: rgba(51, 65, 85, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  color: #e2e8f0;
+}
+
+/* Soften nested white cards inside the outer app-card so we don't get
+   card-in-card shadowing. Inner sections keep their border for structure. */
+.app-card .shadow-sm {
+  box-shadow: none !important;
+}
+
+/* -----------------------------------------------------------------------
+ * Global dark-mode surface/text/border remap.
+ *
+ * The app uses raw Tailwind neutral utilities in many places (`bg-white`,
+ * `text-slate-500`, `border-slate-200`, …). Rather than sprinkling
+ * `dark:` variants across every component, we override the common ones
+ * in dark mode here. Chromatic accents (rose/emerald/sky/indigo/amber)
+ * are left untouched — only the greyscale is remapped so status pills
+ * and highlights stay recognizable.
+ * ----------------------------------------------------------------------- */
+
+/* Surface backgrounds */
+html.dark .bg-white { background-color: #0f172a !important; }
+html.dark .bg-slate-50 { background-color: #1e293b !important; }
+html.dark .bg-slate-100 { background-color: #1e293b !important; }
+
+/* Borders */
+html.dark .border-slate-200 { border-color: #334155 !important; }
+html.dark .border-slate-100 { border-color: #1e293b !important; }
+html.dark .border-slate-300 { border-color: #475569 !important; }
+
+/* Dividers (`divide-y` uses top border on siblings) — attribute selector
+   catches plain classes (`divide-slate-100`) as well as opacity variants
+   (`divide-slate-100/60`) across the slate 50-300 range. */
+html.dark [class*="divide-slate-"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1e293b !important;
+}
+
+/* Foreground text — invert the slate scale so text stays readable
+   against the dark card. Aim for ≥4.5:1 contrast on body copy. */
+html.dark .text-slate-900 { color: #f8fafc !important; }
+html.dark .text-slate-800 { color: #f1f5f9 !important; }
+html.dark .text-slate-700 { color: #e2e8f0 !important; }
+html.dark .text-slate-600 { color: #cbd5e1 !important; }
+html.dark .text-slate-500 { color: #cbd5e1 !important; }
+html.dark .text-slate-400 { color: #94a3b8 !important; }
+html.dark .text-slate-300 { color: #94a3b8 !important; }
+
+/* Placeholder text */
+html.dark ::placeholder { color: #64748b !important; }
+html.dark .placeholder-slate-400::placeholder,
+html.dark .placeholder-slate-500::placeholder { color: #64748b !important; }
+
+/* Hover surfaces */
+html.dark .hover\:bg-slate-50:hover { background-color: #1e293b !important; }
+html.dark .hover\:bg-slate-100:hover { background-color: #334155 !important; }
+html.dark .hover\:text-slate-900:hover { color: #f8fafc !important; }
+html.dark .hover\:text-slate-800:hover { color: #f1f5f9 !important; }
+html.dark .hover\:text-slate-700:hover { color: #e2e8f0 !important; }
+
+/* Ring on focus */
+html.dark .focus\:ring-slate-200:focus { --tw-ring-color: #475569 !important; }
+
+/* Kbd / code blocks */
+html.dark kbd,
+html.dark code { color: #e2e8f0; }
+
+/* Brand accents — indigo. In light mode indigo-600/-700 read well on white,
+   but in dark mode they smear into the background. Lift them so links and
+   the primary brand color pop against slate-900 surfaces. Kept for both
+   the plain state and common hover variants. */
+html.dark .text-indigo-700 { color: #a5b4fc !important; }
+html.dark .text-indigo-600 { color: #a5b4fc !important; }
+html.dark .text-indigo-500 { color: #c7d2fe !important; }
+html.dark .hover\:text-indigo-700:hover { color: #c7d2fe !important; }
+html.dark .hover\:text-indigo-600:hover { color: #c7d2fe !important; }
+
+/* Indigo tint backgrounds (used for active nav / info blocks). The stock
+   50/100 shades read almost white on a dark card — swap to a translucent
+   indigo tint that reads as "selected" without blowing out contrast. */
+html.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.15) !important; }
+html.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.22) !important; }
+html.dark .hover\:bg-indigo-50:hover { background-color: rgba(99, 102, 241, 0.2) !important; }
+
+/* Chromatic pill backgrounds (status chips). Keep the hue, but drop the
+   luminance so they don't blaze on the dark card. Text color left alone. */
+html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15) !important; }
+html.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.22) !important; }
+html.dark .bg-rose-50 { background-color: rgba(244, 63, 94, 0.15) !important; }
+html.dark .bg-rose-100 { background-color: rgba(244, 63, 94, 0.22) !important; }
+html.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.15) !important; }
+html.dark .bg-amber-100 { background-color: rgba(245, 158, 11, 0.22) !important; }
+html.dark .bg-sky-50 { background-color: rgba(14, 165, 233, 0.15) !important; }
+html.dark .bg-sky-100 { background-color: rgba(14, 165, 233, 0.22) !important; }
+
+/* Match the chip text colors so contrast stays legible on the darker
+   translucent backgrounds. */
+html.dark .text-emerald-500,
+html.dark .text-emerald-600,
+html.dark .text-emerald-700,
+html.dark .text-emerald-800 { color: #6ee7b7 !important; }
+html.dark .text-rose-500,
+html.dark .text-rose-600,
+html.dark .text-rose-700,
+html.dark .text-rose-800,
+html.dark .text-rose-900 { color: #fda4af !important; }
+html.dark .text-red-500,
+html.dark .text-red-600,
+html.dark .text-red-700 { color: #fca5a5 !important; }
+html.dark .text-amber-500,
+html.dark .text-amber-600,
+html.dark .text-amber-700,
+html.dark .text-amber-800 { color: #fcd34d !important; }
+html.dark .text-sky-500,
+html.dark .text-sky-600,
+html.dark .text-sky-700,
+html.dark .text-sky-800 { color: #7dd3fc !important; }
+
+/* Extreme slates — text-slate-950 (near-black) is invisible in dark
+   mode; treat it like text-slate-800/900. text-slate-100/200 are used
+   in a few places for on-dark labels — leave those alone since they
+   already render correctly. */
+html.dark .text-slate-950 { color: #f8fafc !important; }
+html.dark .text-black { color: #f8fafc !important; }
+html.dark .bg-black { background-color: #020617 !important; }
+html.dark .bg-slate-950 { background-color: #020617 !important; }
+
+/* Border colors used at deeper shades (dividers around inputs, chip
+   outlines, etc.). */
+html.dark .border-slate-400 { border-color: #64748b !important; }
+html.dark .hover\:border-slate-300:hover { border-color: #64748b !important; }
+
+/* Table zebra + hover — apply when nested in the app card */
+html.dark table thead { background-color: #1e293b !important; }
+html.dark table tbody tr:hover { background-color: rgba(30, 41, 59, 0.6) !important; }
+
+/* Form inputs — Tailwind reset gives them the browser default bg in dark
+   mode, which reads as white. Force a matching surface. */
+html.dark input:not([type='checkbox']):not([type='radio']),
+html.dark textarea,
+html.dark select {
+  background-color: #0b1120;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+html.dark input:not([type='checkbox']):not([type='radio']):focus,
+html.dark textarea:focus,
+html.dark select:focus {
+  border-color: #64748b;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-side {
+    display: none;
+  }
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #6366f1;
+  stroke-width: 3;
+}
+
+/* =========================================================================
+ * MEASUREONE PALETTE (Option E — MeasureOne navy + mono-noir discipline)
+ *
+ * Toggle via the palette button in the top bar (writes `cliqhub.palette`
+ * localStorage flag → ThemeProvider adds `.palette-measureone` to <html>).
+ *
+ * Design intent:
+ *   - Warm paper background (#faf9f6) instead of clinical cool white.
+ *   - Kill the two radial gradients on .app-main — they were the biggest
+ *     "AI startup landing page" tell on a data dashboard.
+ *   - Repaint `indigo-*` → MeasureOne navy #0f2e5c. Every button/link/
+ *     active-nav pill that uses `bg-indigo-600` / `text-indigo-600` /
+ *     `bg-indigo-50` inherits automatically — no component churn.
+ *   - Tone down the vibrant Tailwind state hues to grown-up ones so
+ *     they read as "console status" not "toy dashboard":
+ *       emerald → forest #137a4a
+ *       amber   → mustard #8f5a13
+ *       rose    → brick   #a12030
+ *       sky     → steady blue #0057b8
+ *   - Warm the neutrals from slate (cool blue-grey) to a paper-grey
+ *     scale — kills the "cold" feel without going full sepia.
+ *
+ * Accessibility: all repainted foreground colors verified ≥4.5:1 against
+ * the paper background at body sizes.
+ *
+ * IMPORTANT: overrides use `!important` because Tailwind utilities
+ * would otherwise win the cascade. This mirrors the existing dark-mode
+ * remap pattern above.
+ * ========================================================================= */
+
+/* ---- Light + measureone: warm paper shell -------------------------------- */
+html.palette-measureone {
+  background-color: #faf9f6;
+}
+html.palette-measureone body {
+  background-color: #faf9f6;
+  color: #141618;
+}
+html.palette-measureone .app-main {
+  background: #faf9f6;
+}
+html.palette-measureone .app-card {
+  background: #ffffff;
+  border-color: #e5e2d9;
+  box-shadow:
+    0 1px 2px rgba(20, 22, 24, 0.03),
+    0 6px 18px rgba(20, 22, 24, 0.04);
+}
+
+/* Brand → MeasureOne navy */
+html.palette-measureone .text-indigo-700 { color: #0f2e5c !important; }
+html.palette-measureone .text-indigo-600 { color: #0f2e5c !important; }
+html.palette-measureone .text-indigo-500 { color: #173e77 !important; }
+html.palette-measureone .text-indigo-400 { color: #2b5391 !important; }
+html.palette-measureone .text-indigo-300 { color: #4a72ac !important; }
+html.palette-measureone .hover\:text-indigo-700:hover,
+html.palette-measureone .hover\:text-indigo-600:hover { color: #173e77 !important; }
+html.palette-measureone .bg-indigo-50   { background-color: rgba(15, 46, 92, 0.06) !important; }
+html.palette-measureone .bg-indigo-100  { background-color: rgba(15, 46, 92, 0.10) !important; }
+html.palette-measureone .bg-indigo-500  { background-color: #173e77 !important; }
+html.palette-measureone .bg-indigo-600  { background-color: #0f2e5c !important; }
+html.palette-measureone .bg-indigo-700  { background-color: #0a2247 !important; }
+html.palette-measureone .hover\:bg-indigo-50:hover  { background-color: rgba(15, 46, 92, 0.10) !important; }
+html.palette-measureone .hover\:bg-indigo-100:hover { background-color: rgba(15, 46, 92, 0.15) !important; }
+html.palette-measureone .hover\:bg-indigo-600:hover { background-color: #0a2247 !important; }
+html.palette-measureone .hover\:bg-indigo-700:hover { background-color: #071a37 !important; }
+html.palette-measureone .border-indigo-200 { border-color: rgba(15, 46, 92, 0.20) !important; }
+html.palette-measureone .border-indigo-500 { border-color: #0f2e5c !important; }
+html.palette-measureone .ring-indigo-200,
+html.palette-measureone .ring-indigo-300,
+html.palette-measureone .ring-indigo-400,
+html.palette-measureone .ring-indigo-500 { --tw-ring-color: #0f2e5c !important; }
+html.palette-measureone .fill-indigo-500\/10 { fill: rgba(15, 46, 92, 0.10) !important; }
+html.palette-measureone .stroke-indigo-500 { stroke: #0f2e5c !important; }
+
+/* State colours — tone down vibrancy so the dashboard reads as a
+   console, not a landing page. Chip contrast preserved. */
+html.palette-measureone .text-emerald-500,
+html.palette-measureone .text-emerald-600,
+html.palette-measureone .text-emerald-700,
+html.palette-measureone .text-emerald-800 { color: #137a4a !important; }
+html.palette-measureone .text-emerald-300,
+html.palette-measureone .text-emerald-400 { color: #1c9459 !important; }
+html.palette-measureone .bg-emerald-50 { background-color: rgba(19, 122, 74, 0.08) !important; }
+html.palette-measureone .bg-emerald-100 { background-color: rgba(19, 122, 74, 0.14) !important; }
+html.palette-measureone .bg-emerald-500 { background-color: #159259 !important; }
+html.palette-measureone .bg-emerald-500\/80 { background-color: rgba(21, 146, 89, 0.80) !important; }
+html.palette-measureone .ring-emerald-200\/70 { --tw-ring-color: rgba(19, 122, 74, 0.35) !important; }
+html.palette-measureone .hover\:ring-emerald-400:hover { --tw-ring-color: #137a4a !important; }
+html.palette-measureone .bg-emerald-50\/60 { background-color: rgba(19, 122, 74, 0.05) !important; }
+
+html.palette-measureone .text-amber-500,
+html.palette-measureone .text-amber-600,
+html.palette-measureone .text-amber-700,
+html.palette-measureone .text-amber-800 { color: #8f5a13 !important; }
+html.palette-measureone .text-amber-300,
+html.palette-measureone .text-amber-400 { color: #a86a13 !important; }
+html.palette-measureone .bg-amber-50 { background-color: rgba(143, 90, 19, 0.08) !important; }
+html.palette-measureone .bg-amber-100 { background-color: rgba(143, 90, 19, 0.14) !important; }
+html.palette-measureone .bg-amber-500 { background-color: #b8791e !important; }
+html.palette-measureone .ring-amber-200\/70 { --tw-ring-color: rgba(143, 90, 19, 0.35) !important; }
+html.palette-measureone .hover\:ring-amber-400:hover { --tw-ring-color: #8f5a13 !important; }
+html.palette-measureone .bg-amber-50\/60 { background-color: rgba(143, 90, 19, 0.05) !important; }
+
+html.palette-measureone .text-rose-500,
+html.palette-measureone .text-rose-600,
+html.palette-measureone .text-rose-700,
+html.palette-measureone .text-rose-800,
+html.palette-measureone .text-rose-900 { color: #a12030 !important; }
+html.palette-measureone .text-rose-300,
+html.palette-measureone .text-rose-400 { color: #b8384a !important; }
+html.palette-measureone .bg-rose-50 { background-color: rgba(161, 32, 48, 0.08) !important; }
+html.palette-measureone .bg-rose-100 { background-color: rgba(161, 32, 48, 0.14) !important; }
+html.palette-measureone .bg-rose-500 { background-color: #a12030 !important; }
+html.palette-measureone .ring-rose-200\/70 { --tw-ring-color: rgba(161, 32, 48, 0.35) !important; }
+html.palette-measureone .hover\:ring-rose-400:hover { --tw-ring-color: #a12030 !important; }
+html.palette-measureone .bg-rose-50\/60 { background-color: rgba(161, 32, 48, 0.05) !important; }
+/* Red family too (some places use `text-red-*` instead of rose) */
+html.palette-measureone .text-red-500,
+html.palette-measureone .text-red-600,
+html.palette-measureone .text-red-700 { color: #a12030 !important; }
+html.palette-measureone .bg-red-500 { background-color: #a12030 !important; }
+
+html.palette-measureone .text-sky-500,
+html.palette-measureone .text-sky-600,
+html.palette-measureone .text-sky-700,
+html.palette-measureone .text-sky-800 { color: #0057b8 !important; }
+html.palette-measureone .bg-sky-50 { background-color: rgba(0, 87, 184, 0.06) !important; }
+html.palette-measureone .bg-sky-100 { background-color: rgba(0, 87, 184, 0.12) !important; }
+
+/* Warmer paper-grey neutrals (kills the cold slate-blue undertone) */
+html.palette-measureone .text-slate-900 { color: #141618 !important; }
+html.palette-measureone .text-slate-800 { color: #1a1d22 !important; }
+html.palette-measureone .text-slate-700 { color: #2b2f36 !important; }
+html.palette-measureone .text-slate-600 { color: #414852 !important; }
+html.palette-measureone .text-slate-500 { color: #5b6169 !important; }
+html.palette-measureone .text-slate-400 { color: #7a7f86 !important; }
+html.palette-measureone .text-slate-300 { color: #9aa0a6 !important; }
+html.palette-measureone .border-slate-100 { border-color: #efece5 !important; }
+html.palette-measureone .border-slate-200 { border-color: #e5e2d9 !important; }
+html.palette-measureone .border-slate-300 { border-color: #d9d5cb !important; }
+html.palette-measureone .bg-slate-50  { background-color: #f4f2ec !important; }
+html.palette-measureone .bg-slate-100 { background-color: #efece5 !important; }
+html.palette-measureone .bg-slate-50\/60 { background-color: rgba(244, 242, 236, 0.60) !important; }
+html.palette-measureone .bg-slate-50\/40 { background-color: rgba(244, 242, 236, 0.40) !important; }
+html.palette-measureone .bg-slate-100 { background-color: #efece5 !important; }
+html.palette-measureone .bg-slate-200\/70 { background-color: rgba(217, 213, 203, 0.70) !important; }
+html.palette-measureone .bg-slate-200\/60 { background-color: rgba(217, 213, 203, 0.60) !important; }
+html.palette-measureone .bg-slate-100 { background-color: #efece5 !important; }
+html.palette-measureone .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #efece5 !important; }
+html.palette-measureone .divide-slate-100\/60 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(239, 236, 229, 0.60) !important; }
+html.palette-measureone .ring-slate-200,
+html.palette-measureone .ring-slate-200\/70 { --tw-ring-color: rgba(217, 213, 203, 0.70) !important; }
+html.palette-measureone .hover\:ring-slate-400:hover { --tw-ring-color: #9aa0a6 !important; }
+
+/* Amber "Site admin" pill in the top bar — stays warm but drops the
+   toy-yellow saturation. */
+html.palette-measureone .bg-amber-100 { background-color: rgba(143, 90, 19, 0.14) !important; }
+
+/* ---- Dark + measureone: warm-charcoal shell, softer navy accents -------- */
+html.palette-measureone.dark {
+  background-color: #0e1116;
+}
+html.palette-measureone.dark body {
+  background-color: #0e1116;
+  color: #e8e6e1;
+}
+html.palette-measureone.dark .app-main { background: #0e1116; }
+html.palette-measureone.dark .app-card {
+  background: #151920;
+  border-color: rgba(60, 66, 74, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+html.palette-measureone.dark .bg-white       { background-color: #151920 !important; }
+html.palette-measureone.dark .bg-slate-50,
+html.palette-measureone.dark .bg-slate-100   { background-color: #1c2028 !important; }
+html.palette-measureone.dark .bg-slate-800\/50 { background-color: rgba(28, 32, 40, 0.55) !important; }
+html.palette-measureone.dark .bg-slate-800\/30 { background-color: rgba(28, 32, 40, 0.35) !important; }
+html.palette-measureone.dark .border-slate-200 { border-color: #2c313a !important; }
+html.palette-measureone.dark .border-slate-100 { border-color: #1c2028 !important; }
+html.palette-measureone.dark .border-slate-700 { border-color: #2c313a !important; }
+html.palette-measureone.dark .border-slate-800 { border-color: #1c2028 !important; }
+html.palette-measureone.dark [class*="divide-slate-"] > :not([hidden]) ~ :not([hidden]) {
+  border-color: #1c2028 !important;
+}
+
+/* Brand (dark): lighter navy so it lifts off the warm charcoal */
+html.palette-measureone.dark .text-indigo-700,
+html.palette-measureone.dark .text-indigo-600,
+html.palette-measureone.dark .text-indigo-500 { color: #89a3d0 !important; }
+html.palette-measureone.dark .text-indigo-400,
+html.palette-measureone.dark .text-indigo-300 { color: #a7bde0 !important; }
+html.palette-measureone.dark .bg-indigo-50  { background-color: rgba(137, 163, 208, 0.12) !important; }
+html.palette-measureone.dark .bg-indigo-100 { background-color: rgba(137, 163, 208, 0.18) !important; }
+html.palette-measureone.dark .bg-indigo-600 { background-color: #2b5391 !important; }
+html.palette-measureone.dark .hover\:bg-indigo-700:hover { background-color: #173e77 !important; }
+html.palette-measureone.dark .stroke-indigo-400 { stroke: #a7bde0 !important; }
+html.palette-measureone.dark .fill-indigo-400\/15 { fill: rgba(167, 189, 224, 0.15) !important; }
+
+/* State chips (dark): warmer mint / mustard / coral / steady blue */
+html.palette-measureone.dark .text-emerald-500,
+html.palette-measureone.dark .text-emerald-600,
+html.palette-measureone.dark .text-emerald-700,
+html.palette-measureone.dark .text-emerald-800 { color: #5ac48e !important; }
+html.palette-measureone.dark .bg-emerald-50 { background-color: rgba(90, 196, 142, 0.10) !important; }
+html.palette-measureone.dark .bg-emerald-500 { background-color: #1c9459 !important; }
+html.palette-measureone.dark .bg-emerald-500\/80 { background-color: rgba(28, 148, 89, 0.85) !important; }
+html.palette-measureone.dark .bg-emerald-400\/80 { background-color: rgba(90, 196, 142, 0.75) !important; }
+
+html.palette-measureone.dark .text-amber-500,
+html.palette-measureone.dark .text-amber-600,
+html.palette-measureone.dark .text-amber-700 { color: #e8b658 !important; }
+html.palette-measureone.dark .bg-amber-50 { background-color: rgba(232, 182, 88, 0.10) !important; }
+
+html.palette-measureone.dark .text-rose-500,
+html.palette-measureone.dark .text-rose-600,
+html.palette-measureone.dark .text-rose-700,
+html.palette-measureone.dark .text-rose-800 { color: #e88494 !important; }
+html.palette-measureone.dark .text-red-500,
+html.palette-measureone.dark .text-red-600,
+html.palette-measureone.dark .text-red-700 { color: #e88494 !important; }
+html.palette-measureone.dark .bg-rose-50 { background-color: rgba(232, 132, 148, 0.10) !important; }
+html.palette-measureone.dark .bg-rose-500 { background-color: #a12030 !important; }
+html.palette-measureone.dark .bg-rose-400\/80 { background-color: rgba(232, 132, 148, 0.80) !important; }
+
+html.palette-measureone.dark .text-sky-500,
+html.palette-measureone.dark .text-sky-600,
+html.palette-measureone.dark .text-sky-700 { color: #6ea8e0 !important; }
+html.palette-measureone.dark .bg-sky-50 { background-color: rgba(110, 168, 224, 0.10) !important; }

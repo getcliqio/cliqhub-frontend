@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CliqHub — Build, Run, and Share AI Agent Teams</title>
+    <meta name="description" content="Design multi-agent pipelines visually, run them locally with human-in-the-loop review, and publish reusable teams to the registry." />
+    <!-- Favicon stack — mirrors getcliq.io so tab / bookmark / home-screen -->
+    <!-- icons render identically across browsers. SVG is the primary hint; -->
+    <!-- the .ico exists so Safari + legacy Chrome don't fall back to Vite's -->
+    <!-- HTML SPA response when they opportunistically fetch /favicon.ico. -->
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#6366f1" />
+    <script>
+      /* Apply the persisted theme before React mounts so users don't see
+         a flash of the wrong theme on the initial paint. Kept in sync with
+         src/lib/theme_context.tsx (STORAGE_KEY = 'cliqhub.theme'). All
+         visual styling (background, color-scheme) is driven by CSS in
+         index.css — this script only toggles the `dark` class + data-theme
+         attribute so CSS can react. */
+      (function () {
+        try {
+          var raw = localStorage.getItem('cliqhub.theme');
+          var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+          var system_dark = !!(mq && mq.matches);
+          var is_dark = raw === 'dark' || ((!raw || raw === 'system') && system_dark);
+          var root = document.documentElement;
+          if (is_dark) {
+            root.classList.add('dark');
+            root.setAttribute('data-theme', 'dark');
+          } else {
+            root.setAttribute('data-theme', 'light');
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
+  </head>
+  <body class="bg-slate-50 text-slate-900 antialiased dark:bg-slate-900 dark:text-slate-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
