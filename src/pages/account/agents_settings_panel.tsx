@@ -19,6 +19,7 @@ import {
     page_agents,
 } from '@/lib/agents_list_filters';
 import { setting_applies } from '@/lib/setting_when';
+import { hub_list, hub_payload } from '@/lib/hub_envelope';
 
 interface Setting_entry {
     key: string;
@@ -87,7 +88,11 @@ function Agent_settings_table({ name, on_back }: { name: string; on_back: () => 
                 set_error(data.error?.message || 'Failed to load agent');
                 return;
             }
-            const d = data.data as Agent_detail;
+            const d = hub_payload<Agent_detail>(data);
+            if (!d) {
+                set_error('Failed to load agent');
+                return;
+            }
             set_detail(d);
             set_values({ ...d.values });
             set_original({ ...d.values });
@@ -359,7 +364,7 @@ export function Component() {
                 set_error(data.error?.message || 'Failed to load agents');
                 return;
             }
-            set_agents((data.agents ?? []) as Agent_summary[]);
+            set_agents(hub_list<Agent_summary>(data, 'agents'));
             set_error(null);
         } catch {
             set_error('Failed to load agents');

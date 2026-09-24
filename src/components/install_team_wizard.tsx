@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import yaml from 'js-yaml';
 import { setting_applies } from '@/lib/setting_when';
+import { hub_list, hub_payload } from '@/lib/hub_envelope';
 
 /**
  * Shared agent-check wizard for installing a team into a realm.
@@ -143,7 +144,7 @@ export function Install_team_wizard({
             });
             const catalog_data = await catalog_res.json() as {
                 ok?: boolean;
-                agents?: Array<{
+                data?: Array<{
                     name: string;
                     manifest?: {
                         settings?: {
@@ -158,7 +159,15 @@ export function Install_team_wizard({
                 set_loading_agents(false);
                 return;
             }
-            const catalog_agents = catalog_data.agents ?? [];
+            const catalog_agents = hub_list<{
+                name: string;
+                manifest?: {
+                    settings?: {
+                        required?: Array<string | { key: string; when?: Record<string, string> }>;
+                        optional?: Array<string | { key: string; when?: Record<string, string> }>;
+                    };
+                };
+            }>(catalog_data, 'agents');
             const catalog_map = new Map(
                 catalog_agents.map((a) => [
                     a.name,
@@ -186,7 +195,9 @@ export function Install_team_wizard({
                         body: JSON.stringify({ realm_id, name: agent_name }),
                     });
                     const detail_data = await detail_res.json();
-                    configured = detail_data.data?.values ?? {};
+                    configured = hub_payload<{ values?: Record<string, string> }>(detail_data)?.values
+                        ?? (detail_data as { values?: Record<string, string> }).values
+                        ?? {};
                 } catch { /* fall through with empty */ }
 
                 const to_entry = (s: string | { key: string; when?: Record<string, string> }): Setting_req => (

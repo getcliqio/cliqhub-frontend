@@ -15,6 +15,7 @@ import {
 } from '@/components/explorer/use_explorer_params';
 import { event_groups_for_scope } from '@/lib/notification_event_catalog';
 import { Bell } from 'lucide-react';
+import { hub_payload } from '@/lib/hub_envelope';
 
 interface NotificationRow {
 	id: string;
@@ -157,8 +158,11 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			set_rows((data.notifications ?? []) as NotificationRow[]);
-			set_total(Number(data.total ?? (data.notifications ?? []).length));
+			const page = hub_payload<{ items?: NotificationRow[]; total?: number; notifications?: NotificationRow[] }>(data)
+				?? data;
+			const items = page.items ?? page.notifications ?? [];
+			set_rows(items as NotificationRow[]);
+			set_total(Number(page.total ?? items.length));
 			set_error(null);
 		} catch {
 			set_error('Failed to load notifications');

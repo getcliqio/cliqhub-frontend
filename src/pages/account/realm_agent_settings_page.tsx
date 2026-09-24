@@ -20,6 +20,7 @@ import {
     page_agents,
 } from '@/lib/agents_list_filters';
 import { setting_applies } from '@/lib/setting_when';
+import { hub_list, hub_payload, hub_setting_source } from '@/lib/hub_envelope';
 
 interface Setting_entry {
     key: string;
@@ -57,7 +58,8 @@ interface Agent_summary {
 
 interface Agent_detail extends Agent_registry_entry {
     values: Record<string, string>;
-    source: Record<string, 'realm' | 'global' | null>;
+    /** Wire: org | realm (SettingsData). UI maps org → inherited. */
+    source: Record<string, 'realm' | 'org' | null>;
     configured: Record<string, boolean>;
     inherited: Record<string, boolean>;
 }
@@ -80,7 +82,7 @@ function Agent_settings_table({
     const [detail, set_detail] = useState<Agent_detail | null>(null);
     const [values, set_values] = useState<Record<string, string>>({});
     const [original, set_original] = useState<Record<string, string>>({});
-    const [source_map, set_source_map] = useState<Record<string, 'realm' | 'global' | null>>({});
+    const [source_map, set_source_map] = useState<Record<string, 'realm' | 'org' | null>>({});
     const [loading, set_loading] = useState(true);
     const [saving, set_saving] = useState(false);
     const [resetting_key, set_resetting_key] = useState<string | null>(null);
@@ -99,11 +101,19 @@ function Agent_settings_table({
                 set_error(data.error?.message || 'Failed to load agent');
                 return;
             }
-            const d = data.data as Agent_detail;
-            set_detail(d);
+            const d = hub_payload<Agent_detail>(data);
+            if (!d) {
+                set_error('Failed to load agent');
+                return;
+            }
+            const normalized_source: Record<string, 'realm' | 'org' | null> = {};
+            for (const [key, raw] of Object.entries(d.source ?? {})) {
+                normalized_source[key] = hub_setting_source(raw as string | null);
+            }
+            set_detail({ ...d, source: normalized_source });
             set_values({ ...d.values });
             set_original({ ...d.values });
-            set_source_map(d.source ?? {});
+            set_source_map(normalized_source);
             set_error(null);
         } catch {
             set_error('Failed to load agent');
@@ -284,8 +294,8 @@ function Agent_settings_table({
                                             />
                                         </td>
                                         <td className="px-3 py-2.5 text-center">
-                                            {source === 'global' ? (
-                                                <span title="Inherited from global settings">
+                                            {source === 'org' ? (
+                                                <span title="Inherited from org settings">
                                                     <Globe className="inline h-3.5 w-3.5 text-slate-400" />
                                                 </span>
                                             ) : null}
@@ -371,7 +381,7 @@ export function Component() {
                 set_error(data.error?.message || 'Failed to load agents');
                 return;
             }
-            set_agents(data.agents ?? []);
+            set_agents(hub_list<Agent_summary>(data, 'agents'));
             set_error(null);
         } catch {
             set_error('Failed to load agents');
@@ -447,10 +457,10 @@ export function Component() {
                 <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">Realm agent settings</h2>
                 <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     Agents used by teams in this realm. Overrides here apply only to this realm.{' '}
-                    <Globe className="inline h-3 w-3 text-slate-400" /> = inherited from global,{' '}
+                    <Globe className="inline h-3 w-3 text-slate-400" /> = inherited from org,{' '}
                     <Map className="inline h-3 w-3 text-indigo-400" /> = set at realm level.{' '}
                     <Link to="/settings?tab=agents" className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">
-                        Edit global values →
+                        Edit org values →
                     </Link>
                 </p>
             </div>

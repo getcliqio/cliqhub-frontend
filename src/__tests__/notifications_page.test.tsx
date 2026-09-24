@@ -15,7 +15,7 @@ describe('NotificationsPage', () => {
 	beforeEach(() => {
 		auth_fetch.mockReset();
 		auth_fetch.mockResolvedValue({
-			json: async () => ({ ok: true, notifications: [], total: 0 }),
+			json: async () => ({ ok: true, data: { items: [], total: 0, offset: 0, limit: 50 } }),
 		});
 	});
 
@@ -40,18 +40,23 @@ describe('NotificationsPage', () => {
 		auth_fetch.mockResolvedValue({
 			json: async () => ({
 				ok: true,
-				notifications: [{
-					id: 'n1',
-					event: 'run.failed',
-					title: null,
-					message: 'boom',
-					realm_id: 'realm-abcdef01',
-					team: '@acme/demo',
-					run_id: 'run-12345678',
-					phase: 'build',
-					severity: 'error',
-					created_at: Date.UTC(2026, 0, 15, 12, 0, 0),
-				}],
+				data: {
+					items: [{
+						id: 'n1',
+						event: 'run.failed',
+						title: null,
+						message: 'boom',
+						realm_id: 'realm-abcdef01',
+						team: '@acme/demo',
+						run_id: 'run-12345678',
+						phase: 'build',
+						severity: 'error',
+						created_at: Date.UTC(2026, 0, 15, 12, 0, 0),
+					}],
+					total: 1,
+					offset: 0,
+					limit: 50,
+				},
 			}),
 		});
 

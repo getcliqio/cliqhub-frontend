@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from './auth_context';
 import { useOrgFetch } from './org_context';
+import { hub_payload } from './hub_envelope';
 
 /**
  * Shared counter hook for sidebar + top-bar unread badges.
@@ -85,17 +86,16 @@ export function use_sidebar_badges(): Sidebar_badge_counts {
 			const reviews_data = await reviews_res.json().catch(() => ({}));
 
 			let unread = 0;
-			if (notif_data?.ok && Array.isArray(notif_data.notifications)) {
-				for (const n of notif_data.notifications as Array<{ created_at?: number }>) {
+			const page = hub_payload<{ items?: Array<{ created_at?: number }>; notifications?: Array<{ created_at?: number }> }>(notif_data);
+			const notif_items = notif_data?.ok
+				? (page?.items ?? page?.notifications ?? [])
+				: [];
+			if (notif_items.length > 0) {
+				for (const n of notif_items) {
 					const ts = Number(n?.created_at ?? 0);
 					if (Number.isFinite(ts) && ts > last_seen) unread += 1;
 				}
-				// Hit the scan ceiling → treat as "at least this many" so
-				// the badge can show 99+ instead of stalling at 100.
-				if (
-					unread >= UNREAD_SCAN_LIMIT
-					&& (notif_data.notifications as unknown[]).length >= UNREAD_SCAN_LIMIT
-				) {
+				if (unread >= UNREAD_SCAN_LIMIT && notif_items.length >= UNREAD_SCAN_LIMIT) {
 					unread = BADGE_CAP + 1;
 				}
 			}

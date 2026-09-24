@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useOrgFetch } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
+import { hub_list, hub_payload } from '@/lib/hub_envelope';
 import {
     destination_type_meta,
     destination_fields,
@@ -312,8 +313,8 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
             if (!ch_data.ok) { set_error(api_error_message(ch_data)); return; }
             if (!rules_data.ok) { set_error(api_error_message(rules_data)); return; }
 
-            set_channels((ch_data.channels ?? []) as ChannelRow[]);
-            set_rules((rules_data.rules ?? []) as RuleRow[]);
+            set_channels(hub_list<ChannelRow>(ch_data, 'channels'));
+            set_rules(hub_list<RuleRow>(rules_data, 'rules'));
 
             if (realm_id && responses[2]) {
                 const custom_data = await responses[2].json();
@@ -398,7 +399,10 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
             });
             const data = await res.json();
             if (!data.ok) { set_error(api_error_message(data)); return; }
-            set_rules((prev) => [...prev, data.rule as RuleRow]);
+            set_rules((prev) => {
+                const row = hub_payload<RuleRow>(data, 'rule');
+                return row ? [...prev, row] : prev;
+            });
         } catch {
             set_error('Failed to add rule');
         } finally {
@@ -775,7 +779,7 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
                 set_error(api_error_message(data));
                 return;
             }
-            set_channels((data.channels ?? []) as ChannelRow[]);
+            set_channels(hub_list<ChannelRow>(data, 'channels'));
             set_error(null);
         } catch {
             set_error('Failed to load channels');
@@ -869,8 +873,9 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
                 set_test_result({ channel_id: ch.id, ok: false, message: api_error_message(data) });
                 return;
             }
-            const delivered = (data.delivered ?? 0) as number;
-            const errors = (data.errors ?? []) as string[];
+            const test = hub_payload<{ delivered?: number; errors?: string[] }>(data) ?? data;
+            const delivered = Number(test.delivered ?? 0);
+            const errors = (test.errors ?? []) as string[];
             if (errors.length > 0) {
                 set_test_result({ channel_id: ch.id, ok: false, message: errors.join('; ') });
                 return;
@@ -1334,7 +1339,9 @@ function Destination_editor({
                 set_dest_test_result({ idx, ok: false, message: api_error_message(data) });
                 return;
             }
-            const errors: string[] = data.errors ?? [];
+            const errors: string[] = hub_payload<{ errors?: string[] }>(data)?.errors
+                ?? (data.data?.errors as string[] | undefined)
+                ?? [];
             if (errors.length > 0) {
                 set_dest_test_result({ idx, ok: false, message: errors.join('; ') });
                 return;

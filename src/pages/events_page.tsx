@@ -17,6 +17,7 @@ import { useOrgFetch } from '@/lib/org_context';
 import { mark_notifications_seen } from '@/lib/use_sidebar_badges';
 import { Pagination, PAGE_LIMIT } from '@/components/pagination';
 import { ReviewsPanel } from '@/pages/reviews_page';
+import { hub_payload } from '@/lib/hub_envelope';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -130,8 +131,10 @@ function Event_table({
                 set_error(data.error?.message ?? 'Request failed');
                 return;
             }
-            set_rows(data.notifications ?? []);
-            set_total(Number(data.total ?? 0));
+            const page = hub_payload<{ items?: NotificationRow[]; total?: number; notifications?: NotificationRow[] }>(data) ?? data;
+            const items = page.items ?? page.notifications ?? [];
+            set_rows(items);
+            set_total(Number(page.total ?? 0));
             set_error(null);
         } catch {
             set_error('Failed to load events');

@@ -9,6 +9,7 @@ import { InstallToRealmDialog } from '@/components/install_to_realm_dialog';
 import { TeamActions } from '@/components/team_actions';
 import type { Realm_outlet_context } from '@/layouts/realm_layout';
 import type { WorkflowPhase } from '@/lib/types';
+import { hub_list } from '@/lib/hub_envelope';
 
 /**
  * Unified team detail page — adapts breadcrumbs and actions based on
@@ -66,8 +67,10 @@ export function Component() {
         })
             .then((res) => res.json())
             .then((d) => {
-                if (d.ok && Array.isArray(d.agents)) {
-                    set_registered_agents(new Set(d.agents.map((a: { name: string }) => a.name)));
+                if (d.ok) {
+                    set_registered_agents(new Set(
+                        hub_list<{ name: string }>(d, 'agents').map((a) => a.name),
+                    ));
                 }
             })
             .catch(() => { /* best-effort */ });
