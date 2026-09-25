@@ -43,9 +43,16 @@ export function Run_summary_strip({ run_id, live }: Run_summary_strip_props) {
                 method: 'POST',
                 body: JSON.stringify({ kind: 'usage', run_id }),
             });
-            const data = await res.json() as { ok?: boolean; run?: UsageSnapshot; error?: unknown };
-            if (data.run) {
-                set_snapshot(data.run);
+            const body = await res.json() as {
+                ok?: boolean;
+                data?: { run?: UsageSnapshot | null };
+                run?: UsageSnapshot;
+                error?: unknown;
+            };
+            // TEL-ENV — usage lives under `data.run` (flat `run` is deploy fallback).
+            const run = body.data?.run ?? body.run;
+            if (run) {
+                set_snapshot(run);
                 set_error(null);
             }
         } catch {

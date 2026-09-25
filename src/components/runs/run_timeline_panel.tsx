@@ -57,12 +57,19 @@ export function Run_timeline_panel({ run_id, live }: Run_timeline_panel_props) {
 				method: 'POST',
 				body: JSON.stringify({ kind: 'spans', run_id }),
 			});
-			const data = await res.json() as { ok: boolean; spans?: Run_span[]; error?: unknown };
-			if (!data.ok) {
-				set_error(typeof data.error === 'string' ? data.error : 'Failed to load timeline');
+			const body = await res.json() as {
+				ok?: boolean;
+				data?: Run_span[];
+				spans?: Run_span[];
+				error?: unknown;
+			};
+			if (!body.ok) {
+				set_error(typeof body.error === 'string' ? body.error : 'Failed to load timeline');
 				return;
 			}
-			set_spans((data.spans ?? []) as Run_span[]);
+			// TEL-ENV — spans array is `data` (flat `spans` is deploy fallback).
+			const spans_payload = Array.isArray(body.data) ? body.data : (body.spans ?? []);
+			set_spans(spans_payload as Run_span[]);
 			set_error(null);
 		} catch {
 			if (!opts?.silent) set_error('Failed to load timeline');

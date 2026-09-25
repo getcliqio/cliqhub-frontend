@@ -79,12 +79,16 @@ export function UsageBreakdownTable({ run_id }: UsageBreakdownTableProps) {
                 method: 'POST',
                 body: JSON.stringify({ kind: 'usage', run_id }),
             });
-            const data = await res.json() as {
-                run: RunSnapshot | null;
-                phases: PhaseSnapshot[];
+            const body = await res.json() as {
+                ok?: boolean;
+                data?: { run?: RunSnapshot | null; phases?: PhaseSnapshot[] };
+                run?: RunSnapshot | null;
+                phases?: PhaseSnapshot[];
             };
-            set_run_snapshot(data.run ?? null);
-            set_phase_snapshots(data.phases ?? []);
+            // TEL-ENV — usage payload under `data` (flat keys are deploy fallback).
+            const payload = body.data ?? body;
+            set_run_snapshot(payload.run ?? null);
+            set_phase_snapshots(payload.phases ?? []);
         } catch {
             // Silently fail — strip above already shows summary.
         } finally {

@@ -923,7 +923,9 @@ function Telemetry_block({
                 body: JSON.stringify({ kind: 'summary', org_id: current_id, window_days }),
             });
             const json = await res.json();
-            if (json.ok) set_data(json as Telemetry_summary);
+            // TEL-ENV — prefer `data`; flat fallback for mixed deploys.
+            const summary = (json?.data ?? (json?.ok ? json : null)) as Telemetry_summary | null;
+            if (json?.ok && summary) set_data(summary);
         } catch {
             /* keep stale */
         } finally {

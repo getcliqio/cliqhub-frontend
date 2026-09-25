@@ -146,26 +146,28 @@ beforeEach(() => {
         if (url.includes('/v1/runs/get_telemetry')) {
             return new Response(JSON.stringify({
                 ok: true,
-                window: { from_ms: NOW - 7 * 86_400_000, to_ms: NOW, days: 7 },
-                totals: {
-                    runs: 4, agent_invocations: 20, failures: 2,
-                    duration_ms: 40_000, cost_usd: 1.25,
-                    tokens_in: 1000, tokens_out: 500,
+                data: {
+                    window: { from_ms: NOW - 7 * 86_400_000, to_ms: NOW, days: 7 },
+                    totals: {
+                        runs: 4, agent_invocations: 20, failures: 2,
+                        duration_ms: 40_000, cost_usd: 1.25,
+                        tokens_in: 1000, tokens_out: 500,
+                    },
+                    by_day: [
+                        { date: '2026-08-31', runs: 1, invocations: 3, duration_ms: 8000, cost_usd: 0.25, failures: 0 },
+                        { date: '2026-09-01', runs: 3, invocations: 17, duration_ms: 32000, cost_usd: 1.00, failures: 2 },
+                    ],
+                    by_hour: Array.from({ length: 24 }, (_, h) => ({
+                        hour: h, runs: h === 12 ? 3 : 0, invocations: h === 12 ? 20 : 0,
+                    })),
+                    by_team: [
+                        { team_label: 'cliq/hello-world', runs: 4, invocations: 20, duration_ms: 40_000, cost_usd: 1.25, failures: 2 },
+                    ],
+                    by_agent_kind: [
+                        { kind: 'shell', invocations: 12, duration_ms: 15_000, cost_usd: 0, failures: 0 },
+                        { kind: 'llm', invocations: 8, duration_ms: 25_000, cost_usd: 1.25, failures: 2 },
+                    ],
                 },
-                by_day: [
-                    { date: '2026-08-31', runs: 1, invocations: 3, duration_ms: 8000, cost_usd: 0.25, failures: 0 },
-                    { date: '2026-09-01', runs: 3, invocations: 17, duration_ms: 32000, cost_usd: 1.00, failures: 2 },
-                ],
-                by_hour: Array.from({ length: 24 }, (_, h) => ({
-                    hour: h, runs: h === 12 ? 3 : 0, invocations: h === 12 ? 20 : 0,
-                })),
-                by_team: [
-                    { team_label: 'cliq/hello-world', runs: 4, invocations: 20, duration_ms: 40_000, cost_usd: 1.25, failures: 2 },
-                ],
-                by_agent_kind: [
-                    { kind: 'shell', invocations: 12, duration_ms: 15_000, cost_usd: 0, failures: 0 },
-                    { kind: 'llm', invocations: 8, duration_ms: 25_000, cost_usd: 1.25, failures: 2 },
-                ],
             }));
         }
         if (url.includes('/v1/runs/get')) {
@@ -332,22 +334,24 @@ describe('HomeDashboard Telemetry band', () => {
             if (url.includes('/v1/runs/get_telemetry')) {
                 return new Response(JSON.stringify({
                     ok: true,
-                    window: { from_ms: NOW - 7 * 86_400_000, to_ms: NOW, days: 7 },
-                    totals: {
-                        runs: 1, agent_invocations: 3, failures: 0,
-                        duration_ms: 5000, cost_usd: 0.10,
-                        tokens_in: 100, tokens_out: 50,
+                    data: {
+                        window: { from_ms: NOW - 7 * 86_400_000, to_ms: NOW, days: 7 },
+                        totals: {
+                            runs: 1, agent_invocations: 3, failures: 0,
+                            duration_ms: 5000, cost_usd: 0.10,
+                            tokens_in: 100, tokens_out: 50,
+                        },
+                        by_day: [
+                            { date: '2026-09-01', runs: 1, invocations: 3, duration_ms: 5000, cost_usd: 0.10, failures: 0 },
+                        ],
+                        by_hour: [],
+                        by_team: [
+                            { team_label: 'cliq/hello-world', runs: 1, invocations: 3, duration_ms: 5000, cost_usd: 0.10, failures: 0 },
+                        ],
+                        by_agent_kind: [
+                            { kind: 'shell', invocations: 3, duration_ms: 5000, cost_usd: 0, failures: 0 },
+                        ],
                     },
-                    by_day: [
-                        { date: '2026-09-01', runs: 1, invocations: 3, duration_ms: 5000, cost_usd: 0.10, failures: 0 },
-                    ],
-                    by_hour: [],
-                    by_team: [
-                        { team_label: 'cliq/hello-world', runs: 1, invocations: 3, duration_ms: 5000, cost_usd: 0.10, failures: 0 },
-                    ],
-                    by_agent_kind: [
-                        { kind: 'shell', invocations: 3, duration_ms: 5000, cost_usd: 0, failures: 0 },
-                    ],
                 }));
             }
             if (url.includes('/v1/runs/get')) {
