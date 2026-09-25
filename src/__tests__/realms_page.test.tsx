@@ -41,6 +41,7 @@ const REALMS = [
 
 beforeEach(() => {
 	vi.restoreAllMocks();
+	try { globalThis.localStorage?.setItem('cliqhub_current_org_id', 'org-sapan'); } catch { /* jsdom */ }
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url.includes('/v1/session/get')) {
@@ -55,7 +56,10 @@ beforeEach(() => {
 			}));
 		}
 		if (url.includes('/v1/orgs/get')) {
-			return new Response(JSON.stringify({ ok: true, orgs: [{ id: 1, slug: 'sapan', display_name: 'Personal' }] }));
+			return new Response(JSON.stringify({
+				ok: true,
+				data: { orgs: [{ id: 'org-sapan', slug: 'sapan', display_name: 'Personal' }] },
+			}));
 		}
 		if (url.includes('/v1/realms/get')) {
 			const body = JSON.parse(String(init?.body ?? '{}')) as {
@@ -131,6 +135,9 @@ describe('realms_page list + filters', () => {
 		expect(screen.queryByText('Acme Production')).not.toBeInTheDocument();
 		expect(screen.getByText('owned: me')).toBeInTheDocument();
 		expect(last_realms_get_body().owned).toBe('me');
+		await waitFor(() => {
+			expect(last_realms_get_body().org_id).toBe('org-sapan');
+		});
 	});
 
 	it('applies search draft on change via API body', async () => {

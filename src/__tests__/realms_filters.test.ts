@@ -63,6 +63,22 @@ describe('realms_filters', () => {
 		});
 	});
 
+	it('build_realms_get_body includes org_id when provided', () => {
+		expect(
+			build_realms_get_body({
+				limit: 20,
+				offset: 0,
+				org_id: 'org-1',
+			}),
+		).toEqual({
+			limit: 20,
+			offset: 0,
+			sort_by: 'slug',
+			sort_dir: 'asc',
+			org_id: 'org-1',
+		});
+	});
+
 	it('next_sort_state toggles then resets', () => {
 		expect(next_sort_state('slug', 'asc', 'name')).toEqual({ sort_by: 'name', sort_dir: 'asc' });
 		expect(next_sort_state('name', 'asc', 'name')).toEqual({ sort_by: 'name', sort_dir: 'desc' });

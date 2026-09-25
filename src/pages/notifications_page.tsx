@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/ui/page_header';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { PAGE_HELP } from '@/lib/page_help';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { mark_notifications_seen } from '@/lib/use_sidebar_badges';
 import { Pagination } from '@/components/pagination';
 import { Explorer_shell } from '@/components/explorer/explorer_shell';
@@ -73,6 +73,7 @@ interface Realm_option {
 /** In-app notification inbox (HUG lives under /hug). */
 export function Component() {
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const [search_params] = useSearchParams();
 	const tab = resolve_tab(search_params.get('tab'));
 	const explorer = use_explorer_params(FACET_KEYS);
@@ -101,9 +102,11 @@ export function Component() {
 		let cancelled = false;
 		(async () => {
 			try {
+				const body: Record<string, unknown> = { limit: 100 };
+				if (current_id) body.org_id = current_id;
 				const res = await auth_fetch('/v1/realms/get', {
 					method: 'POST',
-					body: JSON.stringify({ limit: 100 }),
+					body: JSON.stringify(body),
 				});
 				const data = await res.json();
 				if (cancelled || !data.ok) return;
@@ -116,7 +119,7 @@ export function Component() {
 			} catch { /* ignore — filter just stays disabled */ }
 		})();
 		return () => { cancelled = true; };
-	}, [auth_fetch]);
+	}, [auth_fetch, current_id]);
 
 	// Realm facet stores slugs (stable, human-readable in URL) but the
 	// API takes ids — translate here.

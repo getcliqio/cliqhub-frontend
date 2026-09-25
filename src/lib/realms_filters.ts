@@ -95,7 +95,7 @@ export function build_realms_get_body(opts: {
 	sort_dir?: Realm_sort_dir;
 	limit: number;
 	offset: number;
-	/** Explicit org scope — backend defaults from X-Org-Id header if omitted. */
+	/** Optional org filter — omit for all member orgs; Core never invents from X-Org-Id. */
 	org_id?: string;
 }): Record<string, unknown> {
 	const body: Record<string, unknown> = {

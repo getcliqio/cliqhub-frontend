@@ -17,7 +17,8 @@ const auth_fetch = vi.fn();
 vi.mock('@/lib/org_context', () => ({
     useOrgFetch: () => auth_fetch,
     useOrg: () => ({
-        current_org: { id: 1, slug: 'acme' },
+        current_org: { id: 'org-acme', slug: 'acme' },
+        current_id: 'org-acme',
         orgs: [], is_multi_org: false, is_personal: false,
         loading: false, switch_org: vi.fn(),
     }),

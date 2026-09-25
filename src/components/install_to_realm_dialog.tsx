@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { Install_team_wizard } from '@/components/install_team_wizard';
 import { realm_qualified_label } from '@/lib/realm_url';
 
@@ -33,6 +33,7 @@ export function InstallToRealmDialog({
     on_close: () => void;
 }) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [realms, set_realms] = useState<RealmOption[]>([]);
     const [loading, set_loading] = useState(true);
     const [selected, set_selected] = useState('');
@@ -47,9 +48,11 @@ export function InstallToRealmDialog({
     const load = useCallback(async () => {
         set_loading(true);
         try {
+            const body: Record<string, unknown> = { limit: 100, offset: 0 };
+            if (current_id) body.org_id = current_id;
             const res = await auth_fetch('/v1/realms/get', {
                 method: 'POST',
-                body: JSON.stringify({ limit: 100, offset: 0 }),
+                body: JSON.stringify(body),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -64,7 +67,7 @@ export function InstallToRealmDialog({
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch]);
+    }, [auth_fetch, current_id]);
 
     useEffect(() => {
         void load();

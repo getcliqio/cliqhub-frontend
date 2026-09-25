@@ -69,7 +69,7 @@ function normalize_slug_input(raw: string): string {
 
 export function Realm_wizard({ on_cancel, on_done }: Realm_wizard_props) {
 	const auth_fetch = useOrgFetch();
-	const { current_org } = useOrg();
+	const { current_org, current_id, loading: org_loading } = useOrg();
 	const navigate = useNavigate();
 
 	const [step, set_step] = useState<Step_id>('identity');
@@ -120,12 +120,26 @@ export function Realm_wizard({ on_cancel, on_done }: Realm_wizard_props) {
 			set_error('Display name is required');
 			return;
 		}
+		// Body org_id is SoT for create — never invent from X-Org-Id.
+		// Wait for OrgProvider to finish /v1/orgs/get before failing closed.
+		if (org_loading) {
+			set_error('Loading workspace…');
+			return;
+		}
+		if (!current_id) {
+			set_error('No active workspace');
+			return;
+		}
 		set_creating(true);
 		set_error(null);
 		try {
 			const res = await auth_fetch('/v1/realms/create', {
 				method: 'POST',
-				body: JSON.stringify({ slug: clean_slug, name: clean_name }),
+				body: JSON.stringify({
+					org_id: current_id,
+					slug: clean_slug,
+					name: clean_name,
+				}),
 			});
 			const data = await res.json();
 			if (!data.ok) {
@@ -461,10 +475,10 @@ export function Realm_wizard({ on_cancel, on_done }: Realm_wizard_props) {
 							<button
 								type="button"
 								onClick={handle_create_realm}
-								disabled={creating}
+								disabled={creating || org_loading || !current_id}
 								className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
 							>
-								{creating ? 'Creating…' : 'Create & continue'}
+								{creating ? 'Creating…' : org_loading ? 'Loading workspace…' : 'Create & continue'}
 							</button>
 							<button
 								type="button"

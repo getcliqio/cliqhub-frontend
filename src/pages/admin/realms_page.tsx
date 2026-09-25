@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { realm_qualified_label } from '@/lib/realm_url';
 import { Pagination } from '@/components/pagination';
@@ -26,6 +27,7 @@ const LIMIT = 50;
 
 export function Component() {
 	const auth_fetch = useAuthFetch();
+	const { current_id } = useOrg();
 	const q = use_admin_list_query();
 	const [rows, set_rows] = useState<RealmRow[]>([]);
 	const [total, set_total] = useState(0);
@@ -42,6 +44,7 @@ export function Component() {
 				sort_dir: 'asc',
 			};
 			if (q.active_query.trim()) body.query = q.active_query.trim();
+			if (current_id) body.org_id = current_id;
 			const res = await auth_fetch('/v1/realms/get', {
 				method: 'POST',
 				body: JSON.stringify(body),
@@ -59,7 +62,7 @@ export function Component() {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, q.active_query, q.offset]);
+	}, [auth_fetch, current_id, q.active_query, q.offset]);
 
 	useEffect(() => { void load(); }, [load]);
 

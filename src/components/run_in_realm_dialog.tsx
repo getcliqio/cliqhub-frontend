@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { parse_run_inputs_text } from '@/lib/realm_teams_coverage';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
 
@@ -150,6 +150,7 @@ export function Run_in_realm_dialog({
 	on_close: () => void;
 }) {
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const [realms, set_realms] = useState<Realm_option[]>([]);
 	const [loading_realms, set_loading_realms] = useState(!fixed_realm);
 	const [selected, set_selected] = useState(fixed_realm?.id ?? '');
@@ -175,9 +176,11 @@ export function Run_in_realm_dialog({
 		set_loading_realms(true);
 		set_error(null);
 		try {
+			const body: Record<string, unknown> = { limit: 100, offset: 0 };
+			if (current_id) body.org_id = current_id;
 			const res = await auth_fetch('/v1/realms/get', {
 				method: 'POST',
-				body: JSON.stringify({ limit: 100, offset: 0 }),
+				body: JSON.stringify(body),
 			});
 			const data = await res.json();
 			if (!data.ok) {
@@ -226,7 +229,7 @@ export function Run_in_realm_dialog({
 		} finally {
 			set_loading_realms(false);
 		}
-	}, [auth_fetch, fixed_realm, scope, slug]);
+	}, [auth_fetch, current_id, fixed_realm, scope, slug]);
 
 	const load_inputs = useCallback(async () => {
 		set_loading_inputs(true);
