@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Search as SearchIcon } from 'lucide-react';
-import { useOrgFetch } from '@/lib/org_context';
+import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg } from '@/lib/org_context';
 import { AgentIcon } from '@/components/agent_icon';
 import { agent_display_name } from '@/lib/agent_display';
 import { ApiErrorBanner } from '@/components/ui/api_error';
@@ -45,6 +46,7 @@ interface Agent_registry_entry {
 }
 
 interface Agent_summary {
+    id: string;
     name: string;
     version: string | null;
     description: string | null;
@@ -57,6 +59,7 @@ interface Agent_summary {
 }
 
 interface Agent_detail extends Agent_registry_entry {
+    id: string;
     values: Record<string, string>;
     configured: Record<string, boolean>;
 }
@@ -66,8 +69,9 @@ interface Setting_row {
     kind: 'required' | 'optional';
 }
 
-function Agent_settings_table({ name, on_back }: { name: string; on_back: () => void }) {
-    const auth_fetch = useOrgFetch();
+function Agent_settings_table({ id, name, on_back }: { id: string; name: string; on_back: () => void }) {
+    const auth_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [detail, set_detail] = useState<Agent_detail | null>(null);
     const [values, set_values] = useState<Record<string, string>>({});
     const [original, set_original] = useState<Record<string, string>>({});
@@ -77,11 +81,16 @@ function Agent_settings_table({ name, on_back }: { name: string; on_back: () => 
     const [flash, set_flash] = useState<string | null>(null);
 
     const load = useCallback(async () => {
+        if (!current_id) {
+            set_error('No active workspace');
+            set_loading(false);
+            return;
+        }
         set_loading(true);
         try {
             const res = await auth_fetch('/v1/agents/get_settings', {
                 method: 'POST',
-                body: JSON.stringify({ name }),
+                body: JSON.stringify({ org_id: current_id, id }),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -102,7 +111,7 @@ function Agent_settings_table({ name, on_back }: { name: string; on_back: () => 
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, name]);
+    }, [auth_fetch, current_id, id]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -140,7 +149,8 @@ function Agent_settings_table({ name, on_back }: { name: string; on_back: () => 
             const res = await auth_fetch('/v1/agents/update_settings', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name,
+                    org_id: current_id,
+                    id,
                     settings: {
                         ...(Object.keys(values_patch).length ? { values: values_patch } : {}),
                         ...(clear.length ? { clear } : {}),
@@ -346,7 +356,8 @@ function Agent_table({ rows, on_select }: { rows: Agent_summary[]; on_select: (n
 }
 
 export function Component() {
-    const auth_fetch = useOrgFetch();
+    const auth_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [agents, set_agents] = useState<Agent_summary[]>([]);
     const [loading, set_loading] = useState(true);
     const [error, set_error] = useState<string | null>(null);
@@ -358,11 +369,16 @@ export function Component() {
     const [q_draft, set_q_draft] = useState(q_filter);
 
     const load = useCallback(async () => {
+        if (!current_id) {
+            set_error('No active workspace');
+            set_loading(false);
+            return;
+        }
         set_loading(true);
         try {
             const res = await auth_fetch('/v1/agents/get_settings', {
                 method: 'POST',
-                body: JSON.stringify({}),
+                body: JSON.stringify({ org_id: current_id }),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -376,7 +392,7 @@ export function Component() {
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch]);
+    }, [auth_fetch, current_id]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -457,7 +473,19 @@ export function Component() {
     const custom_agents = useMemo(() => page_rows.filter((a) => !a.is_system), [page_rows]);
 
     if (selected_agent) {
-        return <Agent_settings_table name={selected_agent} on_back={close_agent} />;
+        const row = agents.find((a) => a.name === selected_agent);
+        if (!row?.id) {
+            if (loading) {
+                return <p className="text-sm text-slate-400">Loading agent…</p>;
+            }
+            return (
+                <div>
+                    <p className="text-sm text-slate-500">Agent not found.</p>
+                    <button type="button" className="mt-2 text-sm text-indigo-600" onClick={close_agent}>Back</button>
+                </div>
+            );
+        }
+        return <Agent_settings_table id={row.id} name={row.name} on_back={close_agent} />;
     }
 
     return (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext, useParams, useSearchParams } from 'react-router';
-import { useOrgFetch } from '@/lib/org_context';
+import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import type { BreadcrumbItem } from '@/components/ui/breadcrumbs';
 import { TeamDetailView } from '@/components/team_detail_view';
@@ -20,6 +21,8 @@ export function Component() {
     const { scope = '_', name = '' } = useParams();
     const [search_params] = useSearchParams();
     const api_fetch = useOrgFetch();
+    const agents_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [data, set_data] = useState<TeamDetailData | null>(null);
     const [loading, set_loading] = useState(true);
     const [install_open, set_install_open] = useState(false);
@@ -61,9 +64,10 @@ export function Component() {
 
     /** Fetch org's registered agents once to power the "Unregistered" badge. */
     useEffect(() => {
-        api_fetch('/v1/agents/get_settings', {
+        if (!current_id) return;
+        agents_fetch('/v1/agents/get_settings', {
             method: 'POST',
-            body: JSON.stringify({}),
+            body: JSON.stringify({ org_id: current_id }),
         })
             .then((res) => res.json())
             .then((d) => {
@@ -74,7 +78,7 @@ export function Component() {
                 }
             })
             .catch(() => { /* best-effort */ });
-    }, [api_fetch]);
+    }, [agents_fetch, current_id]);
 
     const all_phases: WorkflowPhase[] = useMemo(() => {
         if (!data) return [];

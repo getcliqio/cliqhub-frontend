@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext, useSearchParams } from 'react-router';
 import { Globe, Map, RotateCcw, Search as SearchIcon } from 'lucide-react';
-import { useOrgFetch } from '@/lib/org_context';
+import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg } from '@/lib/org_context';
 import { AgentIcon } from '@/components/agent_icon';
 import { agent_display_name } from '@/lib/agent_display';
 import { ApiErrorBanner } from '@/components/ui/api_error';
@@ -46,6 +47,7 @@ interface Agent_registry_entry {
 }
 
 interface Agent_summary {
+    id: string;
     name: string;
     version: string | null;
     description: string | null;
@@ -57,6 +59,7 @@ interface Agent_summary {
 }
 
 interface Agent_detail extends Agent_registry_entry {
+    id: string;
     values: Record<string, string>;
     /** Wire: org | realm (SettingsData). UI maps org → inherited. */
     source: Record<string, 'realm' | 'org' | null>;
@@ -71,14 +74,15 @@ interface Setting_row {
 
 function Agent_settings_table({
     realm_id,
-    name,
+    id,
     on_back,
 }: {
     realm_id: string;
-    name: string;
+    id: string;
     on_back: () => void;
 }) {
-    const auth_fetch = useOrgFetch();
+    const auth_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [detail, set_detail] = useState<Agent_detail | null>(null);
     const [values, set_values] = useState<Record<string, string>>({});
     const [original, set_original] = useState<Record<string, string>>({});
@@ -90,11 +94,16 @@ function Agent_settings_table({
     const [flash, set_flash] = useState<string | null>(null);
 
     const load = useCallback(async () => {
+        if (!current_id) {
+            set_error('No active workspace');
+            set_loading(false);
+            return;
+        }
         set_loading(true);
         try {
             const res = await auth_fetch('/v1/agents/get_settings', {
                 method: 'POST',
-                body: JSON.stringify({ realm_id, name }),
+                body: JSON.stringify({ org_id: current_id, id, realm_id }),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -120,7 +129,7 @@ function Agent_settings_table({
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, realm_id, name]);
+    }, [auth_fetch, current_id, id, realm_id]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -140,7 +149,7 @@ function Agent_settings_table({
         .filter((k) => (values[k] ?? '') !== (original[k] ?? ''));
 
     async function save() {
-        if (!detail || dirty_keys.length === 0) return;
+        if (!detail || dirty_keys.length === 0 || !current_id) return;
         set_saving(true);
         set_flash(null);
         try {
@@ -158,7 +167,8 @@ function Agent_settings_table({
             const res = await auth_fetch('/v1/agents/update_settings', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name,
+                    org_id: current_id,
+                    id,
                     realm_id,
                     settings: {
                         ...(Object.keys(values_patch).length ? { values: values_patch } : {}),
@@ -179,13 +189,15 @@ function Agent_settings_table({
     }
 
     async function reset_key(key: string) {
+        if (!current_id) return;
         set_resetting_key(key);
         set_flash(null);
         try {
             const res = await auth_fetch('/v1/agents/update_settings', {
                 method: 'POST',
                 body: JSON.stringify({
-                    name,
+                    org_id: current_id,
+                    id,
                     realm_id,
                     settings: { reset_to_org: [key] },
                 }),
@@ -358,7 +370,8 @@ function Agent_settings_table({
 
 export function Component() {
     const { realm } = useOutletContext<Realm_outlet_context>();
-    const auth_fetch = useOrgFetch();
+    const auth_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [agents, set_agents] = useState<Agent_summary[]>([]);
     const [loading, set_loading] = useState(true);
     const [error, set_error] = useState<string | null>(null);
@@ -370,11 +383,16 @@ export function Component() {
     const [q_draft, set_q_draft] = useState(q_filter);
 
     const load = useCallback(async () => {
+        if (!current_id) {
+            set_error('No active workspace');
+            set_loading(false);
+            return;
+        }
         set_loading(true);
         try {
             const res = await auth_fetch('/v1/agents/get_settings', {
                 method: 'POST',
-                body: JSON.stringify({ realm_id: realm.id }),
+                body: JSON.stringify({ org_id: current_id, realm_id: realm.id }),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -388,7 +406,7 @@ export function Component() {
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, realm.id]);
+    }, [auth_fetch, current_id, realm.id]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -442,10 +460,22 @@ export function Component() {
     );
 
     if (selected_agent) {
+        const row = agents.find((a) => a.name === selected_agent);
+        if (!row?.id) {
+            if (loading) {
+                return <p className="text-sm text-slate-400">Loading agent…</p>;
+            }
+            return (
+                <div>
+                    <p className="text-sm text-slate-500">Agent not found.</p>
+                    <button type="button" className="mt-2 text-sm text-indigo-600" onClick={close_agent}>Back</button>
+                </div>
+            );
+        }
         return (
             <Agent_settings_table
                 realm_id={realm.id}
-                name={selected_agent}
+                id={row.id}
                 on_back={close_agent}
             />
         );

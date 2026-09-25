@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Plus } from 'lucide-react';
 import yaml from 'js-yaml';
+import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg } from '@/lib/org_context';
 import { setting_applies } from '@/lib/setting_when';
 import { hub_list, hub_payload } from '@/lib/hub_envelope';
 
@@ -18,6 +20,8 @@ interface Setting_req {
 }
 
 interface Agent_req {
+    /** Catalog UUID — used for get_settings / update_settings. */
+    id: string;
     name: string;
     required: Setting_req[];
     optional: Setting_req[];
@@ -58,6 +62,8 @@ export function Install_team_wizard({
     on_back,
     header_title = 'Install team to realm',
 }: Install_team_wizard_props) {
+    const agents_fetch = useAuthFetch();
+    const { current_id } = useOrg();
     const [agents, set_agents] = useState<Agent_req[]>([]);
     const [values, set_values] = useState<Record<string, Record<string, string>>>({});
     const [loading_agents, set_loading_agents] = useState(true);
@@ -73,6 +79,12 @@ export function Install_team_wizard({
     const check_agents = useCallback(async () => {
         set_loading_agents(true);
         set_error(null);
+
+        if (!current_id) {
+            set_error('No active workspace');
+            set_loading_agents(false);
+            return;
+        }
 
         try {
             /** Check if this team is already installed in the realm. */
@@ -135,9 +147,10 @@ export function Install_team_wizard({
             }
 
             const names = [...agents_needed];
-            const catalog_res = await auth_fetch('/v1/agents/get', {
+            const catalog_res = await agents_fetch('/v1/agents/get', {
                 method: 'POST',
                 body: JSON.stringify({
+                    org_id: current_id,
                     names,
                     include_manifest: true,
                 }),
@@ -145,6 +158,7 @@ export function Install_team_wizard({
             const catalog_data = await catalog_res.json() as {
                 ok?: boolean;
                 data?: Array<{
+                    id: string;
                     name: string;
                     manifest?: {
                         settings?: {
@@ -160,6 +174,7 @@ export function Install_team_wizard({
                 return;
             }
             const catalog_agents = hub_list<{
+                id: string;
                 name: string;
                 manifest?: {
                     settings?: {
@@ -172,6 +187,7 @@ export function Install_team_wizard({
                 catalog_agents.map((a) => [
                     a.name,
                     {
+                        id: a.id,
                         name: a.name,
                         settings: a.manifest?.settings,
                     },
@@ -182,7 +198,7 @@ export function Install_team_wizard({
             const missing_agents: string[] = [];
             for (const agent_name of agents_needed) {
                 const catalog_entry = catalog_map.get(agent_name);
-                if (!catalog_entry) {
+                if (!catalog_entry?.id) {
                     missing_agents.push(agent_name);
                     continue;
                 }
@@ -190,9 +206,13 @@ export function Install_team_wizard({
                 // Fetch effective values (realm override > org-level fallback)
                 let configured: Record<string, string> = {};
                 try {
-                    const detail_res = await auth_fetch('/v1/agents/get_settings', {
+                    const detail_res = await agents_fetch('/v1/agents/get_settings', {
                         method: 'POST',
-                        body: JSON.stringify({ realm_id, name: agent_name }),
+                        body: JSON.stringify({
+                            org_id: current_id,
+                            id: catalog_entry.id,
+                            realm_id,
+                        }),
                     });
                     const detail_data = await detail_res.json();
                     configured = hub_payload<{ values?: Record<string, string> }>(detail_data)?.values
@@ -205,7 +225,13 @@ export function Install_team_wizard({
                 );
                 const required = (catalog_entry.settings?.required ?? []).map(to_entry);
                 const optional = (catalog_entry.settings?.optional ?? []).map(to_entry);
-                agent_reqs.push({ name: agent_name, required, optional, configured });
+                agent_reqs.push({
+                    id: catalog_entry.id,
+                    name: agent_name,
+                    required,
+                    optional,
+                    configured,
+                });
             }
 
             if (missing_agents.length > 0) {
@@ -231,7 +257,7 @@ export function Install_team_wizard({
         } finally {
             set_loading_agents(false);
         }
-    }, [auth_fetch, scope, slug, realm_id]);
+    }, [auth_fetch, agents_fetch, current_id, scope, slug, realm_id]);
 
     useEffect(() => { void check_agents(); }, [check_agents]);
 
@@ -242,19 +268,25 @@ export function Install_team_wizard({
 
         try {
             if (save_to_realm) {
+                if (!current_id) {
+                    set_error('No active workspace');
+                    return;
+                }
                 for (const [agent_name, keys] of Object.entries(values)) {
                     const values_patch: Record<string, string> = {};
+                    const existing = agents.find((a) => a.name === agent_name);
                     for (const [key, value] of Object.entries(keys)) {
                         if (!value.trim()) continue;
-                        const existing = agents.find((a) => a.name === agent_name);
                         if (existing?.configured[key] === value) continue;
                         values_patch[key] = value.trim();
                     }
                     if (Object.keys(values_patch).length === 0) continue;
-                    await auth_fetch('/v1/agents/update_settings', {
+                    if (!existing?.id) continue;
+                    await agents_fetch('/v1/agents/update_settings', {
                         method: 'POST',
                         body: JSON.stringify({
-                            name: agent_name,
+                            org_id: current_id,
+                            id: existing.id,
                             realm_id,
                             settings: { values: values_patch },
                         }),
