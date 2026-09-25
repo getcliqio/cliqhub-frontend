@@ -1309,16 +1309,22 @@ function Dashboard_view() {
     const { user } = useAuth();
     const { default_realm_slug, default_org_slug } = useHubActivity();
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [data, set_data] = useState<DashboardData | null>(null);
     const [loading, set_loading] = useState(true);
     const [help_open, set_help_open] = useState(false);
 
     const load = useCallback(async (opts?: { silent?: boolean }) => {
+        // Body org_id is invent SoT — skip until org context is ready.
+        if (!current_id) {
+            if (!opts?.silent) set_loading(false);
+            return;
+        }
         if (!opts?.silent) set_loading(true);
         try {
             const res = await auth_fetch('/v1/dashboard/realms', {
                 method: 'POST',
-                body: JSON.stringify({}),
+                body: JSON.stringify({ org_id: current_id }),
             });
             const json = await res.json();
             if (json.ok) {
@@ -1329,7 +1335,7 @@ function Dashboard_view() {
         } finally {
             if (!opts?.silent) set_loading(false);
         }
-    }, [auth_fetch]);
+    }, [auth_fetch, current_id]);
 
     useEffect(() => {
         void load();
