@@ -302,6 +302,7 @@ export function Component() {
     const tab = resolve_tab(params.get('tab'));
 
     const org_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const prefs = user?.preferences ?? {};
     const alerts = get_event_alerts(prefs);
 
@@ -310,10 +311,12 @@ export function Component() {
     useEffect(() => {
         let cancelled = false;
         async function poll() {
+            // Body org_id is invent SoT — skip until org context is ready.
+            if (!current_id) return;
             try {
                 const res = await org_fetch('/v1/reviews/get', {
                     method: 'POST',
-                    body: JSON.stringify({ limit: 1, offset: 0 }),
+                    body: JSON.stringify({ org_id: current_id, limit: 1, offset: 0 }),
                 });
                 const data = await res.json();
                 if (!cancelled && data.ok) set_hug_count(Number(data.total ?? 0));
@@ -322,7 +325,7 @@ export function Component() {
         void poll();
         const id = window.setInterval(poll, 15_000);
         return () => { cancelled = true; window.clearInterval(id); };
-    }, [org_fetch]);
+    }, [org_fetch, current_id]);
 
     /** Switch tabs via URL. */
     function set_tab(next: EventTab) {

@@ -13,7 +13,15 @@ const auth_fetch = vi.fn();
 
 vi.mock('@/lib/org_context', () => ({
     useOrgFetch: () => auth_fetch,
-    useOrg: () => ({ current_org: { id: 1, slug: 'acme' }, orgs: [], is_multi_org: false, is_personal: false, loading: false, switch_org: () => {} }),
+    useOrg: () => ({
+        current_id: '00000000-0000-4000-8000-00000000000a',
+        current_org: { id: '00000000-0000-4000-8000-00000000000a', slug: 'acme' },
+        orgs: [],
+        is_multi_org: false,
+        is_personal: false,
+        loading: false,
+        switch_org: () => {},
+    }),
 }));
 
 vi.mock('@/lib/auth_context', () => ({

@@ -82,7 +82,7 @@ export function use_sidebar_badges(): Sidebar_badge_counts {
 				}),
 				auth_fetch('/v1/reviews/get', {
 					method: 'POST',
-					body: JSON.stringify({ limit: 1, offset: 0 }),
+					body: JSON.stringify({ org_id: current_id, limit: 1, offset: 0 }),
 				}),
 			]);
 			const notif_data = await notif_res.json().catch(() => ({}));

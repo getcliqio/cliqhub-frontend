@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/ui/page_header';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { PAGE_HELP } from '@/lib/page_help';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 import { Pagination, PAGE_LIMIT } from '@/components/pagination';
 import { use_poll } from '@/lib/use_poll';
 import { realm_qualified_label } from '@/lib/realm_url';
@@ -91,6 +91,7 @@ function review_slug(id: string): string {
 /** HUG reviews — single table with status filter. */
 export function ReviewsPanel({ embedded = false }: { embedded?: boolean }) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const navigate = useNavigate();
 
     const [error, set_error] = useState<string | null>(null);
@@ -103,11 +104,17 @@ export function ReviewsPanel({ embedded = false }: { embedded?: boolean }) {
     const preset = STATUS_PRESETS[active_preset] ?? STATUS_PRESETS.pending;
 
     const load = useCallback(async (opts?: { silent?: boolean }) => {
+        // Body org_id is invent SoT — skip until org context is ready.
+        if (!current_id) {
+            if (!opts?.silent) set_loading(false);
+            return;
+        }
         if (!opts?.silent) set_loading(true);
         try {
             const res = await auth_fetch('/v1/reviews/get', {
                 method: 'POST',
                 body: JSON.stringify({
+                    org_id: current_id,
                     statuses: preset.statuses,
                     limit: PAGE_LIMIT,
                     offset,
@@ -120,7 +127,7 @@ export function ReviewsPanel({ embedded = false }: { embedded?: boolean }) {
             set_error(null);
         } catch { if (!opts?.silent) set_error('Failed to load reviews'); }
         finally { if (!opts?.silent) set_loading(false); }
-    }, [auth_fetch, offset, preset.statuses]);
+    }, [auth_fetch, current_id, offset, preset.statuses]);
 
     useEffect(() => { void load(); }, [load]);
 

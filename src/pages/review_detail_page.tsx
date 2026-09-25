@@ -2,7 +2,7 @@ import { Link, useNavigate, useParams } from 'react-router';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 import { useAuth } from '@/lib/auth_context';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
 import { realm_qualified_label } from '@/lib/realm_url';
@@ -660,6 +660,7 @@ export function Component() {
 	const { review_id = '' } = useParams();
 	const navigate = useNavigate();
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const { user: auth_user } = useAuth();
 
 	const [review, set_review] = useState<ReviewData | null>(null);
@@ -683,7 +684,10 @@ export function Component() {
 		try {
 			const res = await auth_fetch('/v1/reviews/get_by_id', {
 				method: 'POST',
-				body: JSON.stringify({ review_id }),
+				body: JSON.stringify({
+					review_id,
+					...(current_id ? { org_id: current_id } : {}),
+				}),
 			});
 			const data = await res.json();
 			if (!data.ok) {
@@ -723,7 +727,7 @@ export function Component() {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, review_id]);
+	}, [auth_fetch, current_id, review_id]);
 
 	useEffect(() => {
 		void load();
