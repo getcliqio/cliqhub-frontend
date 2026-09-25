@@ -906,15 +906,21 @@ function Telemetry_block({
     default_org_slug: string | null;
 }) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [data, set_data] = useState<Telemetry_summary | null>(null);
     const [loading, set_loading] = useState(true);
     const [window_days, set_window_days] = useState<number>(7);
 
     const load = useCallback(async () => {
+        // Body org_id is invent SoT — skip until org context is ready.
+        if (!current_id) {
+            set_loading(false);
+            return;
+        }
         try {
             const res = await auth_fetch('/v1/runs/get_telemetry', {
                 method: 'POST',
-                body: JSON.stringify({ kind: 'summary', window_days }),
+                body: JSON.stringify({ kind: 'summary', org_id: current_id, window_days }),
             });
             const json = await res.json();
             if (json.ok) set_data(json as Telemetry_summary);
@@ -923,7 +929,7 @@ function Telemetry_block({
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, window_days]);
+    }, [auth_fetch, current_id, window_days]);
 
     useEffect(() => { void load(); }, [load]);
     // Slow poll — telemetry aggregates don't move minute-to-minute.
