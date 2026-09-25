@@ -13,7 +13,7 @@ import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { PAGE_HELP } from '@/lib/page_help';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { mark_notifications_seen } from '@/lib/use_sidebar_badges';
 import { Pagination, PAGE_LIMIT } from '@/components/pagination';
 import { ReviewsPanel } from '@/pages/reviews_page';
@@ -95,6 +95,7 @@ function Event_table({
     initiated_by_me?: boolean;
 }) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [error, set_error] = useState<string | null>(null);
     const [loading, set_loading] = useState(true);
     const [rows, set_rows] = useState<NotificationRow[]>([]);
@@ -110,9 +111,16 @@ function Event_table({
 
 
     const load = useCallback(async () => {
+        // Inbox requires body org_id (NTF-ORG).
+        if (!current_id) {
+            set_loading(false);
+            set_error('No active workspace');
+            return;
+        }
         set_loading(true);
         try {
             const body: Record<string, unknown> = {
+                org_id: current_id,
                 limit: PAGE_LIMIT,
                 offset,
             };
@@ -141,7 +149,7 @@ function Event_table({
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, offset, q, initiated_by_me, filter_event, filter_severity, filter_team]);
+    }, [auth_fetch, current_id, offset, q, initiated_by_me, filter_event, filter_severity, filter_team]);
 
     useEffect(() => { void load(); }, [load]);
 

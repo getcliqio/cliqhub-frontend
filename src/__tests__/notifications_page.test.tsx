@@ -32,6 +32,10 @@ describe('NotificationsPage', () => {
 				expect.objectContaining({ method: 'POST' }),
 			);
 		});
+		const call = auth_fetch.mock.calls.find((c) => c[0] === '/v1/notifications/get');
+		expect(call).toBeTruthy();
+		const body = JSON.parse(String((call![1] as { body?: string }).body ?? '{}'));
+		expect(body.org_id).toBe('org-acme');
 		expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'HUG Reviews' })).toBeNull();
 	});

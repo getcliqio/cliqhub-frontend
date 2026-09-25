@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link } from 'react-router';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { hub_list, hub_payload } from '@/lib/hub_envelope';
 import {
@@ -265,6 +265,7 @@ interface CustomEventRow {
 
 export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slug?: string } = {}) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
 
     const [error, set_error] = useState<string | null>(null);
     const [loading, set_loading] = useState(true);
@@ -281,18 +282,28 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
     const load = useCallback(async () => {
         set_loading(true);
         try {
+            // Account paths require body org_id (NTF-ORG); realm paths use realm_id only.
+            if (!realm_id && !current_id) {
+                set_error('No active workspace');
+                set_loading(false);
+                return;
+            }
             const rules_path = realm_id
                 ? '/v1/realms/get_notification_rules'
                 : '/v1/orgs/get_notification_rules';
             const fetches: Promise<Response>[] = [
                 auth_fetch('/v1/notification_channels/get', {
                     method: 'POST',
-                    body: JSON.stringify(realm_id ? { realm_id } : { account: true }),
+                    body: JSON.stringify(
+                        realm_id
+                            ? { realm_id }
+                            : { account: true, org_id: current_id },
+                    ),
                 }),
                 auth_fetch(rules_path, {
                     method: 'POST',
                     body: JSON.stringify({
-                        ...(realm_id ? { realm_id } : {}),
+                        ...(realm_id ? { realm_id } : { org_id: current_id }),
                         ...(team_slug ? { team_slug } : {}),
                     }),
                 }),
@@ -330,7 +341,7 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, realm_id, team_slug]);
+    }, [auth_fetch, realm_id, team_slug, current_id]);
 
     useEffect(() => { void load(); }, [load]);
 
@@ -386,6 +397,10 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
         set_saving(true);
         set_error(null);
         try {
+            if (!realm_id && !current_id) {
+                set_error('No active workspace');
+                return;
+            }
             const rules_set_path = realm_id
                 ? '/v1/realms/set_notification_rule'
                 : '/v1/orgs/set_notification_rule';
@@ -394,7 +409,7 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
                 body: JSON.stringify({
                     event,
                     channel_id,
-                    ...(realm_id ? { realm_id } : {}),
+                    ...(realm_id ? { realm_id } : { org_id: current_id }),
                     ...(team_slug ? { team_slug } : {}),
                 }),
             });
@@ -778,6 +793,7 @@ function Channel_add_dropdown({
 
 export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
 
     const [error, set_error] = useState<string | null>(null);
     const [loading, set_loading] = useState(true);
@@ -794,9 +810,19 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
     const load = useCallback(async () => {
         set_loading(true);
         try {
+            // Account list requires body org_id (NTF-ORG); realm list uses realm_id only.
+            if (!realm_id && !current_id) {
+                set_error('No active workspace');
+                set_loading(false);
+                return;
+            }
             const res = await auth_fetch('/v1/notification_channels/get', {
                 method: 'POST',
-                body: JSON.stringify(realm_id ? { realm_id } : { account: true }),
+                body: JSON.stringify(
+                    realm_id
+                        ? { realm_id }
+                        : { account: true, org_id: current_id },
+                ),
             });
             const data = await res.json();
             if (!data.ok) {
@@ -810,7 +836,7 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
         } finally {
             set_loading(false);
         }
-    }, [auth_fetch, realm_id]);
+    }, [auth_fetch, realm_id, current_id]);
 
     useEffect(() => {
         void load();
@@ -835,12 +861,17 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
         set_create_busy(true);
         set_error(null);
         try {
+            // Account create requires body org_id — never invent from X-Org-Id alone.
+            if (!realm_id && !current_id) {
+                set_error('No active workspace');
+                return;
+            }
             const res = await auth_fetch('/v1/notification_channels/create', {
                 method: 'POST',
                 body: JSON.stringify({
                     name,
                     destinations: [create_dest],
-                    ...(realm_id ? { realm_id } : {}),
+                    ...(realm_id ? { realm_id } : { org_id: current_id }),
                 }),
             });
             const data = await res.json();

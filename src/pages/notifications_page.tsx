@@ -134,9 +134,16 @@ export function Component() {
 
 	const load = useCallback(async () => {
 		if (tab !== 'inbox') return;
+		// Inbox requires body org_id (NTF-ORG) — fail closed until org hydrates.
+		if (!current_id) {
+			set_loading(false);
+			set_error('No active workspace');
+			return;
+		}
 		set_loading(true);
 		try {
 			const body: Record<string, unknown> = {
+				org_id: current_id,
 				limit: EXPLORER_PAGE_LIMIT,
 				offset: explorer.offset,
 			};
@@ -172,7 +179,7 @@ export function Component() {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, tab, explorer.q, explorer.offset, explorer.since_ms, explorer.facets, selected_realm_ids]);
+	}, [auth_fetch, tab, explorer.q, explorer.offset, explorer.since_ms, explorer.facets, selected_realm_ids, current_id]);
 
 	useEffect(() => {
 		void load();

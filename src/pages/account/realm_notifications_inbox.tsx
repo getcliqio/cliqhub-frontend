@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router';
 import { ApiErrorBanner } from '@/components/ui/api_error';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { mark_notifications_seen } from '@/lib/use_sidebar_badges';
 import { Pagination } from '@/components/pagination';
 import { Explorer_shell } from '@/components/explorer/explorer_shell';
@@ -58,6 +58,7 @@ function count_by(rows: NotificationRow[], key: keyof NotificationRow): Map<stri
 export function Component() {
 	const { realm, base_path } = useOutletContext<Realm_outlet_context>();
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const explorer = use_explorer_params(FACET_KEYS);
 
 	const [query_draft, set_query_draft] = useState(explorer.q);
@@ -75,9 +76,16 @@ export function Component() {
 	}, [explorer.q]);
 
 	const load = useCallback(async () => {
+		// Inbox requires body org_id (NTF-ORG).
+		if (!current_id) {
+			set_loading(false);
+			set_error('No active workspace');
+			return;
+		}
 		set_loading(true);
 		try {
 			const body: Record<string, unknown> = {
+				org_id: current_id,
 				limit: EXPLORER_PAGE_LIMIT,
 				offset: explorer.offset,
 				realm_id: realm.id,
@@ -113,7 +121,7 @@ export function Component() {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, realm.id, explorer.q, explorer.offset, explorer.since_ms, explorer.facets]);
+	}, [auth_fetch, realm.id, explorer.q, explorer.offset, explorer.since_ms, explorer.facets, current_id]);
 
 	useEffect(() => {
 		void load();

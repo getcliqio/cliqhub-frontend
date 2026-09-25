@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from './auth_context';
-import { useOrgFetch } from './org_context';
+import { useOrgFetch, useOrg } from './org_context';
 import { hub_payload } from './hub_envelope';
 
 /**
@@ -63,6 +63,7 @@ export function format_badge(count: number): string {
 export function use_sidebar_badges(): Sidebar_badge_counts {
 	const { user } = useAuth();
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const [counts, set_counts] = useState<Sidebar_badge_counts>({
 		unread_notifications: 0,
 		pending_reviews: 0,
@@ -70,12 +71,14 @@ export function use_sidebar_badges(): Sidebar_badge_counts {
 
 	const refresh = useCallback(async () => {
 		if (!user) return;
+		// Inbox requires body org_id — skip badge poll until org hydrates.
+		if (!current_id) return;
 		try {
 			const last_seen = read_last_seen();
 			const [notif_res, reviews_res] = await Promise.all([
 				auth_fetch('/v1/notifications/get', {
 					method: 'POST',
-					body: JSON.stringify({ limit: UNREAD_SCAN_LIMIT, offset: 0 }),
+					body: JSON.stringify({ org_id: current_id, limit: UNREAD_SCAN_LIMIT, offset: 0 }),
 				}),
 				auth_fetch('/v1/reviews/get', {
 					method: 'POST',
@@ -109,7 +112,7 @@ export function use_sidebar_badges(): Sidebar_badge_counts {
 		} catch {
 			/* Keep previous counts — a badge is a hint, not a hard requirement. */
 		}
-	}, [auth_fetch, user]);
+	}, [auth_fetch, user, current_id]);
 
 	useEffect(() => {
 		if (!user) return;
