@@ -32,6 +32,7 @@ async function list_has_rows(
 	const res = await auth_fetch(path, { method: 'POST', body: JSON.stringify(body) });
 	const data = await res.json();
 	if (!data.ok && data.ok !== undefined) return false;
+	if (Array.isArray(data.data) && data.data.length > 0) return true;
 	for (const key of keys) {
 		const value = data[key] ?? data.data?.[key];
 		if (typeof value === 'number' && value > 0) return true;
@@ -73,7 +74,7 @@ export function HubActivityProvider({ children }: { children: ReactNode }) {
 				? list_has_rows(auth_fetch, '/v1/daemons/get', { org_id: current_id, limit: 1 }, ['daemons', 'total'])
 				: Promise.resolve(false);
 			const runs_probe = current_id
-				? list_has_rows(auth_fetch, '/v1/runs/get', { org_id: current_id, limit: 1 }, ['runs', 'total'])
+				? list_has_rows(auth_fetch, '/v1/runs/get', { org_id: current_id, limit: 1 }, ['items', 'total'])
 				: Promise.resolve(false);
 			const [has_daemons, has_runs, session_res] = await Promise.all([
 				daemons_probe,

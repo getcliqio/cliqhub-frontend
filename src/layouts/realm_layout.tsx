@@ -6,6 +6,7 @@ import { ApiErrorBanner } from '@/components/ui/api_error';
 import { Breadcrumbs, type BreadcrumbItem } from '@/components/ui/breadcrumbs';
 import { REALM_PRIMARY_NAV } from '@/lib/realm_primary_nav';
 import { realm_qualified_label } from '@/lib/realm_url';
+import { hub_payload } from '@/lib/hub_envelope';
 
 const SECTION_LABELS: Record<string, string> = {
 	runs: 'Runs',
@@ -170,10 +171,13 @@ export function RealmLayout() {
                 const d_data = await d_res.json();
                 const r_data = await r_res.json();
                 const daemons = (d_data.daemons ?? []) as Array<{ status: string }>;
+                const runs_page = hub_payload<{ items?: unknown[]; total?: number }>(r_data);
+                const active_runs = runs_page?.total
+                    ?? (Array.isArray(r_data.data) ? r_data.data.length : (runs_page?.items?.length ?? 0));
                 set_pulse({
                     online: daemons.filter((d) => d.status === 'online').length,
                     total_daemons: daemons.length,
-                    active_runs: Number(r_data.total ?? 0),
+                    active_runs: Number(active_runs),
                 });
             } catch {
                 /* pulse is optional — don't block on errors */

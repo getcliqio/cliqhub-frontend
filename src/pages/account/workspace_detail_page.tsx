@@ -9,6 +9,7 @@ import { use_busy } from '@/lib/use_busy';
 import { use_poll } from '@/lib/use_poll';
 import { FolderOpen } from 'lucide-react';
 import type { Realm_outlet_context } from '@/layouts/realm_layout';
+import { hub_payload } from '@/lib/hub_envelope';
 
 interface WorkspaceInfo {
     id: string;
@@ -109,8 +110,12 @@ export function Component() {
 
             const runs_data = await runs_res.json();
             if (runs_data.ok) {
-                set_runs(runs_data.runs ?? []);
-                set_runs_total(Number(runs_data.total ?? (runs_data.runs ?? []).length));
+                const page = hub_payload<{ items?: RunRow[]; total?: number }>(runs_data);
+                const list = Array.isArray(runs_data.data)
+                    ? (runs_data.data as RunRow[])
+                    : (page?.items ?? []);
+                set_runs(list);
+                set_runs_total(Number(page?.total ?? list.length));
             }
 
             set_error(null);
@@ -151,7 +156,8 @@ export function Component() {
                     set_error(api_err(data, 'Run failed'));
                     return;
                 }
-                const run_id = typeof data.run_id === 'string' ? data.run_id : null;
+                const enqueue_payload = hub_payload<{ run_id?: string }>(data);
+                const run_id = typeof enqueue_payload?.run_id === 'string' ? enqueue_payload.run_id : null;
                 set_notice(run_id
                     ? `Run dispatched (${run_id.slice(0, 8)}…). Watch notifications for progress.`
                     : 'Run dispatched. Watch notifications for progress.');

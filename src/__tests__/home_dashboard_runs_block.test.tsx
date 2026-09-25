@@ -171,7 +171,7 @@ beforeEach(() => {
             }));
         }
         if (url.includes('/v1/runs/get')) {
-            return new Response(JSON.stringify({ ok: true, runs: RUNS, total: RUNS.length }));
+            return new Response(JSON.stringify({ ok: true, data: { items: RUNS, total: RUNS.length } }));
         }
         if (url.includes('/v1/hub-activity')) {
             return new Response(JSON.stringify({ ok: true }));
@@ -357,13 +357,15 @@ describe('HomeDashboard Telemetry band', () => {
             if (url.includes('/v1/runs/get')) {
                 return new Response(JSON.stringify({
                     ok: true,
-                    runs: [{
-                        ...RUNS[0],
-                        run_id: 'ok-only',
-                        run_name: 'ok-only',
-                        state: 'completed',
-                    }],
-                    total: 1,
+                    data: {
+                        items: [{
+                            ...RUNS[0],
+                            run_id: 'ok-only',
+                            run_name: 'ok-only',
+                            state: 'completed',
+                        }],
+                        total: 1,
+                    },
                 }));
             }
             if (url.includes('/v1/hub-activity')) return new Response(JSON.stringify({ ok: true }));

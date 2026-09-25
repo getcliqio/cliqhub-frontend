@@ -12,6 +12,7 @@ import {
 	useEffect,
 	useState,
 } from '@/pages/admin/admin_list_helpers';
+import { hub_payload } from '@/lib/hub_envelope';
 
 interface RunRow {
 	run_id: string;
@@ -57,8 +58,10 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			set_rows(data.runs ?? []);
-			set_total(Number(data.total ?? (data.runs ?? []).length));
+			const page = hub_payload<{ items?: RunRow[]; total?: number }>(data);
+			const list = Array.isArray(data.data) ? (data.data as RunRow[]) : (page?.items ?? []);
+			set_rows(list);
+			set_total(Number(page?.total ?? list.length));
 			set_error(null);
 		} catch {
 			set_error('Failed to load runs');

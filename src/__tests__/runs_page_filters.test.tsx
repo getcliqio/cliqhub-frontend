@@ -44,8 +44,9 @@ beforeEach(() => {
 		if (url.includes('/v1/runs/get')) {
 			return new Response(JSON.stringify({
 				ok: true,
-				total: 2,
-				runs: [
+				data: {
+					total: 2,
+					items: [
 					{
 						run_id: 'run_aaaaaaaaaaaa',
 						run_name: 'Claim CLM-1042',
@@ -64,6 +65,7 @@ beforeEach(() => {
 						started_at: Date.now(),
 					},
 				],
+				},
 			}));
 		}
 		return new Response(JSON.stringify({ ok: false }), { status: 404 });

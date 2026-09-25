@@ -76,7 +76,7 @@ function build_fetch(overrides: {
             return {
                 json: async () => ({
                     ok: true,
-                    run: {
+                    data: {
                         run_id: RUN_ID,
                         run_name: 'dag-fixture',
                         state: overrides.state ?? 'running',
@@ -88,10 +88,10 @@ function build_fetch(overrides: {
             };
         }
         if (url.includes('/v1/runs/get_status')) {
-            return { json: async () => ({ ok: true, phases }) };
+            return { json: async () => ({ ok: true, data: phases }) };
         }
         if (url.includes('/v1/runs/get')) {
-            return { json: async () => ({ ok: true, runs: [], total: 0 }) };
+            return { json: async () => ({ ok: true, data: { items: [], total: 0 } }) };
         }
         return { json: async () => ({ ok: true }) };
     };

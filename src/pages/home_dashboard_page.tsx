@@ -12,6 +12,7 @@ import { GettingStartedPanel } from '@/components/getting_started_panel';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { use_poll } from '@/lib/use_poll';
 import { realm_qualified_label } from '@/lib/realm_url';
+import { hub_payload } from '@/lib/hub_envelope';
 
 const GS_DISMISSED_KEY = 'cliqhub:getting-started-dismissed';
 
@@ -1269,7 +1270,13 @@ function Bands({
                 }),
             });
             const data = await res.json();
-            if (data.ok) set_runs((data.runs ?? []) as Recent_run[]);
+            if (data.ok) {
+                const page = hub_payload<{ items?: Recent_run[] }>(data);
+                const list = Array.isArray(data.data)
+                    ? (data.data as Recent_run[])
+                    : (page?.items ?? []);
+                set_runs(list);
+            }
         } catch {
             /* keep stale */
         } finally {

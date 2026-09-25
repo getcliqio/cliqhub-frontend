@@ -75,13 +75,13 @@ function build_fetch(overrides: Fixture_overrides = {}) {
     ];
     return async (url: string, init?: RequestInit) => {
         if (url.includes('/v1/runs/resume')) {
-            return { json: async () => overrides.resume_response ?? { ok: true, resumed: true, from_phase: JSON.parse(init?.body as string).from_phase } };
+            return { json: async () => overrides.resume_response ?? { ok: true, data: { resumed: true, from_phase: JSON.parse(init?.body as string).from_phase } } };
         }
         if (url.includes('/v1/runs/get_by_id')) {
             return {
                 json: async () => ({
                     ok: true,
-                    run: {
+                    data: {
                         run_id: RUN_ID,
                         run_name: 'fixture-run',
                         state: overrides.state ?? 'failed',
@@ -93,10 +93,10 @@ function build_fetch(overrides: Fixture_overrides = {}) {
             };
         }
         if (url.includes('/v1/runs/get_status')) {
-            return { json: async () => ({ ok: true, phases }) };
+            return { json: async () => ({ ok: true, data: phases }) };
         }
         if (url.includes('/v1/runs/get')) {
-            return { json: async () => ({ ok: true, runs: [], total: 0 }) };
+            return { json: async () => ({ ok: true, data: { items: [], total: 0 } }) };
         }
         return { json: async () => ({ ok: true }) };
     };

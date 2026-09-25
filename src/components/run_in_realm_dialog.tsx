@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { parse_run_inputs_text } from '@/lib/realm_teams_coverage';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
+import { hub_payload } from '@/lib/hub_envelope';
 
 interface Realm_option {
 	id: string;
@@ -329,13 +330,12 @@ export function Run_in_realm_dialog({
 			const data = await res.json() as {
 				ok?: boolean;
 				error?: string | { message?: string };
-				item?: { status?: string; error?: string | null; run_id?: string | null };
 			};
 			if (!data.ok) {
 				set_error(api_error_message(data));
 				return;
 			}
-			const item = data.item;
+			const item = hub_payload<{ item?: { status?: string; error?: string | null; run_id?: string | null } }>(data)?.item;
 			if (item?.status === 'failed') {
 				set_error(item.error?.trim() || 'Run failed to start on any daemon');
 				return;

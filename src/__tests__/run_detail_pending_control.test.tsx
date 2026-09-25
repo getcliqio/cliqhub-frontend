@@ -84,13 +84,13 @@ function _fetch_with_pending(
         // re-fetches get_by_id which the test controls per case.
         if (url.includes('/v1/runs/force_terminate')) {
             void init;
-            return { json: async () => ({ ok: true, force_terminated: true, run_id: RUN_ID }) };
+            return { json: async () => ({ ok: true, data: { force_terminated: true, run_id: RUN_ID } }) };
         }
         if (url.includes('/v1/runs/get_by_id')) {
             return {
                 json: async () => ({
                     ok: true,
-                    run: {
+                    data: {
                         run_id: RUN_ID,
                         run_name: 'ok-recent',
                         state: overrides.state ?? 'running',
@@ -103,10 +103,10 @@ function _fetch_with_pending(
             };
         }
         if (url.includes('/v1/runs/get_status')) {
-            return { json: async () => ({ ok: true, phases: [] }) };
+            return { json: async () => ({ ok: true, data: [] }) };
         }
         if (url.includes('/v1/runs/get')) {
-            return { json: async () => ({ ok: true, runs: [], total: 0 }) };
+            return { json: async () => ({ ok: true, data: { items: [], total: 0 } }) };
         }
         return { json: async () => ({ ok: true }) };
     };

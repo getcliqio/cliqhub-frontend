@@ -71,13 +71,16 @@ describe('Realm_team_overview', () => {
 			if (url.includes('/v1/runs/get')) {
 				return json_response({
 					ok: true,
-					runs: [{
-						run_id: 'run-1',
-						run_name: 'smoke',
-						state: 'completed',
-						team_label: '@cliq/hello-world',
-						started_at: Date.now() - 7200_000,
-					}],
+					data: {
+						items: [{
+							run_id: 'run-1',
+							run_name: 'smoke',
+							state: 'completed',
+							team_label: '@cliq/hello-world',
+							started_at: Date.now() - 7200_000,
+						}],
+						total: 1,
+					},
 				});
 			}
 			return json_response({ ok: true });

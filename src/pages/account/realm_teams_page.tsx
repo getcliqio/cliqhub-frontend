@@ -16,6 +16,7 @@ import {
     type Realm_team_coverage,
 } from '@/lib/realm_teams_coverage';
 import { Install_team_wizard } from '@/components/install_team_wizard';
+import { hub_payload } from '@/lib/hub_envelope';
 
 type Sort_col = 'team' | 'coverage';
 type Sort_dir = 'asc' | 'desc';
@@ -880,7 +881,6 @@ export function Component() {
             const data = await res.json() as {
                 ok?: boolean;
                 error?: string | { message?: string; code?: string };
-                item?: { status?: string; error?: string | null; run_id?: string | null };
             };
             if (!data.ok) {
                 set_schedule_ok(false);
@@ -888,7 +888,7 @@ export function Component() {
                 return;
             }
 
-            const item = data.item;
+            const item = hub_payload<{ item?: { status?: string; error?: string | null; run_id?: string | null } }>(data)?.item;
             if (item?.status === 'failed') {
                 set_schedule_ok(false);
                 set_schedule_toast(item.error?.trim() || 'Run failed to start on any daemon');

@@ -51,8 +51,7 @@ beforeEach(() => {
 			return new Response(JSON.stringify({
 				ok: true,
 				daemons: [{ id: 'd1' }],
-				runs: [{ run_id: 'r1' }],
-				total: 1,
+				data: { items: [{ run_id: 'r1' }], total: 1 },
 			}));
 		}
 		if (url.includes('/v1/orgs/get')) {

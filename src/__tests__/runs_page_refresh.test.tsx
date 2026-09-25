@@ -58,17 +58,19 @@ beforeEach(() => {
             runs_get_calls += 1;
             return new Response(JSON.stringify({
                 ok: true,
-                total: 1,
-                runs: [
-                    {
-                        run_id: 'run_aaaaaaaaaaaa',
-                        run_name: 'Claim CLM-1042',
-                        state: 'running',
-                        team_label: '@acme/claims-intake',
-                        daemon_id: 'd1',
-                        started_at: Date.now(),
-                    },
-                ],
+                data: {
+                    total: 1,
+                    items: [
+                        {
+                            run_id: 'run_aaaaaaaaaaaa',
+                            run_name: 'Claim CLM-1042',
+                            state: 'running',
+                            team_label: '@acme/claims-intake',
+                            daemon_id: 'd1',
+                            started_at: Date.now(),
+                        },
+                    ],
+                },
             }));
         }
         return new Response(JSON.stringify({ ok: false }), { status: 404 });

@@ -4,6 +4,7 @@ import { Play } from 'lucide-react';
 import { useOrgFetch } from '@/lib/org_context';
 import { use_busy } from '@/lib/use_busy';
 import { Quick_run_panel } from '@/components/dispatch/run_dialogs';
+import { hub_payload } from '@/lib/hub_envelope';
 
 /** Inline Run for a hub team — same quick-dispatch panel as Home. */
 export function Team_run_cta({
@@ -58,7 +59,8 @@ export function Team_run_cta({
 				set_error(msg);
 				return;
 			}
-			const run_id = typeof data.run_id === 'string' ? data.run_id : null;
+			const enqueue_payload = hub_payload<{ run_id?: string }>(data);
+			const run_id = typeof enqueue_payload?.run_id === 'string' ? enqueue_payload.run_id : null;
 			set_notice(run_id
 				? `Run started (${run_id.slice(0, 8)}…) — watch Home or the daemon`
 				: 'Run started');

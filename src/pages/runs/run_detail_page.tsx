@@ -17,6 +17,7 @@ import { use_busy } from '@/lib/use_busy';
 import { use_poll } from '@/lib/use_poll';
 import { format_datetime } from '@/lib/format_time';
 import type { Realm_outlet_context } from '@/layouts/realm_layout';
+import { hub_list, hub_payload } from '@/lib/hub_envelope';
 
 type Detail_tab = 'logs' | 'timeline' | 'dag';
 
@@ -230,11 +231,16 @@ export function Component() {
 				if (!opts?.silent) set_error(api_error_message(run_data));
 				return;
 			}
-			set_run(run_data.run);
+			set_run(hub_payload(run_data, 'run') ?? null);
 			if (phases_data.ok) {
-				set_phases(sort_phases_workflow((phases_data.phases ?? []) as Run_phase_row[]));
-			}			if (list_data.ok) {
-				const match = (list_data.runs ?? []).find((r: { run_id: string }) => r.run_id === run_id);
+				set_phases(sort_phases_workflow(hub_list<Run_phase_row>(phases_data, 'phases')));
+			}
+			if (list_data.ok) {
+				const page = hub_payload<{ items?: Array<{ run_id: string; team_label?: string | null; workspace_name?: string | null }> }>(list_data);
+				const list = Array.isArray(list_data.data)
+					? (list_data.data as Array<{ run_id: string; team_label?: string | null; workspace_name?: string | null }>)
+					: (page?.items ?? []);
+				const match = list.find((r) => r.run_id === run_id);
 				set_team_label(match?.team_label ?? null);
 				set_workspace_name(match?.workspace_name ?? null);
 			}
@@ -338,11 +344,12 @@ export function Component() {
 				set_error_code(api_error_code(data));
 				return;
 			}
-			if (data.mode === 'hub_terminated') {
+			const cancel_payload = hub_payload<{ mode?: string }>(data);
+			if (cancel_payload?.mode === 'hub_terminated') {
 				set_notice(
 					'Run marked cancelled on the Hub (daemon unreachable). If cliqd is still running the process, restart it to stop the work.',
 				);
-			} else if (data.mode === 'already_terminal') {
+			} else if (cancel_payload?.mode === 'already_terminal') {
 				set_notice('Run was already finished.');
 			} else {
 				set_notice('Cancel queued — waiting on the daemon to pick it up.');

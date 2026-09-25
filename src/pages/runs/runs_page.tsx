@@ -15,6 +15,7 @@ import {
 	run_matches_team_filter,
 	type Runs_sort_by,
 } from '@/lib/runs_filters';
+import { hub_payload } from '@/lib/hub_envelope';
 
 /**
  * Parse a `team_label` shaped `@scope/slug` into `{scope, slug}`.
@@ -237,16 +238,19 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			let list: RunRow[] = data.runs ?? [];
+			const page = hub_payload<{ items?: RunRow[]; total?: number }>(data);
+			let list: RunRow[] = Array.isArray(data.data)
+				? (data.data as RunRow[])
+				: (page?.items ?? []);
 			if (team_filter.trim()) {
 				list = list.filter((r) => run_matches_team_filter(r.team_label, team_filter));
 			}
 			set_runs(list);
 			set_total(team_filter.trim()
 				? list.length
-				: Number(data.total ?? list.length));
+				: Number(page?.total ?? list.length));
 			const labels = new Set<string>();
-			for (const r of (data.runs ?? []) as RunRow[]) {
+			for (const r of list) {
 				const label = (r.team_label ?? '').replace(/^@/, '');
 				if (label.includes('/')) labels.add(label);
 			}

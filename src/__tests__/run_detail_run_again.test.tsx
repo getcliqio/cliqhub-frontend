@@ -97,7 +97,7 @@ function build_fetch(overrides: {
             return {
                 json: async () => ({
                     ok: true,
-                    run: {
+                    data: {
                         run_id: RUN_ID,
                         run_name: overrides.run_name === undefined ? 'previous' : overrides.run_name,
                         state: overrides.state ?? 'completed',
@@ -114,7 +114,7 @@ function build_fetch(overrides: {
             };
         }
         if (url.includes('/v1/runs/get_status')) {
-            return { json: async () => ({ ok: true, phases: [] }) };
+            return { json: async () => ({ ok: true, data: [] }) };
         }
         return { json: async () => ({ ok: true }) };
     };

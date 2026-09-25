@@ -10,6 +10,7 @@ import {
 	type Realm_team_coverage,
 } from '@/lib/realm_teams_coverage';
 import type { WorkflowPhase } from '@/lib/types';
+import { hub_payload } from '@/lib/hub_envelope';
 
 interface Daemon_info {
 	id: string;
@@ -280,7 +281,11 @@ export function Realm_team_overview({
 
 			const runs_data = await runs_res.json();
 			if (runs_data.ok) {
-				const list = ((runs_data.runs ?? []) as Run_row[])
+				const page = hub_payload<{ items?: Run_row[] }>(runs_data);
+				const raw = Array.isArray(runs_data.data)
+					? (runs_data.data as Run_row[])
+					: (page?.items ?? []);
+				const list = raw
 					.filter((r) => run_matches_team_filter(r.team_label, team_q))
 					.slice(0, 5);
 				set_runs(list);
