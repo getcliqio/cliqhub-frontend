@@ -93,6 +93,10 @@ beforeEach(() => {
     // touching the bare `localStorage` global crashes on mount. Bind
     // an in-memory shim before every render.
     const _store = new Map<string, string>();
+    // Runs/telemetry tests are not about onboarding — dismiss GS so a
+    // transient hub-activity race (org_id not ready yet) cannot inject
+    // a step badge that collides with the telemetry "4 runs" figure.
+    _store.set('cliqhub:getting-started-dismissed', '1');
     const _ls: Storage = {
         get length() { return _store.size; },
         clear: () => { _store.clear(); },
@@ -121,7 +125,14 @@ beforeEach(() => {
         if (url.includes('/v1/orgs/get')) {
             return new Response(JSON.stringify({
                 ok: true,
-                orgs: [{ id: 1, slug: 'sapan', display_name: 'Personal' }],
+                data: { orgs: [{ id: '00000000-0000-4000-8000-000000000001', slug: 'sapan', display_name: 'Personal' }] },
+            }));
+        }
+        if (url.includes('/v1/daemons/get')) {
+            return new Response(JSON.stringify({
+                ok: true,
+                daemons: [{ id: 'd-1', status: 'online' }],
+                total: 1,
             }));
         }
         if (url.includes('/v1/dashboard/realms')) {
@@ -302,7 +313,14 @@ describe('HomeDashboard Telemetry band', () => {
             if (url.includes('/v1/orgs/get')) {
                 return new Response(JSON.stringify({
                     ok: true,
-                    orgs: [{ id: 1, slug: 'sapan', display_name: 'Personal' }],
+                    data: { orgs: [{ id: '00000000-0000-4000-8000-000000000001', slug: 'sapan', display_name: 'Personal' }] },
+                }));
+            }
+            if (url.includes('/v1/daemons/get')) {
+                return new Response(JSON.stringify({
+                    ok: true,
+                    daemons: [{ id: 'd-1', status: 'online' }],
+                    total: 1,
                 }));
             }
             if (url.includes('/v1/dashboard/realms')) {

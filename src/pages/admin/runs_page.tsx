@@ -1,5 +1,6 @@
 import { Link } from 'react-router';
 import { useAuthFetch } from '@/lib/auth_context';
+import { useOrg } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { Pagination } from '@/components/pagination';
 import {
@@ -26,6 +27,7 @@ const LIMIT = 50;
 
 export function Component() {
 	const auth_fetch = useAuthFetch();
+	const { current_id } = useOrg();
 	const q = use_admin_list_query();
 	const [rows, set_rows] = useState<RunRow[]>([]);
 	const [total, set_total] = useState(0);
@@ -33,9 +35,15 @@ export function Component() {
 	const [error, set_error] = useState<string | null>(null);
 
 	const load = useCallback(async () => {
+		// Body org_id is invent SoT — skip until org context is ready.
+		if (!current_id) {
+			set_loading(false);
+			return;
+		}
 		set_loading(true);
 		try {
 			const body: Record<string, unknown> = {
+				org_id: current_id,
 				limit: LIMIT,
 				offset: q.offset,
 			};
@@ -57,7 +65,7 @@ export function Component() {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, q.active_query, q.offset]);
+	}, [auth_fetch, current_id, q.active_query, q.offset]);
 
 	useEffect(() => { void load(); }, [load]);
 

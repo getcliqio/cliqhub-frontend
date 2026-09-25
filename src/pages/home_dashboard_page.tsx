@@ -6,7 +6,7 @@ import {
     Activity,
 } from 'lucide-react';
 import { useAuth} from '@/lib/auth_context';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 import { useHubActivity } from '@/lib/hub_activity_context';
 import { GettingStartedPanel } from '@/components/getting_started_panel';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
@@ -1225,6 +1225,7 @@ function Bands({
     default_org_slug: string | null;
 }) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [runs, set_runs] = useState<Recent_run[]>([]);
     const [runs_loading, set_runs_loading] = useState(true);
 
@@ -1244,10 +1245,16 @@ function Bands({
     }, [realms]);
 
     const load_runs = useCallback(async () => {
+        // Body org_id is invent SoT — skip until org context is ready.
+        if (!current_id) {
+            set_runs_loading(false);
+            return;
+        }
         try {
             const res = await auth_fetch('/v1/runs/get', {
                 method: 'POST',
                 body: JSON.stringify({
+                    org_id: current_id,
                     limit: 50,
                     sort_by: 'last_updated_at',
                     sort_dir: 'desc',
@@ -1260,7 +1267,7 @@ function Bands({
         } finally {
             set_runs_loading(false);
         }
-    }, [auth_fetch]);
+    }, [auth_fetch, current_id]);
 
     useEffect(() => { void load_runs(); }, [load_runs]);
     use_poll(() => void load_runs(), 20_000, true);

@@ -8,7 +8,7 @@ import {
 	type ReactNode,
 } from 'react';
 import { useAuth } from '@/lib/auth_context';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 
 interface HubActivity {
 	loading: boolean;
@@ -51,6 +51,7 @@ async function list_has_rows(
 export function HubActivityProvider({ children }: { children: ReactNode }) {
 	const { user } = useAuth();
 	const auth_fetch = useOrgFetch();
+	const { current_id } = useOrg();
 	const [loading, set_loading] = useState(true);
 	const [is_getting_started, set_is_getting_started] = useState(true);
 	const [default_realm_slug, set_default_realm_slug] = useState<string | null>(null);
@@ -67,9 +68,13 @@ export function HubActivityProvider({ children }: { children: ReactNode }) {
 
 		set_loading(true);
 		try {
+			// Runs probe needs body org_id (RUN-ORG). Without current_id, treat as no runs yet.
+			const runs_probe = current_id
+				? list_has_rows(auth_fetch, '/v1/runs/get', { org_id: current_id, limit: 1 }, ['runs', 'total'])
+				: Promise.resolve(false);
 			const [has_daemons, has_runs, session_res] = await Promise.all([
 				list_has_rows(auth_fetch, '/v1/daemons/get', { limit: 1 }, ['daemons', 'total']),
-				list_has_rows(auth_fetch, '/v1/runs/get', { limit: 1 }, ['runs', 'total']),
+				runs_probe,
 				auth_fetch('/v1/session/get', {
 					method: 'POST',
 					body: JSON.stringify({}),
@@ -99,7 +104,7 @@ export function HubActivityProvider({ children }: { children: ReactNode }) {
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, user]);
+	}, [auth_fetch, current_id, user]);
 
 	useEffect(() => {
 		void refresh();
