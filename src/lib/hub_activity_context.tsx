@@ -68,12 +68,15 @@ export function HubActivityProvider({ children }: { children: ReactNode }) {
 
 		set_loading(true);
 		try {
-			// Runs probe needs body org_id (RUN-ORG). Without current_id, treat as no runs yet.
+			// Probes need body org_id (DAE-ORG / RUN-ORG). Without current_id, treat as empty.
+			const daemons_probe = current_id
+				? list_has_rows(auth_fetch, '/v1/daemons/get', { org_id: current_id, limit: 1 }, ['daemons', 'total'])
+				: Promise.resolve(false);
 			const runs_probe = current_id
 				? list_has_rows(auth_fetch, '/v1/runs/get', { org_id: current_id, limit: 1 }, ['runs', 'total'])
 				: Promise.resolve(false);
 			const [has_daemons, has_runs, session_res] = await Promise.all([
-				list_has_rows(auth_fetch, '/v1/daemons/get', { limit: 1 }, ['daemons', 'total']),
+				daemons_probe,
 				runs_probe,
 				auth_fetch('/v1/session/get', {
 					method: 'POST',
