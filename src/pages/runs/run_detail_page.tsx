@@ -9,6 +9,7 @@ import { Run_logs_section } from '@/components/runs/run_logs_section';
 import { Run_phases_panel, sort_phases_workflow, type Run_phase_row } from '@/components/runs/run_phases_panel';
 import { Run_summary_strip } from '@/components/runs/run_summary_strip';
 import { UsageBreakdownTable } from '@/components/runs/usage_breakdown_table';
+import { Run_artifacts_panel } from '@/components/runs/run_artifacts_panel';
 import { Run_timeline_panel } from '@/components/runs/run_timeline_panel';
 import { DagPanel } from '@/components/observability/dag_panel';
 import { normalize_phases_for_dag } from '@/pages/runs/phase_dag_adapter';
@@ -18,10 +19,10 @@ import { use_poll } from '@/lib/use_poll';
 import { format_datetime } from '@/lib/format_time';
 import type { Realm_outlet_context } from '@/layouts/realm_layout';
 
-type Detail_tab = 'logs' | 'timeline' | 'dag';
+type Detail_tab = 'logs' | 'timeline' | 'dag' | 'artifacts';
 
 /** Tabs are user-selectable AND deep-linkable via ?tab= — pin the allowed set. */
-const VALID_DETAIL_TABS: readonly Detail_tab[] = ['logs', 'timeline', 'dag'];
+const VALID_DETAIL_TABS: readonly Detail_tab[] = ['logs', 'timeline', 'dag', 'artifacts'];
 
 function parse_tab_param(raw: string | null): Detail_tab | null {
 	if (!raw) return null;
@@ -674,7 +675,7 @@ export function Component() {
 						<UsageBreakdownTable run_id={run.run_id} />
 					</div>
 
-					{/* Two-column layout: logs/timeline/dag (left, wider) · status (right sidebar) */}
+					{/* Two-column layout: logs/timeline/dag/artifacts (left, wider) · status (right sidebar) */}
 					<div className="mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
 						<div className="order-2 flex min-h-0 flex-col gap-2 lg:order-1 lg:col-span-8 xl:col-span-9 h-[600px]">
 							<div
@@ -696,7 +697,7 @@ export function Component() {
 												: 'text-slate-500 hover:text-slate-800 dark:text-slate-400')
 										}
 									>
-										{tab === 'dag' ? 'DAG' : tab}
+										{tab === 'dag' ? 'DAG' : tab === 'artifacts' ? 'Artifacts' : tab}
 									</button>
 								))}
 							</div>
@@ -712,6 +713,8 @@ export function Component() {
 									/>
 								) : detail_tab === 'timeline' ? (
 									<Run_timeline_panel run_id={run.run_id} live={is_live} />
+								) : detail_tab === 'artifacts' ? (
+									<Run_artifacts_panel run_id={run.run_id} live={is_live} />
 								) : (
 									<div className="h-full min-h-[520px] rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
 										<DagPanel
