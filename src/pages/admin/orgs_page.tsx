@@ -5,7 +5,7 @@ import { validate_slug, validate_email, validate_password, validate_display_name
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 
 interface AdminOrg {
-	id: number;
+	id: string;
 	slug: string;
 	display_name: string;
 	member_count: number;

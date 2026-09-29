@@ -170,7 +170,7 @@ export function RealmLayout() {
                 if (cancelled) return;
                 const d_data = await d_res.json();
                 const r_data = await r_res.json();
-                const daemons = (d_data.daemons ?? []) as Array<{ status: string }>;
+                const daemons = (d_data.data?.items ?? d_data.daemons ?? []) as Array<{ status: string }>;
                 const runs_page = hub_payload<{ items?: unknown[]; total?: number }>(r_data);
                 const active_runs = runs_page?.total
                     ?? (Array.isArray(r_data.data) ? r_data.data.length : (runs_page?.items?.length ?? 0));

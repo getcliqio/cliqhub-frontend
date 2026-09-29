@@ -6,7 +6,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useOrgFetch } from '@/lib/org_context';
+import { useOrg, useOrgFetch } from '@/lib/org_context';
 
 /** A selectable target — either a user or a named channel. */
 interface PickerTarget {
@@ -31,6 +31,7 @@ interface Props {
 
 export function ChannelUserPicker({ selected, on_change, placeholder, class_name }: Props) {
     const auth_fetch = useOrgFetch();
+    const { current_id } = useOrg();
     const [query, set_query] = useState('');
     const [targets, set_targets] = useState<PickerTarget[]>([]);
     const [loading, set_loading] = useState(false);
@@ -49,7 +50,7 @@ export function ChannelUserPicker({ selected, on_change, placeholder, class_name
                 try {
                     const res = await auth_fetch('/v1/orgs/get_reviewable_targets', {
                         method: 'POST',
-                        body: JSON.stringify({ query: search }),
+                        body: JSON.stringify({ query: search, org_id: current_id ?? undefined }),
                     });
                     const data = await res.json();
                     if (!data.ok) {
@@ -79,7 +80,7 @@ export function ChannelUserPicker({ selected, on_change, placeholder, class_name
                 }
             }, 200);
         },
-        [auth_fetch],
+        [auth_fetch, current_id],
     );
 
     /** Load initial list on first open. */

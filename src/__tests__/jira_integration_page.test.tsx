@@ -3,13 +3,13 @@
  *
  * The page:
  *  - Redirects to /settings when VITE_ENABLE_JIRA_INTEGRATION is unset.
- *  - Otherwise POSTs `/v1/integrations/jira/list` (empty body → session
+ *  - Otherwise POSTs `/v1/integrations/jira/get_workspaces` (empty body → session
  *    cookie identifies caller) and renders one row per admin realm.
  *  - Bound rows show workspace_id + connected date + action buttons.
  *  - Unbound rows show a "Not connected" pill.
  *  - Rotate button POSTs /v1/integrations/jira/rotate_secret and reveals
  *    the returned secret via the shared NewTokenBanner.
- *  - Disconnect prompts, then POSTs /v1/integrations/jira/disconnect.
+ *  - Disconnect prompts, then POSTs /v1/integrations/jira/disconnect_workspace.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -49,7 +49,7 @@ const UNBOUND_ROW = {
 function stub_list(bindings: unknown[]) {
 	auth_fetch.mockResolvedValueOnce({
 		status: 200,
-		json: async () => ({ ok: true, bindings }),
+		json: async () => ({ ok: true, data: { workspaces: bindings } }),
 	});
 }
 
@@ -87,7 +87,7 @@ describe('JIRA integration page', () => {
 
 		await waitFor(() => {
 			expect(auth_fetch).toHaveBeenCalledWith(
-				'/v1/integrations/jira/list',
+				'/v1/integrations/jira/get_workspaces',
 				expect.objectContaining({ method: 'POST' }),
 			);
 		});
@@ -102,7 +102,7 @@ describe('JIRA integration page', () => {
 		stub_list([BOUND_ROW]);
 		auth_fetch.mockResolvedValueOnce({
 			status: 200,
-			json: async () => ({ ok: true, secret: 'whsec_new-secret-xyz' }),
+			json: async () => ({ ok: true, data: { secret: 'whsec_new-secret-xyz' } }),
 		});
 
 		render(<MemoryRouter><JiraPage /></MemoryRouter>);
@@ -126,11 +126,11 @@ describe('JIRA integration page', () => {
 		stub_list([BOUND_ROW]);
 		auth_fetch.mockResolvedValueOnce({
 			status: 200,
-			json: async () => ({ ok: true, removed: true }),
+			json: async () => ({ ok: true, data: { removed: true } }),
 		});
 		auth_fetch.mockResolvedValueOnce({
 			status: 200,
-			json: async () => ({ ok: true, bindings: [{ ...BOUND_ROW, channel_id: null, workspace_id: null, connected_at: null }] }),
+			json: async () => ({ ok: true, data: { workspaces: [{ ...BOUND_ROW, channel_id: null, workspace_id: null, connected_at: null }] } }),
 		});
 
 		const confirm_spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
@@ -141,7 +141,7 @@ describe('JIRA integration page', () => {
 
 			await waitFor(() => {
 				expect(auth_fetch).toHaveBeenCalledWith(
-					'/v1/integrations/jira/disconnect',
+					'/v1/integrations/jira/disconnect_workspace',
 					expect.objectContaining({ method: 'POST' }),
 				);
 			});

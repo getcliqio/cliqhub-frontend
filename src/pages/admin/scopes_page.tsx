@@ -4,7 +4,7 @@ import { validate_slug } from '@/lib/validation';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 
 interface AdminScope {
-    id: number;
+    id: string;
     slug: string;
     display_name: string;
     owner_id: string;

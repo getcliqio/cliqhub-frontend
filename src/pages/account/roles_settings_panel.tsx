@@ -14,7 +14,7 @@ import { useOrg, useOrgFetch } from '@/lib/org_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 
 interface RoleRow {
-    id: number;
+    id: string;
     slug: string;
     name: string;
     permissions: string[];

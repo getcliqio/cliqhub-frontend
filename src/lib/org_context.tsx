@@ -1,7 +1,9 @@
 /**
  * Organization context — tracks which org the user is operating in.
  *
- * Every authenticated request includes the active org as `X-Org-Id`.
+ * The active org is available via `useOrg()`. Endpoints that need an org
+ * accept `org_id` in the request body; callers should pass `current_id`
+ * from `useOrg()` explicitly.
  * Solo users (single org) never see org-switching UI.
  * The personal org (slug === username) is the default.
  */
@@ -30,11 +32,8 @@ interface OrgContextValue {
     current_org: OrgInfo | null;
     /**
      * Currently active org id — resolvable synchronously from localStorage on
-     * first paint, before the org list finishes loading. Prefer this for
-     * outbound request headers so the initial page-load fetch already
-     * includes the right `X-Org-Id`; falling back to `current_org.id` waits
-     * for `/v1/orgs/get` and races against realm/team fetches which then
-     * flash "Realm does not belong to the active org".
+     * first paint, before the org list finishes loading. Pass this as `org_id`
+     * in request bodies that require org tenancy.
      */
     current_id: string | null;
     /** All orgs the user belongs to. */
@@ -131,28 +130,21 @@ export function useOrg(): OrgContextValue {
 }
 
 /**
- * Authenticated fetch that automatically attaches X-Org-Id header.
- * Drop-in replacement for useAuthFetch when org context is needed.
+ * Authenticated fetch with org context available via `useOrg()`.
+ * Drop-in replacement for useAuthFetch when the current org id is needed.
  *
- * Uses `current_id` (available synchronously from localStorage) rather than
- * `current_org.id`. The org list arrives from `/v1/orgs/get` a moment later —
- * gating the header on `current_org` caused first-paint fetches to be sent
- * without `X-Org-Id`, letting the backend fall back to the personal org and
- * fail cross-org realm lookups with "Realm does not belong to the active org".
+ * Callers are responsible for including `org_id` in their request bodies.
+ * The legacy `X-Org-Id` header is no longer sent — org tenancy is explicit
+ * in every endpoint's request body.
  */
 export function useOrgFetch() {
     const raw_fetch = useRawAuthFetch();
-    const { current_id } = useOrg();
 
     return useCallback(
         async (url: string, init?: RequestInit): Promise<Response> => {
-            const headers = new Headers(init?.headers);
-            if (current_id != null) {
-                headers.set('X-Org-Id', String(current_id));
-            }
-            return raw_fetch(url, { ...init, headers });
+            return raw_fetch(url, init);
         },
-        [raw_fetch, current_id],
+        [raw_fetch],
     );
 }
 

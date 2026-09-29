@@ -247,7 +247,7 @@ export function Realm_team_overview({
 
 			const daemons_data = await daemons_res.json();
 			if (daemons_data.ok) {
-				set_daemons((daemons_data.daemons ?? []) as Daemon_info[]);
+				set_daemons((daemons_data.data?.items ?? daemons_data.daemons ?? []) as Daemon_info[]);
 			}
 
 			const registry_data = await registry_res.json();

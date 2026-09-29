@@ -26,7 +26,7 @@ import {
 interface ChannelRow {
     id: string;
     name: string;
-    destinations: string;
+    destinations: Destination[];
     /** Set for personal channels — owning user ID. */
     user_id?: string | null;
     enabled: number;
@@ -41,17 +41,6 @@ interface Destination {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function parse_destinations(raw: string | undefined): Destination[] {
-    if (!raw) return [];
-    try {
-        const arr = JSON.parse(raw);
-        if (!Array.isArray(arr)) return [];
-        return arr as Destination[];
-    } catch {
-        return [];
-    }
-}
 
 function api_error_message(data: { error?: string | { message?: string } }): string {
     if (typeof data.error === 'string') return data.error;
@@ -402,8 +391,8 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
                 return;
             }
             const rules_set_path = realm_id
-                ? '/v1/realms/set_notification_rule'
-                : '/v1/orgs/set_notification_rule';
+                ? '/v1/realms/set_notification_rules'
+                : '/v1/orgs/set_notification_rules';
             const res = await auth_fetch(rules_set_path, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -431,8 +420,8 @@ export function Rules_tab({ realm_id, team_slug }: { realm_id?: string; team_slu
         set_error(null);
         try {
             const rules_remove_path = realm_id
-                ? '/v1/realms/remove_notification_rule'
-                : '/v1/orgs/remove_notification_rule';
+                ? '/v1/realms/remove_notification_rules'
+                : '/v1/orgs/remove_notification_rules';
             const res = await auth_fetch(rules_remove_path, {
                 method: 'POST',
                 body: JSON.stringify({ id: rule_id }),
@@ -1054,7 +1043,7 @@ export function Channels_tab({ realm_id }: { realm_id?: string } = {}) {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {channels.map((ch) => {
-                                const dests = parse_destinations(ch.destinations);
+                                const dests = ch.destinations;
                                 const summaries = destinations_summary(dests);
                                 const is_expanded = expanded_id === ch.id;
                                 return (

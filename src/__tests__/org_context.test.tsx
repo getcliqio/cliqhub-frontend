@@ -123,7 +123,7 @@ describe('OrgContext', () => {
         expect(screen.getByTestId('is-personal').textContent).toBe('false');
     });
 
-    it('useOrgFetch injects X-Org-Id header', async () => {
+    it('useOrgFetch does not inject X-Org-Id header', async () => {
         const spy = mock_fetch(MOCK_ORGS_MULTI);
         render(
             <MemoryRouter>
@@ -147,6 +147,6 @@ describe('OrgContext', () => {
         expect(test_call).toBeTruthy();
         const [, init] = test_call!;
         const headers = new Headers((init as RequestInit).headers);
-        expect(headers.get('X-Org-Id')).toBe('10');
+        expect(headers.get('X-Org-Id')).toBeNull();
     });
 });

@@ -415,7 +415,7 @@ export function Quick_run_panel({
 				});
 				const data = await res.json();
 				if (cancelled) return;
-				const rows = (data.daemons ?? []) as Array<{
+				const rows = (data.data?.items ?? data.daemons ?? []) as Array<{
 					id: string;
 					name?: string | null;
 					hostname?: string | null;

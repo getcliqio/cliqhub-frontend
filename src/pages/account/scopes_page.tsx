@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { useOrgFetch } from '@/lib/org_context';
+import { useAuth } from '@/lib/auth_context';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { PageHeader } from '@/components/ui/page_header';
 import { Breadcrumbs } from '@/components/ui/breadcrumbs';
 import { PAGE_HELP } from '@/lib/page_help';
 
 interface ScopeRow {
-	id: number;
+	id: string;
 	slug: string;
 	display_name: string;
 	visibility: string;
@@ -21,6 +22,7 @@ function api_error_message(data: { error?: string | { message?: string } }): str
 
 export function Component() {
 	const auth_fetch = useOrgFetch();
+	const { user } = useAuth();
 	const [scopes, set_scopes] = useState<ScopeRow[]>([]);
 	const [loading, set_loading] = useState(true);
 	const [error, set_error] = useState<string | null>(null);
@@ -28,13 +30,14 @@ export function Component() {
 	const [active_query, set_active_query] = useState('');
 
 	const load = useCallback(async () => {
+		if (!user) return;
 		set_loading(true);
 		try {
-			const body: Record<string, unknown> = { mine: true };
+			const body: Record<string, unknown> = { user_id: user.id };
 			const query = active_query.trim();
-			if (query) body.query = query;
+			if (query) body.search = query;
 
-			const res = await auth_fetch('/v1/scopes/get', {
+			const res = await auth_fetch('/v1/orgs/get_scopes', {
 				method: 'POST',
 				body: JSON.stringify(body),
 			});
@@ -43,14 +46,14 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			set_scopes(data.data?.scopes ?? []);
+			set_scopes(data.data?.items ?? []);
 			set_error(null);
 		} catch {
 			set_error('Failed to load scopes');
 		} finally {
 			set_loading(false);
 		}
-	}, [auth_fetch, active_query]);
+	}, [auth_fetch, user, active_query]);
 
 	useEffect(() => {
 		void load();

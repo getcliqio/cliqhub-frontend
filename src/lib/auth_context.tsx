@@ -18,7 +18,7 @@ export interface ClientUser {
 }
 
 export interface ClientScope {
-  id: number;
+  id: string;
   slug: string;
   display_name: string;
   visibility: 'public' | 'private';

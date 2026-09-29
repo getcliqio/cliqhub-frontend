@@ -54,8 +54,8 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			set_rows(data.realms ?? []);
-			set_total(typeof data.total === 'number' ? data.total : (data.realms ?? []).length);
+			set_rows(data.data?.items ?? data.realms ?? []);
+			set_total(typeof (data.data?.total ?? data.total) === 'number' ? (data.data?.total ?? data.total) : (data.data?.items ?? data.realms ?? []).length);
 			set_error(null);
 		} catch {
 			set_error('Failed to load realms');

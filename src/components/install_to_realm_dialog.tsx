@@ -59,7 +59,7 @@ export function InstallToRealmDialog({
                 set_error(api_error_message(data));
                 return;
             }
-            const rows = (data.realms ?? []) as RealmOption[];
+            const rows = (data.data?.items ?? data.realms ?? []) as RealmOption[];
             set_realms(rows);
             if (rows[0]) set_selected(rows[0].id);
         } catch {

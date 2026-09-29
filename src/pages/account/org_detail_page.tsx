@@ -507,14 +507,13 @@ export function Component() {
 		const full_slug = scope_slug ? `${org.slug}-${scope_slug}` : '';
 		set_error(null);
 		try {
-			const res = await auth_fetch('/v1/scopes/new', {
+			const res = await auth_fetch('/v1/orgs/new_scope', {
 				method: 'POST',
 				body: JSON.stringify({
 					org_id,
 					slug: full_slug,
 					display_name: scope_display || undefined,
 					visibility: scope_visibility,
-					scope_type: 'org',
 				}),
 			});
 			const data = await res.json();
@@ -536,9 +535,9 @@ export function Component() {
 		if (!confirm(`Delete scope @${slug}? This cannot be undone.`)) return;
 		set_error(null);
 		try {
-			const res = await auth_fetch('/v1/scopes/delete', {
+			const res = await auth_fetch('/v1/orgs/delete_scope', {
 				method: 'POST',
-				body: JSON.stringify({ scope_id }),
+				body: JSON.stringify({ org_id, scope_id }),
 			});
 			const data = await res.json();
 			if (!data.ok) {
@@ -554,9 +553,9 @@ export function Component() {
 	async function handle_assign_scope(scope_id: string, user_id: string) {
 		set_error(null);
 		try {
-			const res = await auth_fetch('/v1/scopes/add_user', {
+			const res = await auth_fetch('/v1/orgs/assign_scope_member', {
 				method: 'POST',
-				body: JSON.stringify({ scope_id, user_id }),
+				body: JSON.stringify({ org_id, scope_id, user_id }),
 			});
 			const data = await res.json();
 			if (!data.ok) {
@@ -572,9 +571,9 @@ export function Component() {
 	async function handle_unassign_scope(scope_id: string, user_id: string) {
 		set_error(null);
 		try {
-			const res = await auth_fetch('/v1/scopes/remove_user', {
+			const res = await auth_fetch('/v1/orgs/unassign_scope_member', {
 				method: 'POST',
-				body: JSON.stringify({ scope_id, user_id }),
+				body: JSON.stringify({ org_id, scope_id, user_id }),
 			});
 			const data = await res.json();
 			if (!data.ok) {

@@ -68,7 +68,7 @@ export function Component() {
 			// Body is empty — session cookie identifies the caller. The
 			// backend controller resolves user_id from req.auth.user
 			// (falls back to body.api_token, unused here).
-			const res = await auth_fetch('/v1/integrations/jira/list', {
+			const res = await auth_fetch('/v1/integrations/jira/get_workspaces', {
 				method: 'POST',
 				body: JSON.stringify({}),
 			});
@@ -81,7 +81,7 @@ export function Component() {
 			}
 			const data = await res.json();
 			if (data.ok) {
-				set_bindings(data.bindings ?? []);
+				set_bindings(data.data?.workspaces ?? []);
 				set_error(null);
 				return;
 			}
@@ -107,7 +107,7 @@ export function Component() {
 			});
 			const data = await res.json();
 			if (data.ok) {
-				set_rotated_secret(data.secret);
+				set_rotated_secret(data.data?.secret);
 				return;
 			}
 			set_error(api_error_message(data));
@@ -129,7 +129,7 @@ export function Component() {
 		set_busy_binding_key(key);
 		set_error(null);
 		try {
-			const res = await auth_fetch('/v1/integrations/jira/disconnect', {
+			const res = await auth_fetch('/v1/integrations/jira/disconnect_workspace', {
 				method: 'POST',
 				body: JSON.stringify({ realm_id, workspace_id }),
 			});

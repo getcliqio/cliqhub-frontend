@@ -58,8 +58,8 @@ export function Component() {
 				set_error(api_error_message(data));
 				return;
 			}
-			set_rows(data.daemons ?? []);
-			set_total(Number(data.total ?? (data.daemons ?? []).length));
+			set_rows(data.data?.items ?? data.daemons ?? []);
+			set_total(Number(data.data?.total ?? data.total ?? (data.data?.items ?? data.daemons ?? []).length));
 			set_error(null);
 		} catch {
 			set_error('Failed to load daemons');

@@ -188,7 +188,7 @@ export function Run_in_realm_dialog({
 				set_error(api_error_message(data));
 				return;
 			}
-			const all = (data.realms ?? []) as Realm_option[];
+			const all = (data.data?.items ?? data.realms ?? []) as Realm_option[];
 			const checks = await Promise.all(
 				all.map(async (r) => {
 					try {
