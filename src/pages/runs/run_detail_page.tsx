@@ -19,10 +19,10 @@ import { format_datetime } from '@/lib/format_time';
 import type { Realm_outlet_context } from '@/layouts/realm_layout';
 import { hub_list, hub_payload } from '@/lib/hub_envelope';
 
-type Detail_tab = 'logs' | 'timeline' | 'dag';
+type Detail_tab = 'logs' | 'timeline' | 'dag' | 'artifacts';
 
 /** Tabs are user-selectable AND deep-linkable via ?tab= — pin the allowed set. */
-const VALID_DETAIL_TABS: readonly Detail_tab[] = ['logs', 'timeline', 'dag'];
+const VALID_DETAIL_TABS: readonly Detail_tab[] = ['logs', 'timeline', 'dag', 'artifacts'];
 
 function parse_tab_param(raw: string | null): Detail_tab | null {
 	if (!raw) return null;
@@ -156,6 +156,12 @@ function format_relative(ts: number | null | undefined): string {
 	return `${Math.floor(age_s / 86400)}d ago`;
 }
 
+function format_bytes(n: number): string {
+	if (n < 1024) return `${n} B`;
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+	return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function Component() {
 	const { realm, base_path } = useOutletContext<Realm_outlet_context>();
 	const { run_id = '' } = useParams();
@@ -184,6 +190,8 @@ export function Component() {
 	const [copied_workspace, set_copied_workspace] = useState(false);
 	const [copied_external, set_copied_external] = useState(false);
 	const [selected_phase, set_selected_phase] = useState<string | null>(null);
+	const [artifacts, set_artifacts] = useState<Array<{ artifact_id: string; name: string; phase: string; mime_type: string; size_bytes: number; download_url: string; description: string | null; created_at: number }>>([]);
+	const [artifacts_loading, set_artifacts_loading] = useState(false);
 	// Detail tab is deep-linkable via `?tab=<name>` so e.g. the
 	// `/live` redirect can drop users straight into the DAG. Default
 	// stays "timeline" for anyone landing without a query param, which
@@ -203,6 +211,25 @@ export function Component() {
 			return params;
 		}, { replace: true });
 	}, [set_search_params]);
+
+	const load_artifacts = useCallback(async () => {
+		if (!run_id) return;
+		set_artifacts_loading(true);
+		try {
+			const res = await auth_fetch('/v1/artifacts/get', {
+				method: 'POST',
+				body: JSON.stringify({ run_id }),
+			});
+			const json = await res.json() as { ok: boolean; data?: typeof artifacts };
+			if (json.ok && Array.isArray(json.data)) set_artifacts(json.data);
+		} catch { /* non-fatal */ } finally {
+			set_artifacts_loading(false);
+		}
+	}, [run_id, auth_fetch]);
+
+	useEffect(() => {
+		if (detail_tab === 'artifacts') void load_artifacts();
+	}, [detail_tab, load_artifacts]);
 
 	const load = useCallback(async (opts?: { silent?: boolean }) => {
 		if (!run_id) return;
@@ -703,7 +730,7 @@ export function Component() {
 												: 'text-slate-500 hover:text-slate-800 dark:text-slate-400')
 										}
 									>
-										{tab === 'dag' ? 'DAG' : tab}
+										{tab === 'dag' ? 'DAG' : tab === 'artifacts' ? 'Artifacts' : tab}
 									</button>
 								))}
 							</div>
@@ -719,9 +746,49 @@ export function Component() {
 									/>
 								) : detail_tab === 'timeline' ? (
 									<Run_timeline_panel run_id={run.run_id} live={is_live} />
-								) : (
-									<div className="h-full min-h-[520px] rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-										<DagPanel
+								) : detail_tab === 'artifacts' ? (
+								<div className="rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 p-4">
+									{artifacts_loading ? (
+										<p className="text-sm text-slate-400">Loading artifacts…</p>
+									) : artifacts.length === 0 ? (
+										<p className="text-sm text-slate-400">No artifacts for this run.</p>
+									) : (
+										<table className="w-full text-sm">
+											<thead>
+												<tr className="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold uppercase tracking-wider text-slate-400">
+													<th className="pb-2 pr-4">Name</th>
+													<th className="pb-2 pr-4">Phase</th>
+													<th className="pb-2 pr-4">Type</th>
+													<th className="pb-2 pr-4">Size</th>
+													<th className="pb-2">Download</th>
+												</tr>
+											</thead>
+											<tbody>
+												{artifacts.map((a) => (
+													<tr key={a.artifact_id} className="border-b border-slate-50 dark:border-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-800/40">
+														<td className="py-2 pr-4 font-medium text-slate-800 dark:text-slate-200">{a.name}</td>
+														<td className="py-2 pr-4 text-slate-500 font-mono text-xs">{a.phase}</td>
+														<td className="py-2 pr-4 text-slate-400 text-xs">{a.mime_type}</td>
+														<td className="py-2 pr-4 text-slate-400 text-xs whitespace-nowrap">{format_bytes(a.size_bytes)}</td>
+														<td className="py-2">
+															<a
+																href={a.download_url}
+																target="_blank"
+																rel="noopener noreferrer"
+																className="text-blue-500 hover:underline text-xs"
+															>
+																Download
+															</a>
+														</td>
+													</tr>
+												))}
+											</tbody>
+										</table>
+									)}
+								</div>
+							) : (
+								<div className="h-full min-h-[520px] rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+									<DagPanel
 											phases={dag_phases}
 											selected_phase={selected_phase}
 											on_phase_select={set_selected_phase}
