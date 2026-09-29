@@ -9,6 +9,7 @@ interface AdminScope {
     display_name: string;
     owner_id: string;
     owner_username: string;
+    org_id: string | null;
     visibility: string;
     scope_type: string;
     team_count: number;
@@ -38,15 +39,16 @@ export function Component() {
     const [new_display, set_new_display] = useState('');
     const [new_owner_username, set_new_owner_username] = useState('');
     const [new_vis, set_new_vis] = useState<'public' | 'private'>('public');
-    const [new_type, set_new_type] = useState<'user' | 'org'>('user');
 
     const [new_org_slug, set_new_org_slug] = useState('');
     const [org_lookup_status, set_org_lookup_status] = useState<OwnerLookupStatus>('idle');
     const [org_found_display, set_org_found_display] = useState('');
+    const [org_found_id, set_org_found_id] = useState('');
     const org_lookup_timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [owner_lookup_status, set_owner_lookup_status] = useState<OwnerLookupStatus>('idle');
     const [owner_found_display, set_owner_found_display] = useState('');
+    const [owner_found_id, set_owner_found_id] = useState('');
     const lookup_timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [field_errors, set_field_errors] = useState<Record<string, string | null>>({});
@@ -61,7 +63,7 @@ export function Component() {
             const body: Record<string, unknown> = { limit: LIMIT, offset };
             const query = active_query.trim();
             if (query) body.query = query;
-            const res = await auth_fetch('/v1/scopes/get', { method: 'POST', body: JSON.stringify(body) });
+            const res = await auth_fetch('/v1/orgs/get_scopes', { method: 'POST', body: JSON.stringify(body) });
             const data = await res.json();
             if (data.ok) { set_scopes(data.data.scopes); set_total(data.data.total); }
             if (!data.ok) { set_action_error(data.error?.message || 'Failed to load scopes'); }
@@ -103,15 +105,17 @@ export function Component() {
                 });
                 const data = await res.json();
                 if (!data.ok) { set_owner_lookup_status('error'); return; }
-                const users = data.data.users as { username: string; email: string; display_name: string }[];
+                const users = data.data.users as { id: string; username: string; email: string; display_name: string }[];
                 const exact = users.length > 0 && users[0].username === username ? users[0] : null;
                 if (exact) {
                     set_owner_lookup_status('found');
                     set_owner_found_display(`${exact.display_name} (${exact.email})`);
+                    set_owner_found_id(exact.id);
                     return;
                 }
                 set_owner_lookup_status('not_found');
                 set_owner_found_display('');
+                set_owner_found_id('');
             } catch {
                 set_owner_lookup_status('error');
             }
@@ -147,15 +151,17 @@ export function Component() {
                 });
                 const data = await res.json();
                 if (!data.ok) { set_org_lookup_status('error'); return; }
-                const orgs = data.data.orgs as { slug: string; display_name: string }[];
+                const orgs = data.data.orgs as { id: string; slug: string; display_name: string }[];
                 const exact = orgs.length > 0 && orgs[0].slug === slug ? orgs[0] : null;
                 if (exact) {
                     set_org_lookup_status('found');
                     set_org_found_display(exact.display_name);
+                    set_org_found_id(exact.id);
                     return;
                 }
                 set_org_lookup_status('not_found');
                 set_org_found_display('');
+                set_org_found_id('');
             } catch {
                 set_org_lookup_status('error');
             }
@@ -214,12 +220,13 @@ export function Component() {
         set_new_display('');
         set_new_owner_username('');
         set_new_vis('public');
-        set_new_type('user');
         set_new_org_slug('');
         set_owner_lookup_status('idle');
         set_owner_found_display('');
+        set_owner_found_id('');
         set_org_lookup_status('idle');
         set_org_found_display('');
+        set_org_found_id('');
         set_field_errors({});
         set_touched({});
     }
@@ -228,52 +235,45 @@ export function Component() {
 
     async function handle_create() {
         set_action_error('');
-        const is_org = new_type === 'org';
-        const all_touched: Record<string, boolean> = { scope_slug: true, owner_username: true };
-        if (is_org) all_touched.org_slug = true;
+        const all_touched: Record<string, boolean> = { scope_slug: true, org_slug: true };
         set_touched((prev) => ({ ...prev, ...all_touched }));
 
         const errors: Record<string, string | null> = {
             scope_slug: validate_slug(new_slug),
-            owner_username: validate_slug(new_owner_username),
+            org_slug: validate_slug(new_org_slug),
         };
-        if (is_org) errors.org_slug = validate_slug(new_org_slug);
+        if (new_owner_username) errors.owner_username = validate_slug(new_owner_username);
         set_field_errors((prev) => ({ ...prev, ...errors }));
 
         if (Object.values(errors).some((e) => e !== null)) return;
 
-        if (owner_lookup_status === 'checking' || (is_org && org_lookup_status === 'checking')) {
+        if (org_lookup_status === 'checking' || owner_lookup_status === 'checking') {
             set_action_error('Still verifying — please wait');
             return;
         }
-        if (owner_lookup_status === 'not_found') {
-            set_action_error(`User '${new_owner_username}' does not exist. Create the user first.`);
-            return;
-        }
-        if (owner_lookup_status === 'idle') {
-            set_action_error('Enter an owner username');
-            return;
-        }
-        if (is_org && org_lookup_status === 'not_found') {
+        if (org_lookup_status === 'not_found') {
             set_action_error(`Org '${new_org_slug}' does not exist. Create the org first.`);
             return;
         }
-        if (is_org && org_lookup_status === 'idle') {
+        if (org_lookup_status === 'idle') {
             set_action_error('Enter an org slug');
+            return;
+        }
+        if (new_owner_username && owner_lookup_status === 'not_found') {
+            set_action_error(`User '${new_owner_username}' does not exist. Create the user first.`);
             return;
         }
 
         const body: Record<string, unknown> = {
+            org_id: org_found_id,
             slug: new_slug,
             display_name: new_display || undefined,
-            owner_username: new_owner_username,
             visibility: new_vis,
-            scope_type: new_type,
         };
-        if (is_org) body.org_slug = new_org_slug;
+        if (owner_found_id) body.owner_id = owner_found_id;
 
         try {
-            const res = await auth_fetch('/v1/scopes/new', {
+            const res = await auth_fetch('/v1/orgs/new_scope', {
                 method: 'POST',
                 body: JSON.stringify(body),
             });
@@ -292,9 +292,9 @@ export function Component() {
         if (!detail) return;
         set_action_error('');
         try {
-            const res = await auth_fetch('/v1/scopes/update', {
+            const res = await auth_fetch('/v1/orgs/update_scope', {
                 method: 'POST',
-                body: JSON.stringify({ scope_id: detail.id, visibility: edit_vis, display_name: edit_display }),
+                body: JSON.stringify({ org_id: detail.org_id, scope_id: detail.id, visibility: edit_vis, display_name: edit_display }),
             });
             const data = await res.json();
             if (!data.ok) { set_action_error(data.error?.message || 'Failed'); return; }
@@ -312,9 +312,9 @@ export function Component() {
         if (!detail || delete_text !== `@${detail.slug}`) return;
         set_action_error('');
         try {
-            const res = await auth_fetch('/v1/scopes/delete', {
+            const res = await auth_fetch('/v1/orgs/delete_scope', {
                 method: 'POST',
-                body: JSON.stringify({ scope_id: detail.id }),
+                body: JSON.stringify({ org_id: detail.org_id, scope_id: detail.id }),
             });
             const data = await res.json();
             if (!data.ok) { set_action_error(data.error?.message || 'Failed'); return; }
@@ -407,70 +407,50 @@ export function Component() {
                             />
                         </div>
                         <div>
-                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Scope Type</label>
-                            <select value={new_type} onChange={(e) => {
-                                const val = e.target.value as 'user' | 'org';
-                                set_new_type(val);
-                                if (val === 'user') set_new_vis('public');
-                            }} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                <option value="user">User</option>
-                                <option value="org">Org</option>
+                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Visibility</label>
+                            <select value={new_vis} onChange={(e) => set_new_vis(e.target.value as 'public' | 'private')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
+                                <option value="public">Public</option>
+                                <option value="private">Private</option>
                             </select>
                         </div>
-                        {new_type === 'org' ? (
-                            <div>
-                                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Visibility</label>
-                                <select value={new_vis} onChange={(e) => set_new_vis(e.target.value as 'public' | 'private')} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-                                    <option value="public">Public</option>
-                                    <option value="private">Private</option>
-                                </select>
-                            </div>
-                        ) : (
-                            <div>
-                                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Visibility</label>
-                                <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">Public (user scopes are always public)</p>
-                            </div>
-                        )}
                     </div>
 
-                    {/* Org lookup — only when scope_type is org */}
-                    {new_type === 'org' && (
-                        <div className="mb-4 rounded-lg border border-slate-200 bg-white/60 p-3">
-                            <p className="mb-2 text-xs font-semibold text-slate-700">Organization</p>
-                            <div>
-                                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Org Slug</label>
-                                <input
-                                    placeholder="e.g. acme" value={new_org_slug}
-                                    onChange={(e) => handle_org_slug_change(e.target.value)}
-                                    onBlur={() => handle_field_blur('org_slug', new_org_slug)}
-                                    className={input_class('org_slug')}
-                                />
-                                {touched.org_slug && field_errors.org_slug && (
-                                    <p className="mt-1 text-xs text-red-500">{field_errors.org_slug}</p>
-                                )}
-                                {org_lookup_status === 'checking' && (
-                                    <p className="mt-1 text-xs text-slate-400">Checking...</p>
-                                )}
-                                {org_lookup_status === 'found' && (
-                                    <p className="mt-1 text-xs text-emerald-600">
-                                        Org found: <span className="font-semibold">@{new_org_slug}</span> &mdash; {org_found_display}
-                                    </p>
-                                )}
-                                {org_lookup_status === 'not_found' && !field_errors.org_slug && (
-                                    <p className="mt-1 text-xs text-red-500">
-                                        No org with slug &ldquo;{new_org_slug}&rdquo; found. Create the org first.
-                                    </p>
-                                )}
-                                {org_lookup_status === 'error' && (
-                                    <p className="mt-1 text-xs text-red-500">Could not verify org. Try again.</p>
-                                )}
-                            </div>
+                    {/* Org lookup */}
+                    <div className="mb-4 rounded-lg border border-slate-200 bg-white/60 p-3">
+                        <p className="mb-2 text-xs font-semibold text-slate-700">Organization</p>
+                        <div>
+                            <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Org Slug</label>
+                            <input
+                                placeholder="e.g. acme" value={new_org_slug}
+                                onChange={(e) => handle_org_slug_change(e.target.value)}
+                                onBlur={() => handle_field_blur('org_slug', new_org_slug)}
+                                className={input_class('org_slug')}
+                            />
+                            {touched.org_slug && field_errors.org_slug && (
+                                <p className="mt-1 text-xs text-red-500">{field_errors.org_slug}</p>
+                            )}
+                            {org_lookup_status === 'checking' && (
+                                <p className="mt-1 text-xs text-slate-400">Checking...</p>
+                            )}
+                            {org_lookup_status === 'found' && (
+                                <p className="mt-1 text-xs text-emerald-600">
+                                    Org found: <span className="font-semibold">@{new_org_slug}</span> &mdash; {org_found_display}
+                                </p>
+                            )}
+                            {org_lookup_status === 'not_found' && !field_errors.org_slug && (
+                                <p className="mt-1 text-xs text-red-500">
+                                    No org with slug &ldquo;{new_org_slug}&rdquo; found. Create the org first.
+                                </p>
+                            )}
+                            {org_lookup_status === 'error' && (
+                                <p className="mt-1 text-xs text-red-500">Could not verify org. Try again.</p>
+                            )}
                         </div>
-                    )}
+                    </div>
 
-                    {/* Owner lookup */}
+                    {/* Owner lookup (optional) */}
                     <div className="rounded-lg border border-slate-200 bg-white/60 p-3">
-                        <p className="mb-2 text-xs font-semibold text-slate-700">Owner</p>
+                        <p className="mb-2 text-xs font-semibold text-slate-700">Owner <span className="font-normal text-slate-400">(optional — defaults to org owner)</span></p>
                         <div>
                             <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500">Username</label>
                             <input
