@@ -329,7 +329,7 @@ export function Run_in_realm_dialog({
 			});
 			const data = await res.json() as {
 				ok?: boolean;
-				error?: string | { message?: string };
+				error?: { message?: string; code?: string };
 			};
 			if (!data.ok) {
 				set_error(api_error_message(data));
