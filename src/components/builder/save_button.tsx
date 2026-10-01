@@ -8,7 +8,7 @@ const LOCAL_DRAFT_KEY = 'cliqhub_local_draft';
 export function SaveButton() {
 	const state = useBuilder();
 	const dispatch = useBuilderDispatch();
-	const { user } = useAuth();
+	const { user, scopes } = useAuth();
 	const authFetch = useOrgFetch();
 	const [saving, set_saving] = useState(false);
 	const [save_error, set_save_error] = useState<string | null>(null);
@@ -50,7 +50,7 @@ export function SaveButton() {
 				return;
 			}
 
-			const scope = user.scopes?.[0]?.slug || user.username;
+			const scope = scopes?.[0]?.slug || user.username;
 			if (!scope) {
 				set_save_error('No scope available to save draft');
 				return;
@@ -91,7 +91,7 @@ export function SaveButton() {
 		} finally {
 			set_saving(false);
 		}
-	}, [state.team, state.draft_id, state.dirty, saving, user, authFetch, dispatch]);
+	}, [state.team, state.draft_id, state.dirty, saving, user, scopes, authFetch, dispatch]);
 
 	/** Auto-save only updates an existing draft — never creates a new one */
 	useEffect(() => {
