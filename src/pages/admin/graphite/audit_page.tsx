@@ -1,0 +1,102 @@
+/**
+ * Admin › Activity › Audit log (AD6) — who did what, to whom.
+ * Read: `POST /v1/admin_list/get {kind:'audit'}` (→ /internal/reports/audit).
+ * Time and target filters need Core API 3; the BFF reports them as unsupported otherwise.
+ */
+import { Fragment, useState } from 'react';
+import { useSearchParams } from 'react-router';
+import { use_bff_read } from '@/lib/use_bff_read';
+import { audit_is_sensitive, audit_summary, type Admin_audit_row, type Admin_list_data } from '@/lib/admin';
+import { Admin_header, Avatar, Chips, Empty_row, Pager, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { G_INPUT } from '@/components/graphite/g_agents';
+import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+
+type Range = 'all' | '24h' | '7d' | '30d';
+const RANGE_MS: Record<Exclude<Range, 'all'>, number> = { '24h': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5 };
+const TARGET_TYPES = ['user', 'org', 'scope', 'team', 'agent'];
+const LIMIT = 50;
+const SECRET_KEY = /(^|_)(key|token|secret|password)$/i;
+
+function when(iso: string): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return iso;
+	const today = new Date();
+	return d.toDateString() === today.toDateString()
+		? d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+		: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** Details as JSON, with secret-looking keys reduced to set/unset. */
+function safe_details(details: Record<string, unknown>): string {
+	return JSON.stringify(details ?? {}, (k, v) => (k && SECRET_KEY.test(k) ? (v ? 'set' : 'unset') : v), 2);
+}
+
+export function Component() {
+	const [sp, set_sp] = useSearchParams();
+	const range = (['24h', '7d', '30d'].includes(sp.get('range') ?? '') ? sp.get('range') : 'all') as Range;
+	const action = sp.get('action') ?? '';
+	const target_type = sp.get('type') ?? '';
+	const target = sp.get('target') ?? '';
+	const offset = Number(sp.get('offset') ?? 0) || 0;
+	const [open, set_open] = useState<string | null>(null);
+	const [draft, set_draft] = useState({ action, target });
+	// Round to the minute so polling doesn't produce a new request body each render.
+	const since_ms = range === 'all' ? undefined : Math.floor((Date.now() - RANGE_MS[range]) / 60_000) * 60_000;
+	const read = use_bff_read<Admin_list_data<Admin_audit_row> & { unsupported: string[] }>('/v1/admin_list/get', {
+		kind: 'audit', limit: LIMIT, offset,
+		...(since_ms != null ? { since_ms } : {}),
+		...(action ? { action } : {}), ...(target_type ? { target_type } : {}), ...(target ? { target_id: target } : {}),
+	}, { fallback_error: 'Could not load the audit log.' });
+	const d = read.data;
+	const set = (patch: Record<string, string | null>) => {
+		const n = new URLSearchParams(sp);
+		for (const [k, v] of Object.entries(patch)) { if (!v) n.delete(k); else n.set(k, v); }
+		n.delete('offset');
+		set_sp(n, { replace: true });
+	};
+	const unsupported = d?.unsupported ?? [];
+
+	return (
+		<div className="flex flex-col gap-4">
+			<Admin_header title="Audit log" sub="Every privileged action on the hub — who, what, on whom." />
+			<div className="flex flex-wrap items-center gap-2">
+				<Chips<Range> label="Time range" value={range} on_change={(k) => set({ range: k === 'all' ? null : k })} options={[{ key: 'all', label: 'Any time' }, { key: '24h', label: '24h' }, { key: '7d', label: '7 days' }, { key: '30d', label: '30 days' }]} />
+				<select aria-label="Target type" value={target_type} onChange={(e) => set({ type: e.target.value || null })} className={`${G_INPUT} w-[150px]`}>
+					<option value="">Target: any</option>
+					{TARGET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+				</select>
+				<form className="ml-auto flex gap-2" onSubmit={(e) => { e.preventDefault(); set({ action: draft.action.trim() || null, target: draft.target.trim() || null }); }}>
+					<input aria-label="Action" value={draft.action} onChange={(e) => set_draft({ ...draft, action: e.target.value })} placeholder="Action, e.g. user.suspend" className={`${G_INPUT} w-[200px]`} />
+					<input aria-label="Target id" value={draft.target} onChange={(e) => set_draft({ ...draft, target: e.target.value })} placeholder="Target id" className={`${G_INPUT} w-[180px]`} />
+					<button type="submit" className="sr-only">Apply</button>
+				</form>
+			</div>
+			{unsupported.length ? <p role="note" className="text-[12px] text-[var(--g-warn-text)]">{unsupported.map((u) => (u === 'since' ? 'Time range' : 'Target id')).join(' and ')} filter{unsupported.length > 1 ? 's' : ''} need{unsupported.length > 1 ? '' : 's'} Core API 3 — showing results without {unsupported.length > 1 ? 'them' : 'it'}.</p> : null}
+			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="audit log" /> : null}
+			<div className={TABLE_WRAP}>
+				<table className="w-full text-[13px]">
+					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>When</th><th className={TH}>Who</th><th className={TH}>Action</th><th className={TH}>Target</th><th className={TH}>Details</th></tr></thead>
+					<tbody>
+						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
+						{d && !d.items.length ? <Empty_row cols={5}>No matching entries.</Empty_row> : null}
+						{d?.items.map((e) => (
+							<Fragment key={e.id}>
+								<tr onClick={() => set_open(open === e.id ? null : e.id)} aria-expanded={open === e.id} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${open === e.id ? 'bg-[var(--g-soft)]' : ''}`} data-testid={`audit-${e.id}`}>
+									<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-3)]">{when(e.created_at)}</td>
+									<td className="px-4"><div className="flex items-center gap-2"><Avatar name={e.admin_username ?? '?'} size={22} />{e.admin_username ?? <span className="text-[var(--g-ink-3)]">deleted user</span>}</div></td>
+									<td className={`g-mono px-4 ${audit_is_sensitive(e.action) ? 'text-[#ff9f5a]' : ''}`}>{e.action}</td>
+									<td className="px-4"><span className="text-[var(--g-ink-3)]">{e.target_type}</span> <span className="g-mono">{e.target_id.length > 24 ? `${e.target_id.slice(0, 8)}…` : e.target_id}</span></td>
+									<td className="max-w-[360px] truncate px-4 text-[var(--g-ink-2)]">{audit_summary(e.details)}</td>
+								</tr>
+								{open === e.id ? (
+									<tr className={TR}><td colSpan={5} className="bg-[var(--g-bg)] px-4 py-3"><pre className="g-mono whitespace-pre-wrap break-words text-[12px] text-[var(--g-ink-2)]">{`id ${e.id} · admin ${e.admin_id} · target ${e.target_type}:${e.target_id}\n`}{safe_details(e.details)}</pre></td></tr>
+								) : null}
+							</Fragment>
+						))}
+					</tbody>
+				</table>
+				{d ? <Pager total={d.total} offset={offset} limit={LIMIT} on_change={(o) => { const n = new URLSearchParams(sp); if (o) n.set('offset', String(o)); else n.delete('offset'); set_sp(n, { replace: true }); }} /> : null}
+			</div>
+		</div>
+	);
+}

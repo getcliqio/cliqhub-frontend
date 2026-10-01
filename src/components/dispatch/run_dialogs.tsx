@@ -77,7 +77,7 @@ interface Workspace_option {
 	has_team: boolean;
 }
 
-function parse_kv_lines(raw: string): Record<string, string> {
+export function parse_kv_lines(raw: string): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const line of raw.split('\n')) {
 		const trimmed = line.trim();

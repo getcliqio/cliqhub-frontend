@@ -1,163 +1,85 @@
+/** `/` (Graphite) — signed-out landing; signed-in users go straight to /home. */
 import { useEffect } from 'react';
-import { useNavigate, Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { ArrowRight, Eye, Hand, Package, Terminal } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
+import { Cliq_mark } from '@/components/cliq_mark';
+import '@/styles/graphite.css';
+
+const PIPELINE: Array<{ label: string; tone: string }> = [
+	{ label: 'architect', tone: 'var(--g-t-llm)' },
+	{ label: 'review', tone: 'var(--g-t-hug)' },
+	{ label: 'implement', tone: 'var(--g-t-llm)' },
+	{ label: 'check', tone: 'var(--g-t-gate)' },
+	{ label: 'pr', tone: 'var(--g-t-conn)' },
+];
+
+const FEATURES = [
+	{ icon: Package, title: 'Ready-made teams', text: 'Install a team someone already built, or design your own in the builder and share it.' },
+	{ icon: Hand, title: 'Humans in the loop', text: 'Teams stop at review points so a person can approve, send back or change course.' },
+	{ icon: Eye, title: 'See every run', text: 'Phases, gates, cost and output for every run, live — from one inbox.' },
+	{ icon: Terminal, title: 'Your machines', text: 'Runs happen on your own daemons, so your code and keys stay with you.' },
+];
 
 export function Component() {
-    const { user, loading } = useAuth();
-    const navigate = useNavigate();
+	const { user, loading } = useAuth();
+	const navigate = useNavigate();
+	useEffect(() => { if (!loading && user) navigate('/home', { replace: true }); }, [loading, user, navigate]);
 
-    useEffect(() => {
-        if (!loading && user) {
-            navigate('/home', { replace: true });
-        }
-    }, [loading, user, navigate]);
+	if (loading || user) return <div className="theme-graphite flex min-h-screen items-center justify-center"><p role="status" className="text-[13px] text-[var(--g-ink-3)]">Loading…</p></div>;
 
-    if (loading || user) {
-        return (
-            <div className="flex min-h-[60vh] items-center justify-center">
-                <p className="text-sm text-slate-400">Loading...</p>
-            </div>
-        );
-    }
-
-    return (
-        <div>
-            {/* Hero */}
-            <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-purple-950 py-32">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(120,119,198,0.3),transparent)]" />
-                <div className="relative mx-auto max-w-4xl px-6 text-center">
-                    <h1 className="mb-6 text-5xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-7xl">
-                        AI teams.<br />
-                        <span className="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                            For everyone, by everyone.
-                        </span>
-                    </h1>
-                    <p className="mx-auto mb-12 max-w-2xl text-xl leading-relaxed text-indigo-100/80">
-                        A community of AI team builders.
-                        Build your team. Share it. Grab what others have built.
-                        Install and run in 60 seconds.
-                    </p>
-
-                    <div className="text-center">
-                        <Link
-                            to="/login"
-                            className="inline-block rounded-2xl bg-white px-10 py-4 text-lg font-extrabold text-slate-900 shadow-xl shadow-white/10 transition hover:scale-[1.02] hover:shadow-white/20"
-                        >
-                            Log in to CliqHub
-                        </Link>
-                    </div>
-                </div>
-            </section>
-
-            {/* What is it */}
-            <section className="mx-auto max-w-5xl px-6 py-28">
-                <div className="mb-16 text-center">
-                    <h2 className="mb-4 text-3xl font-extrabold text-slate-900 sm:text-4xl">
-                        Teamwork, but for AI agents
-                    </h2>
-                    <p className="mx-auto max-w-2xl text-lg text-slate-500">
-                        Think of it like GitHub for agent workflows. You design a team of
-                        AI agents, wire them together, and let them loose. When something
-                        needs a human eye, they stop and ask. When you&apos;re happy with it,
-                        share it so anyone can use it.
-                    </p>
-                </div>
-                <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-                    <FeatureCard
-                        emoji="🎨"
-                        title="Design visually"
-                        description="Drag, drop, connect. The builder makes team creation feel like play, not programming."
-                    />
-                    <FeatureCard
-                        emoji="🤝"
-                        title="Humans in the loop"
-                        description="Set review checkpoints so a real person can approve, tweak, or redirect before agents continue."
-                    />
-                    <FeatureCard
-                        emoji="📦"
-                        title="Share with everyone"
-                        description="Publish your team to the hub. Others install it in seconds and make it their own."
-                    />
-                    <FeatureCard
-                        emoji="⚡"
-                        title="One command to run"
-                        description="cliq run. That's it. Your whole pipeline kicks off, agents collaborate, results land."
-                    />
-                </div>
-            </section>
-
-            {/* Community callout */}
-            <section className="border-t border-slate-200 bg-white py-28">
-                <div className="mx-auto max-w-3xl px-6 text-center">
-                    <p className="mb-4 text-5xl">🚀</p>
-                    <h2 className="mb-5 text-3xl font-extrabold text-slate-900 sm:text-4xl">
-                        Better together
-                    </h2>
-                    <p className="mx-auto mb-10 max-w-xl text-lg leading-relaxed text-slate-500">
-                        The best teams get shared. Someone builds a killer code review pipeline,
-                        you install it. You build a content workflow that slaps, the community
-                        grabs it. Everyone levels up.
-                    </p>
-                    <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-                        <Link
-                            to="/login"
-                            className="rounded-xl bg-indigo-600 px-8 py-3.5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
-                        >
-                            Log in to CliqHub
-                        </Link>
-                        <a
-                            href="https://getcliq.io"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="rounded-xl border border-slate-200 px-8 py-3.5 text-sm font-bold text-slate-700 transition hover:border-emerald-200 hover:text-emerald-600"
-                        >
-                            Get Cliq — it&apos;s free
-                        </a>
-                    </div>
-                </div>
-            </section>
-
-            {/* How it works — quick and punchy */}
-            <section className="mx-auto max-w-4xl px-6 py-28">
-                <h2 className="mb-14 text-center text-3xl font-extrabold text-slate-900">
-                    Up and running in minutes
-                </h2>
-                <div className="grid gap-12 sm:grid-cols-3">
-                    <Step number="1" title="Install">
-                        One curl command. Done. Works on Mac, Linux, and WSL.
-                    </Step>
-                    <Step number="2" title="Build or browse">
-                        Create a team from scratch in the visual builder or install one
-                        someone already shared.
-                    </Step>
-                    <Step number="3" title="Run">
-                        Your agents do the work. You review what matters.
-                        Ship when you&apos;re ready.
-                    </Step>
-                </div>
-            </section>
-        </div>
-    );
-}
-
-function FeatureCard({ emoji, title, description }: { emoji: string; title: string; description: string }) {
-    return (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-50">
-            <p className="mb-3 text-2xl">{emoji}</p>
-            <h3 className="mb-2 text-sm font-bold text-slate-900">{title}</h3>
-            <p className="text-sm leading-relaxed text-slate-500">{description}</p>
-        </div>
-    );
-}
-
-function Step({ number, title, children }: { number: string; title: string; children: React.ReactNode }) {
-    return (
-        <div className="text-center">
-            <div className="mx-auto mb-4 flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">
-                {number}
-            </div>
-            <h3 className="mb-2 font-bold text-slate-900">{title}</h3>
-            <p className="text-sm leading-relaxed text-slate-500">{children}</p>
-        </div>
-    );
+	return (
+		<div className="theme-graphite min-h-screen">
+			<header className="mx-auto flex max-w-6xl items-center gap-6 px-6 py-5">
+				<Link to="/" className="flex items-center gap-2.5 text-[15px] font-semibold tracking-tight"><Cliq_mark class_name="h-7 w-7" title="CliqHub" />CliqHub</Link>
+				<nav aria-label="Site" className="ml-auto flex items-center gap-5 text-[13.5px] text-[var(--g-ink-2)]">
+					<Link to="/browse" className="hover:text-[var(--g-ink)]">Marketplace</Link>
+					<a href="https://docs.getcliq.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--g-ink)]">Docs</a>
+					<Link to="/login" className="rounded-lg bg-[var(--g-acc)] px-3.5 py-1.5 font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]">Sign in</Link>
+				</nav>
+			</header>
+			<main>
+				<section className="relative overflow-hidden">
+					<div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(var(--g-line)_1px,transparent_1px)] [background-size:22px_22px]" />
+					<div aria-hidden className="pointer-events-none absolute left-1/2 top-[-160px] h-[480px] w-[720px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.22),transparent_65%)]" />
+					<div className="relative mx-auto max-w-4xl px-6 pb-24 pt-20 text-center">
+						<h1 className="text-[44px] font-semibold leading-[1.06] tracking-[-0.03em] sm:text-[60px]">Ready-made AI teams.<br />Your requirements.<br /><span className="text-[var(--g-acc)]">Your machines.</span></h1>
+						<p className="mx-auto mt-6 max-w-[560px] text-[16px] leading-relaxed text-[var(--g-ink-3)]">Run multi-agent teams on your own daemons, with human review where it matters and a full record of every phase.</p>
+						<ol aria-label="Example team" className="mt-10 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2">
+							{PIPELINE.map((s, i) => (
+								<li key={s.label} className="flex items-center gap-1.5">
+									<span className="inline-flex items-center gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--g-ink-2)]"><span aria-hidden className="h-2 w-2 rounded-[3px]" style={{ background: s.tone }} />{s.label}</span>
+									{i < PIPELINE.length - 1 ? <ArrowRight aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" /> : null}
+								</li>
+							))}
+						</ol>
+						<div className="mt-10 flex flex-wrap justify-center gap-3">
+							<Link to="/login" className="rounded-[10px] bg-[var(--g-acc)] px-6 py-3 text-[14px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]">Sign in to CliqHub</Link>
+							<Link to="/browse" className="rounded-[10px] border border-[var(--g-line)] px-6 py-3 text-[14px] font-semibold hover:bg-[var(--g-soft)]">Browse teams</Link>
+						</div>
+						<p className="mt-4 text-[12.5px] text-[var(--g-ink-3)]">Invite only for now — your invite email has the link to set up an account.</p>
+					</div>
+				</section>
+				<section aria-label="What you get" className="mx-auto grid max-w-6xl gap-4 px-6 pb-20 sm:grid-cols-2 lg:grid-cols-4">
+					{FEATURES.map(({ icon: Icon, title, text }) => (
+						<div key={title} className="rounded-[12px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5">
+							<Icon aria-hidden className="h-5 w-5 text-[var(--g-acc)]" />
+							<h2 className="mt-3 text-[14px] font-semibold">{title}</h2>
+							<p className="mt-1.5 text-[13px] leading-relaxed text-[var(--g-ink-3)]">{text}</p>
+						</div>
+					))}
+				</section>
+				<section aria-label="Get started" className="border-t border-[var(--g-line)] bg-[var(--g-side)]">
+					<div className="mx-auto grid max-w-5xl gap-8 px-6 py-16 sm:grid-cols-3">
+						{[['1', 'Install', 'One command on Mac, Linux or WSL, then cliq login.'], ['2', 'Pick a team', 'Install one from the marketplace or build your own.'], ['3', 'Run', 'Agents do the work; you review what matters.']].map(([n, t, d]) => (
+							<div key={n}><span className="g-mono grid h-8 w-8 place-items-center rounded-full border border-[var(--g-acc-line)] text-[13px] text-[var(--g-acc)]">{n}</span><h3 className="mt-3 text-[14px] font-semibold">{t}</h3><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{d}</p></div>
+						))}
+					</div>
+				</section>
+			</main>
+			<footer className="border-t border-[var(--g-line)] py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">
+				CliqHub · <a href="https://getcliq.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--g-ink)]">Get Cliq</a> · <a href="https://docs.getcliq.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--g-ink)]">Docs</a>
+			</footer>
+		</div>
+	);
 }

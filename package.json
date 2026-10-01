@@ -8,7 +8,6 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "check:orgs-copy": "node scripts/check_orgs_copy.mjs",
     "check:rerun-copy": "node scripts/check_rerun_copy.mjs",
     "test:sync": "npm test --prefix services/sync",
     "db:schema": "tsx scripts/db.ts schema",

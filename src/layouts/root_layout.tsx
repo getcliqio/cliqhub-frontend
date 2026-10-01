@@ -11,15 +11,20 @@ function is_marketing_path(pathname: string): boolean {
 	return false;
 }
 
+/** Graphite pages that bring their own chrome even when signed out. */
 function is_auth_gate_path(pathname: string): boolean {
-	return pathname.startsWith('/login');
+	return pathname === '/'
+		|| pathname.startsWith('/login')
+		|| pathname.startsWith('/signup')
+		|| pathname.startsWith('/invite/')
+		|| pathname.startsWith('/realm-invite/');
 }
 
 function RootChrome() {
 	const { user, loading } = useAuth();
 	const { pathname } = useLocation();
 
-	// Login owns its own product-themed chrome (matches dashboard shell).
+	// Landing, sign-in, sign-up and invites own their Graphite chrome.
 	if (is_auth_gate_path(pathname)) {
 		return <Outlet />;
 	}

@@ -3,21 +3,23 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { RootLayout } from '@/layouts/root_layout';
 
-function render_layout() {
+function render_layout(path = '/browse') {
   const router = createMemoryRouter([
     {
       path: '/',
       element: <RootLayout />,
       children: [
-        { index: true, element: <div>test-content</div> },
+        { index: true, element: <div>landing-content</div> },
+        { path: 'browse', element: <div>test-content</div> },
+        { path: 'invite/:token', element: <div>invite-content</div> },
       ],
     },
-  ]);
+  ], { initialEntries: [path] });
   return render(<RouterProvider router={router} />);
 }
 
 describe('RootLayout', () => {
-  it('renders navbar', () => {
+  it('renders navbar on signed-out marketing pages', () => {
     render_layout();
     expect(screen.getAllByText('CliqHub').length).toBeGreaterThanOrEqual(1);
   });
@@ -31,5 +33,15 @@ describe('RootLayout', () => {
     render_layout();
     expect(screen.getByText('Get Cliq')).toBeInTheDocument();
     expect(screen.getByText('Docs')).toBeInTheDocument();
+  });
+
+  it('landing and invite pages bring their own (Graphite) chrome', () => {
+    const { unmount } = render_layout('/');
+    expect(screen.getByText('landing-content')).toBeInTheDocument();
+    expect(screen.queryByText('Get Cliq')).toBeNull();
+    unmount();
+    render_layout('/invite/abc');
+    expect(screen.getByText('invite-content')).toBeInTheDocument();
+    expect(screen.queryByText('Get Cliq')).toBeNull();
   });
 });

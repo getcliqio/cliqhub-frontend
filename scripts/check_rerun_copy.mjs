@@ -49,6 +49,9 @@ const ALLOWED = {
 	// Matches the identical suffix produced by run_detail_page.tsx so
 	// downstream tooling sees consistent naming for both entry points.
 	'src/pages/runs/runs_page.tsx':            1,
+	// Same `${run_name} (rerun)` suffix, from the Graphite run detail
+	// page's "Run again" action — kept identical to the classic page.
+	'src/pages/realm/run_detail_page.tsx':     1,
 };
 
 function run_ripgrep() {

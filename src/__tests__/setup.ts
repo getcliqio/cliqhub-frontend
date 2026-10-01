@@ -12,23 +12,17 @@ import '@testing-library/jest-dom/vitest';
 // shadows JSDOM's working `window.localStorage`, breaking any code that
 // touches the bare `localStorage` global. Force the global to point at
 // JSDOM's Storage so tests behave like a real browser.
-if (typeof window !== 'undefined' && window.localStorage) {
-    Object.defineProperty(globalThis, 'localStorage', {
+// Capture JSDOM's Storage objects first: in jsdom `globalThis === window`, so a
+// getter that reads `window.xStorage` would call itself forever.
+for (const key of ['localStorage', 'sessionStorage'] as const) {
+    if (typeof window === 'undefined') break;
+    let store: Storage | undefined;
+    try { store = window[key]; } catch { store = undefined; }
+    if (!store) continue;
+    Object.defineProperty(globalThis, key, {
         configurable: true,
         enumerable: true,
-        get: () => window.localStorage,
-        set: (v) => {
-            (window as unknown as { localStorage: Storage }).localStorage = v;
-        },
-    });
-}
-if (typeof window !== 'undefined' && window.sessionStorage) {
-    Object.defineProperty(globalThis, 'sessionStorage', {
-        configurable: true,
-        enumerable: true,
-        get: () => window.sessionStorage,
-        set: (v) => {
-            (window as unknown as { sessionStorage: Storage }).sessionStorage = v;
-        },
+        get: () => store,
+        set: (v: Storage) => { store = v; },
     });
 }

@@ -1,374 +1,401 @@
-import { Suspense, useState, useEffect } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { Moon, Sun } from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Terminal } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
-import { useTheme } from '@/lib/theme_context';
-import { ApiErrorBanner } from '@/components/ui/api_error';
 import { Cliq_mark } from '@/components/cliq_mark';
+import { invite_from_redirect, safe_redirect, type Invite_target } from '@/lib/safe_redirect';
+import '@/styles/graphite.css';
 
-function Login_top_bar() {
-	const { resolved, toggle } = useTheme();
+/* -------------------------------------------------------------------------- */
+/* Invite preview                                                             */
+/* -------------------------------------------------------------------------- */
 
+interface Invite_preview {
+	kind: Invite_target['kind'];
+	/** Org or realm display name. */
+	name: string;
+	/** Parent org slug for realm invites, when known. */
+	context: string | null;
+	role: string | null;
+	email: string | null;
+}
+
+type Invite_state =
+	| { status: 'none' }
+	| { status: 'loading' }
+	| { status: 'ready'; preview: Invite_preview }
+	| { status: 'invalid'; message: string };
+
+function to_preview(kind: Invite_target['kind'], raw: Record<string, unknown>): Invite_preview {
+	const str = (k: string): string | null => (typeof raw[k] === 'string' && raw[k] ? (raw[k] as string) : null);
+	const is_realm = kind === 'realm' || raw.target_type === 'realm';
+	return {
+		kind: is_realm ? 'realm' : 'org',
+		name: is_realm
+			? (str('realm_name') ?? str('realm_slug') ?? 'a realm')
+			: (str('org_display_name') ?? str('org_slug') ?? 'CliqHub'),
+		context: is_realm ? str('org_slug') : null,
+		role: str('role'),
+		email: str('email'),
+	};
+}
+
+function use_invite_preview(target: Invite_target | null): Invite_state {
+	const [state, set_state] = useState<Invite_state>(target ? { status: 'loading' } : { status: 'none' });
+
+	useEffect(() => {
+		if (!target) {
+			set_state({ status: 'none' });
+			return;
+		}
+		let cancelled = false;
+		set_state({ status: 'loading' });
+		(async () => {
+			try {
+				const res = await fetch('/v1/invitations/get_by_token', {
+					method: 'POST',
+					credentials: 'same-origin',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ token: target.token }),
+				});
+				const data = await res.json();
+				if (cancelled) return;
+				if (!data?.ok) {
+					const message = typeof data?.error === 'string'
+						? data.error
+						: (data?.error?.message ?? 'This invitation is no longer valid.');
+					set_state({ status: 'invalid', message });
+					return;
+				}
+				set_state({ status: 'ready', preview: to_preview(target.kind, data.data ?? {}) });
+			} catch {
+				if (!cancelled) set_state({ status: 'invalid', message: 'Could not load the invitation.' });
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [target?.kind, target?.token]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	return state;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Brand panel                                                                */
+/* -------------------------------------------------------------------------- */
+
+const PIPELINE: Array<{ label: string; tone: string }> = [
+	{ label: 'architect', tone: 'var(--g-t-llm)' },
+	{ label: 'review', tone: 'var(--g-t-hug)' },
+	{ label: 'implement', tone: 'var(--g-t-llm)' },
+	{ label: 'check', tone: 'var(--g-t-gate)' },
+	{ label: 'pr', tone: 'var(--g-t-conn)' },
+];
+
+export function Brand_panel() {
 	return (
-		<header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 dark:border-slate-800 dark:bg-slate-900">
-			<Link to="/" className="flex items-center gap-2.5">
-				<Cliq_mark class_name="h-7 w-7 shrink-0" title="cliqhub" />
-				<span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-					cliqhub
-				</span>
+		<section
+			aria-label="About CliqHub"
+			className="relative hidden flex-col justify-between overflow-hidden border-r border-[var(--g-line)] bg-[var(--g-side)] px-14 py-12 lg:flex"
+		>
+			<div
+				aria-hidden
+				className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:radial-gradient(var(--g-line)_1px,transparent_1px)] [background-size:22px_22px]"
+			/>
+			<div
+				aria-hidden
+				className="pointer-events-none absolute -left-32 -top-32 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.22),transparent_65%)]"
+			/>
+
+			<Link to="/" className="relative flex items-center gap-2.5 text-[15px] font-semibold tracking-tight">
+				<Cliq_mark class_name="h-7 w-7" title="CliqHub" />
+				CliqHub
 			</Link>
-			<div className="flex items-center gap-3">
-				<a
-					href="https://getcliq.io"
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hidden text-sm font-medium text-slate-600 hover:text-indigo-600 sm:inline dark:text-slate-300 dark:hover:text-indigo-300"
-				>
-					Get Cliq
-				</a>
-				<a
-					href="https://docs.getcliq.io"
-					target="_blank"
-					rel="noopener noreferrer"
-					className="hidden text-sm font-medium text-slate-600 hover:text-indigo-600 sm:inline dark:text-slate-300 dark:hover:text-indigo-300"
-				>
-					Docs
-				</a>
-				<button
-					type="button"
-					onClick={toggle}
-					className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-					title={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-					aria-label={resolved === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-				>
-					{resolved === 'dark' ? (
-						<Sun className="h-4 w-4" strokeWidth={2} />
-					) : (
-						<Moon className="h-4 w-4" strokeWidth={2} />
-					)}
-				</button>
+
+			<div className="relative max-w-[600px]">
+				<h1 className="text-[40px] font-semibold leading-[1.08] tracking-[-0.03em]">
+					Ready-made AI teams.
+					<br />
+					Your requirements.
+					<br />
+					<span className="text-[var(--g-acc)]">Your machines.</span>
+				</h1>
+				<p className="mt-5 max-w-[480px] text-[15px] leading-relaxed text-[var(--g-ink-3)]">
+					Run multi-agent teams on your own daemons, with human review where it matters and a
+					full record of every phase.
+				</p>
+
+				<ol aria-label="Example team" className="mt-10 flex flex-wrap items-center gap-x-1.5 gap-y-2">
+					{PIPELINE.map((step, i) => (
+						<li key={step.label} className="flex items-center gap-1.5">
+							<span className="inline-flex items-center gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--g-ink-2)]">
+								<span aria-hidden className="h-2 w-2 rounded-[3px]" style={{ background: step.tone }} />
+								{step.label}
+							</span>
+							{i < PIPELINE.length - 1 ? (
+								<ArrowRight aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
+							) : null}
+						</li>
+					))}
+				</ol>
 			</div>
-		</header>
+
+			<ul className="relative space-y-2.5 text-[13px] text-[var(--g-ink-3)]">
+				<li className="flex gap-2.5"><span className="text-[var(--g-acc)]">—</span>See every run live: phases, gates, cost.</li>
+				<li className="flex gap-2.5"><span className="text-[var(--g-acc)]">—</span>Approve, send back or reject from one inbox.</li>
+				<li className="flex gap-2.5"><span className="text-[var(--g-acc)]">—</span>Your code and keys stay on your daemons.</li>
+			</ul>
+		</section>
 	);
 }
 
-/**
- * Marketing pipeline — the story anyone understands:
- * you ask → specialists work → you review → it ships.
- * Light surface, sized to the column (no horizontal clip).
- */
-function Login_story_pipeline() {
-	const nodes = [
-		{ id: 'ask', label: 'Your ask', role: 'describe the work', x: 8, y: 86, fill: '#475569' },
-		{ id: 'plan', label: 'Plan', role: 'scopes it', x: 118, y: 28, fill: '#4f46e5' },
-		{ id: 'build', label: 'Build', role: 'does the work', x: 118, y: 144, fill: '#6366f1' },
-		{ id: 'draft', label: 'Draft', role: 'ready to check', x: 236, y: 86, fill: '#7c3aed' },
-		{ id: 'you', label: 'You review', role: 'only when needed', x: 354, y: 86, fill: '#d97706' },
-		{ id: 'done', label: 'Done', role: 'ship · notify', x: 472, y: 86, fill: '#059669' },
-	] as const;
-	const w = 104;
-	const h = 52;
-	const by_id = Object.fromEntries(nodes.map((n) => [n.id, n]));
-	const edges: Array<[string, string]> = [
-		['ask', 'plan'],
-		['ask', 'build'],
-		['plan', 'draft'],
-		['build', 'draft'],
-		['draft', 'you'],
-		['you', 'done'],
-	];
+/* -------------------------------------------------------------------------- */
+/* Form                                                                       */
+/* -------------------------------------------------------------------------- */
 
-	function path_for(from: string, to: string) {
-		const a = by_id[from];
-		const b = by_id[to];
-		const x1 = a.x + w;
-		const y1 = a.y + h / 2;
-		const x2 = b.x;
-		const y2 = b.y + h / 2;
-		const cx = (x1 + x2) / 2;
-		return `M ${x1} ${y1} C ${cx} ${y1}, ${cx} ${y2}, ${x2} ${y2}`;
+function Invite_card({ state }: { state: Invite_state }) {
+	if (state.status === 'none') return null;
+	if (state.status === 'loading') {
+		return (
+			<div
+				data-testid="invite-card"
+				className="mb-7 h-[68px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]"
+			/>
+		);
 	}
-
-	return (
-		<div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.08)] dark:border-slate-700 dark:bg-slate-900">
-			<p className="mb-2 flex items-center gap-2 px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">
-				<span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-				How a cliq team finishes work
-			</p>
-			<svg
-				viewBox="0 0 584 224"
-				className="block h-auto w-full"
-				role="img"
-				aria-label="From your ask to done — plan, build, review, ship"
+	if (state.status === 'invalid') {
+		return (
+			<div
+				data-testid="invite-card"
+				role="status"
+				className="mb-7 rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-3 text-[13px] text-[var(--g-ink-3)]"
 			>
-				<defs>
-					<linearGradient id="story_edge_g" x1="0%" y1="0%" x2="100%" y2="0%">
-						<stop offset="0%" stopColor="#6366f1" />
-						<stop offset="100%" stopColor="#a855f7" />
-					</linearGradient>
-					<marker id="story_arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto">
-						<path d="M0,0 L10,5 L0,10 z" fill="#a855f7" />
-					</marker>
-				</defs>
-
-				{edges.map(([from, to], i) => {
-					const d = path_for(from, to);
-					return (
-						<g key={`${from}-${to}`}>
-							<path
-								d={d}
-								stroke="url(#story_edge_g)"
-								strokeWidth="2"
-								fill="none"
-								markerEnd="url(#story_arrow)"
-								opacity="0.8"
-							/>
-							<circle r="3.25" fill="#a855f7">
-								<animateMotion dur="2.5s" repeatCount="indefinite" begin={`${0.3 * i}s`} path={d} />
-								<animate
-									attributeName="opacity"
-									values="0;1;1;0"
-									keyTimes="0;0.12;0.88;1"
-									dur="2.5s"
-									repeatCount="indefinite"
-									begin={`${0.3 * i}s`}
-								/>
-							</circle>
-						</g>
-					);
-				})}
-
-				{nodes.map((n) => (
-					<g key={n.id}>
-						<rect x={n.x} y={n.y} width={w} height={h} rx="11" fill={n.fill} />
-						<text
-							x={n.x + w / 2}
-							y={n.y + 22}
-							textAnchor="middle"
-							fill="#fff"
-							style={{ fontSize: '12px', fontWeight: 700 }}
-						>
-							{n.label}
-						</text>
-						<text
-							x={n.x + w / 2}
-							y={n.y + 38}
-							textAnchor="middle"
-							fill="rgba(255,255,255,0.78)"
-							style={{ fontSize: '9.5px', fontWeight: 500 }}
-						>
-							{n.role}
-						</text>
-					</g>
-				))}
-			</svg>
+				<b className="font-semibold text-[var(--g-ink-2)]">Invitation unavailable.</b> {state.message} You can
+				still sign in.
+			</div>
+		);
+	}
+	const { preview } = state;
+	const initials = preview.name.replace(/[^a-z0-9]/gi, '').slice(0, 2).toUpperCase() || 'CQ';
+	return (
+		<div
+			data-testid="invite-card"
+			className="mb-7 flex items-center gap-3 rounded-xl border border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] px-4 py-3"
+		>
+			<span
+				aria-hidden
+				className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-500 text-[12px] font-bold text-white"
+			>
+				{initials}
+			</span>
+			<div className="min-w-0 text-[13px] leading-snug">
+				<p>
+					You're invited to{' '}
+					<b className="font-semibold">
+						{preview.context ? `${preview.context} / ` : ''}
+						{preview.name}
+					</b>
+					{preview.role ? (
+						<>
+							{' '}as <b className="font-semibold capitalize">{preview.role}</b>
+						</>
+					) : null}
+				</p>
+				<p className="mt-0.5 truncate text-[12px] text-[var(--g-ink-3)]">
+					Sign in to accept{preview.email ? ` · sent to ${preview.email}` : ''}
+				</p>
+			</div>
 		</div>
 	);
 }
 
-function LoginForm() {
+function Login_form() {
 	const { user, loading, login } = useAuth();
 	const navigate = useNavigate();
-	const [searchParams] = useSearchParams();
-	const redirect = searchParams.get('redirect') || '/home';
+	const [search_params] = useSearchParams();
+
+	const redirect = useMemo(() => safe_redirect(search_params.get('redirect')), [search_params]);
+	const invite_target = useMemo(() => invite_from_redirect(redirect), [redirect]);
+	const invite = use_invite_preview(invite_target);
 
 	const [username, set_username] = useState('');
 	const [password, set_password] = useState('');
+	const [show_password, set_show_password] = useState(false);
+	const [caps_lock, set_caps_lock] = useState(false);
 	const [error, set_error] = useState('');
 	const [submitting, set_submitting] = useState(false);
 
 	useEffect(() => {
-		if (!loading && user) {
-			navigate(redirect, { replace: true });
-		}
+		if (!loading && user) navigate(redirect, { replace: true });
 	}, [loading, user, navigate, redirect]);
 
 	async function handle_submit(e: React.FormEvent) {
 		e.preventDefault();
+		if (submitting) return;
 		set_error('');
 		set_submitting(true);
-
 		const err = await login(username.trim().toLowerCase(), password);
 		if (err) {
 			set_error(err);
 			set_submitting(false);
 		}
+		// On success the effect above navigates once the session hydrates.
 	}
+
+	function track_caps(e: React.KeyboardEvent<HTMLInputElement>) {
+		set_caps_lock(e.getModifierState?.('CapsLock') ?? false);
+	}
+
+	const can_submit = !submitting && username.trim().length > 0 && password.length > 0;
+	const is_invite = invite.status === 'ready';
+	const signup_href = invite_target
+		? `/${invite_target.kind === 'org' ? 'invite' : 'realm-invite'}/${encodeURIComponent(invite_target.token)}`
+		: null;
+
+	const input_class =
+		'h-11 w-full rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-3.5 text-[14px] text-[var(--g-ink)] outline-none transition placeholder:text-[var(--g-ink-3)] focus:border-[var(--g-acc-line)] focus:ring-4 focus:ring-[var(--g-acc-soft)] aria-[invalid=true]:border-[var(--g-bad-line)]';
 
 	if (loading || user) {
 		return (
-			<div className="flex min-h-screen flex-col">
-				<Login_top_bar />
-				<div className="flex flex-1 items-center justify-center bg-slate-50 dark:bg-slate-950">
-					<p className="text-sm text-slate-400 dark:text-slate-500">Loading...</p>
-				</div>
+			<div className="flex flex-1 items-center justify-center" role="status" aria-live="polite">
+				<p className="text-[13px] text-[var(--g-ink-3)]">{user ? 'Signing you in…' : 'Loading…'}</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="flex min-h-screen flex-col">
-			<Login_top_bar />
+		<div className="flex flex-1 items-center justify-center px-6 py-12">
+			<div className="w-full max-w-[400px]">
+				<Link to="/" className="mb-10 flex items-center gap-2.5 text-[15px] font-semibold lg:hidden">
+					<Cliq_mark class_name="h-7 w-7" title="CliqHub" />
+					CliqHub
+				</Link>
 
-			<main className="relative isolate flex flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_500px_at_100%_0%,rgba(224,231,255,0.55),transparent_60%),radial-gradient(900px_400px_at_0%_100%,rgba(219,234,254,0.4),transparent_60%),linear-gradient(180deg,#f8fafc_0%,#eff6ff_100%)] dark:bg-[#0f172a] dark:bg-none">
-				<div
-					aria-hidden
-					className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-indigo-400/15 blur-3xl dark:bg-indigo-500/10"
-				/>
-				<div
-					aria-hidden
-					className="pointer-events-none absolute -right-16 bottom-10 h-80 w-80 rounded-full bg-violet-300/20 blur-3xl dark:bg-violet-600/10"
-				/>
+				<Invite_card state={invite} />
 
-				<div className="relative mx-auto grid w-full max-w-6xl flex-1 items-center gap-10 px-6 py-12 lg:grid-cols-2 lg:gap-14 lg:py-16">
-					<section className="max-w-xl">
-						<p className="text-xs font-bold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">
-							CliqHub
-						</p>
-						<h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-slate-900 dark:text-slate-50 sm:text-5xl">
-							See your AI work finish — without chasing it.
-						</h1>
-						<p className="mt-5 max-w-md text-base leading-relaxed text-slate-600 dark:text-slate-300">
-							Sign in to start jobs, invite your team, and watch progress live.
-							Invite-only for now.
-						</p>
+				<h2 className="text-[26px] font-semibold tracking-[-0.02em]">Sign in</h2>
+				<p className="mt-1.5 text-[14px] text-[var(--g-ink-3)]">
+					{is_invite ? 'Use your CliqHub account to accept the invitation.' : 'Welcome back. Use your CliqHub username.'}
+				</p>
 
-						<div className="mt-8">
-							<Login_story_pipeline />
-						</div>
-
-						<ul className="mt-8 space-y-3 text-sm text-slate-600 dark:text-slate-400">
-							<li className="flex items-start gap-2">
-								<span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600 dark:bg-indigo-400" />
-								Live status so you know what’s running and what’s done
-							</li>
-							<li className="flex items-start gap-2">
-								<span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600 dark:bg-indigo-400" />
-								Alerts in Slack or email when something needs you
-							</li>
-							<li className="flex items-start gap-2">
-								<span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-600 dark:bg-indigo-400" />
-								New here?{' '}
-								<a
-									href="https://getcliq.io/download"
-									className="font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300"
-								>
-									Install cliq
-								</a>{' '}
-								on your machine first
-							</li>
-						</ul>
-					</section>
-
-					<section className="w-full max-w-md justify-self-center lg:justify-self-end">
-						<div className="rounded-[20px] border border-slate-200/90 bg-white p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_1px_2px_rgba(0,0,0,0.3),0_8px_24px_rgba(0,0,0,0.35)]">
-							<div className="mb-6 flex items-center gap-3">
-								<Cliq_mark class_name="h-9 w-9 shrink-0" title="cliq" />
-								<div>
-									<h2 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
-										Sign in
-									</h2>
-									<p className="text-sm text-slate-500 dark:text-slate-400">
-										Use your CliqHub username and password.
-									</p>
-								</div>
-							</div>
-
-							<form onSubmit={handle_submit} className="space-y-4">
-								<div>
-									<label
-										htmlFor="username"
-										className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300"
-									>
-										Username
-									</label>
-									<input
-										id="username"
-										type="text"
-										value={username}
-										onChange={(e) => set_username(e.target.value)}
-										autoComplete="username"
-										autoFocus
-										required
-										className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-									/>
-								</div>
-
-								<div>
-									<label
-										htmlFor="password"
-										className="mb-1 block text-xs font-semibold text-slate-600 dark:text-slate-300"
-									>
-										Password
-									</label>
-									<input
-										id="password"
-										type="password"
-										value={password}
-										onChange={(e) => set_password(e.target.value)}
-										autoComplete="current-password"
-										required
-										className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-									/>
-								</div>
-
-								<ApiErrorBanner error={error} />
-
-								<button
-									type="submit"
-									disabled={submitting || !username.trim() || !password}
-									className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
-								>
-									{submitting ? 'Signing in…' : 'Sign in'}
-								</button>
-							</form>
-
-							<p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
-								Need access? Ask a CliqHub admin for an invite.
-							</p>
-						</div>
-					</section>
-				</div>
-
-				<footer className="relative border-t border-slate-200/80 bg-white/70 py-5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/60">
-					<div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-6 px-6 text-sm text-slate-400 dark:text-slate-500">
-						<span>CliqHub</span>
-						<a
-							href="https://getcliq.io"
-							target="_blank"
-							rel="noopener noreferrer"
-							className="hover:text-indigo-600 dark:hover:text-indigo-300"
-						>
-							Get Cliq
-						</a>
-						<a
-							href="https://docs.getcliq.io"
-							target="_blank"
-							rel="noopener noreferrer"
-							className="hover:text-indigo-600 dark:hover:text-indigo-300"
-						>
-							Docs
-						</a>
-						<Link to="/" className="hover:text-indigo-600 dark:hover:text-indigo-300">
-							Home
-						</Link>
+				<form onSubmit={handle_submit} className="mt-7 space-y-4" noValidate>
+					<div>
+						<label htmlFor="username" className="mb-1.5 block text-[12.5px] font-medium text-[var(--g-ink-2)]">
+							Username
+						</label>
+						<input
+							id="username"
+							name="username"
+							type="text"
+							value={username}
+							onChange={(e) => set_username(e.target.value)}
+							autoComplete="username"
+							autoCapitalize="none"
+							autoCorrect="off"
+							spellCheck={false}
+							autoFocus
+							required
+							aria-invalid={error ? true : undefined}
+							className={input_class}
+						/>
 					</div>
-				</footer>
-			</main>
+
+					<div>
+						<label htmlFor="password" className="mb-1.5 block text-[12.5px] font-medium text-[var(--g-ink-2)]">
+							Password
+						</label>
+						<div className="relative">
+							<input
+								id="password"
+								name="password"
+								type={show_password ? 'text' : 'password'}
+								value={password}
+								onChange={(e) => set_password(e.target.value)}
+								onKeyUp={track_caps}
+								onKeyDown={track_caps}
+								autoComplete="current-password"
+								required
+								aria-invalid={error ? true : undefined}
+								aria-describedby={caps_lock ? 'caps-lock-hint' : undefined}
+								className={`${input_class} pr-11`}
+							/>
+							<button
+								type="button"
+								onClick={() => set_show_password((v) => !v)}
+								aria-label={show_password ? 'Hide password' : 'Show password'}
+								aria-pressed={show_password}
+								className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-hover)] hover:text-[var(--g-ink)]"
+							>
+								{show_password ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+							</button>
+						</div>
+						{caps_lock ? (
+							<p id="caps-lock-hint" className="mt-1.5 text-[12px] text-[var(--g-warn-text)]">
+								Caps Lock is on.
+							</p>
+						) : null}
+					</div>
+
+					{error ? (
+						<div
+							role="alert"
+							className="flex items-start gap-2 rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-bad-soft)] px-3.5 py-2.5 text-[13px] text-[var(--g-ink)]"
+						>
+							<AlertCircle aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-[var(--g-bad)]" />
+							<span>{error}</span>
+						</div>
+					) : null}
+
+					<button
+						type="submit"
+						disabled={!can_submit}
+						className="h-11 w-full rounded-[10px] bg-[var(--g-acc)] text-[14px] font-semibold text-[var(--g-on-acc)] transition hover:bg-[var(--g-acc-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+					>
+						{submitting ? 'Signing in…' : is_invite ? 'Sign in & accept invite' : 'Sign in'}
+					</button>
+				</form>
+
+				<p className="mt-6 text-[13px] text-[var(--g-ink-3)]">
+					{signup_href ? (
+						<>
+							New to CliqHub?{' '}
+							<Link to={signup_href} className="font-medium text-[var(--g-acc)] hover:underline">
+								Create an account
+							</Link>
+						</>
+					) : (
+						<>Need access? Ask a CliqHub admin for an invite.</>
+					)}
+				</p>
+
+				<div className="mt-10 flex items-center gap-2.5 border-t border-[var(--g-line)] pt-5 text-[12px] text-[var(--g-ink-3)]">
+					<Terminal aria-hidden className="h-3.5 w-3.5" />
+					<span>
+						Using the CLI? Run <code className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5 text-[var(--g-ink-2)]">cliq login</code>
+					</span>
+					<a
+						href="https://docs.getcliq.io"
+						target="_blank"
+						rel="noopener noreferrer"
+						className="ml-auto hover:text-[var(--g-ink)]"
+					>
+						Docs
+					</a>
+				</div>
+			</div>
 		</div>
 	);
 }
 
 export function Component() {
 	return (
-		<Suspense
-			fallback={
-				<div className="flex min-h-screen items-center justify-center bg-slate-50">
-					<p className="text-sm text-slate-400">Loading...</p>
-				</div>
-			}
-		>
-			<LoginForm />
-		</Suspense>
+		<div className="theme-graphite grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+			<Brand_panel />
+			<main className="flex min-h-screen flex-col">
+				<Suspense fallback={null}>
+					<Login_form />
+				</Suspense>
+			</main>
+		</div>
 	);
 }

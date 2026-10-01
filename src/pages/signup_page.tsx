@@ -1,26 +1,28 @@
-import { Link } from 'react-router';
+/** /signup (Graphite) — CliqHub is invite-only: explain, point to sign-in or an invite link. */
+import { Link, useSearchParams } from 'react-router';
+import { Lock } from 'lucide-react';
+import { Cliq_mark } from '@/components/cliq_mark';
+import { safe_redirect } from '@/lib/safe_redirect';
+import { Brand_panel } from '@/pages/login_page';
+import '@/styles/graphite.css';
 
 export function Component() {
-    return (
-        <div className="flex min-h-[70vh] items-center justify-center px-6">
-            <div className="w-full max-w-sm text-center">
-                <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-50">
-                    <svg className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                    </svg>
-                </div>
-                <h1 className="mb-3 text-2xl font-extrabold text-slate-900">Invite Only</h1>
-                <p className="mb-8 text-sm leading-relaxed text-slate-500">
-                    CliqHub is currently in private beta. Accounts are created by invitation.
-                    If you already have an account, log in below.
-                </p>
-                <Link
-                    to="/login"
-                    className="inline-block rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700"
-                >
-                    Log in
-                </Link>
-            </div>
-        </div>
-    );
+	const [sp] = useSearchParams();
+	const raw = sp.get('redirect');
+	const redirect = raw ? safe_redirect(raw) : null;
+	return (
+		<div className="theme-graphite grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+			<Brand_panel />
+			<main className="flex min-h-screen items-center justify-center px-6 py-12">
+				<div className="w-full max-w-[400px]">
+					<Link to="/" className="mb-10 flex items-center gap-2.5 text-[15px] font-semibold lg:hidden"><Cliq_mark class_name="h-7 w-7" title="CliqHub" />CliqHub</Link>
+					<span aria-hidden className="mb-6 grid h-12 w-12 place-items-center rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]"><Lock className="h-5 w-5 text-[var(--g-acc)]" /></span>
+					<h1 className="text-[26px] font-semibold tracking-[-0.02em]">Invite only</h1>
+					<p className="mt-2 text-[14px] leading-relaxed text-[var(--g-ink-3)]">CliqHub is in private beta. Accounts are created from an organization invitation — open the link in your invite email to set up your account.</p>
+					<Link to={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : '/login'} className="mt-7 flex h-11 w-full items-center justify-center rounded-[10px] bg-[var(--g-acc)] text-[14px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]">I have an account — sign in</Link>
+					<p className="mt-6 text-[13px] text-[var(--g-ink-3)]">Invited to a realm but don’t have an account? Ask whoever invited you to invite you to their organization.</p>
+				</div>
+			</main>
+		</div>
+	);
 }
