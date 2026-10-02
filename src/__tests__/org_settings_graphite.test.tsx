@@ -11,35 +11,44 @@ vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => 
 import { Component as OrgPage, group_permissions } from '@/pages/org/org_page';
 import { Component as SettingsPage } from '@/pages/settings/settings_page';
 
+const ROLE = { org_id: 'o1', is_default: false, member_count: 0 };
 const ROLES = [
-	{ id: 'ro-owner', slug: 'owner', name: 'Owner', is_system: true, permissions: ['org.manage', 'realms.create', 'teams.run'] },
-	{ id: 'ro-admin', slug: 'admin', name: 'Admin', is_system: true, permissions: ['realms.create', 'teams.run'] },
-	{ id: 'ro-member', slug: 'member', name: 'Member', is_system: true, is_default: true, permissions: ['teams.run'] },
-	{ id: 'ro-rel', slug: 'release', name: 'Release', is_system: false, permissions: ['teams.run'] },
+	{ ...ROLE, id: 'ro-owner', slug: 'owner', name: 'Owner', is_system: true, permissions: ['org.manage', 'realms.create', 'teams.run'], member_count: 1 },
+	{ ...ROLE, id: 'ro-admin', slug: 'admin', name: 'Admin', is_system: true, permissions: ['realms.create', 'teams.run'] },
+	{ ...ROLE, id: 'ro-member', slug: 'member', name: 'Member', is_system: true, is_default: true, permissions: ['teams.run'], member_count: 1 },
+	{ ...ROLE, id: 'ro-rel', slug: 'release', name: 'Release', is_system: false, permissions: ['teams.run'] },
 ];
-function org_data(my_role = 'owner') {
+const M = { invited_at: null, joined_at: '2025-01-01T00:00:00Z', deleted_at: null };
+function org_data(my_role = 'owner', over: Record<string, unknown> = {}) {
 	return {
 		org: {
 			id: 'o1', slug: 'measureone', display_name: 'MeasureOne', created_at: '2025-01-01T00:00:00Z', my_role,
+			status: 'active', owner: { user_id: 'u1', username: 'sapan', status: 'active' }, deleted_at: null,
 			members: [
-				{ user_id: 'u1', username: 'sapan', display_name: 'Sapan', email: 's@x.com', role: 'owner', role_id: 'ro-owner' },
-				{ user_id: 'u2', username: 'maya', display_name: 'Maya', email: 'm@x.com', role: 'member', role_id: 'ro-member' },
+				{ user_id: 'u1', username: 'sapan', display_name: 'Sapan', email: 's@x.com', role: 'owner', role_id: 'ro-owner', status: 'active', ...M },
+				{ user_id: 'u2', username: 'maya', display_name: 'Maya', email: 'm@x.com', role: 'member', role_id: 'ro-member', status: 'active', ...M },
+				{ user_id: 'u3', username: 'gone', display_name: 'Gone Person', email: 'g@x.com', role: 'member', role_id: 'ro-member', status: 'deleted', invited_at: null, joined_at: '2025-01-01T00:00:00Z', deleted_at: '2026-09-01T00:00:00Z' },
+				{ user_id: 'u4', username: null, display_name: '', email: 'new@x.com', role: 'member', role_id: 'ro-member', status: 'pending', invited_at: '2026-10-01T00:00:00Z', joined_at: null, deleted_at: null },
 			],
 			scopes: [{ id: 's1', slug: 'measureone', display_name: 'MeasureOne', visibility: 'private', member_count: 2, team_count: 3 }, { id: 's2', slug: 'm1-data', display_name: 'm1-data', visibility: 'public', member_count: 0, team_count: 0 }],
 			roles: ROLES,
+			pending_owner_invite: null,
+			available_permissions: ['realms.create', 'teams.run'],
+			owner_only_permissions: ['org.manage'],
+			...over,
 		},
-		invites: [{ id: 'i1', email: 'new@x.com', role: 'member', created_at: new Date().toISOString() }],
+		invites: [{ invite_id: 'i1', email: 'new@x.com', role: 'member', kind: 'org', status: 'pending', inviter: { id: 'u1', display_name: 'Sapan' }, send_count: 1, last_sent_at: new Date().toISOString(), expires_at: '2026-10-15T00:00:00Z', created_at: new Date().toISOString() }],
 		permissions: { all: ['org.manage', 'realms.create', 'teams.run'], owner_only: ['org.manage'] },
 		partial: false,
 	};
 }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(extra: Record<string, (b: Record<string, unknown>) => { ok: boolean; data?: unknown; error?: unknown; status?: number }> = {}) {
+function route_fetch(extra: Record<string, (b: Record<string, unknown>) => { ok: boolean; data?: unknown; error?: unknown; status?: number }> = {}, overview = multi_org_overview) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
-		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: multi_org_overview() }));
+		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: overview() }));
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
@@ -77,17 +86,103 @@ describe('Organization page', () => {
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_role')?.body).toEqual({ org_id: 'o1', user_id: 'u2', role_id: 'ro-admin' }));
 	});
 
-	it('add by email falls back to an invite when there is no account', async () => {
-		const calls = route_fetch({
+	const created = (b: Record<string, unknown>, over: Record<string, unknown> = {}) => ({ ok: true, data: { invite_id: 'i9', status: 'pending', email: b.email, role: b.role, expires_at: '2026-10-16T10:20:00Z', resent: false, email_sent: true, invite_url: null, ...over } });
+
+	it('Invite (no Add member): any email gets an invite with the chosen role', async () => {
+		const calls = route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }), '/v1/invitations/create': (b) => created(b) });
+		open_org();
+		expect(await screen.findByRole('form', { name: 'Invite' })).toBeInTheDocument();
+		expect(screen.queryByRole('textbox', { name: 'Add or invite' })).toBeNull();
+		const roles = within(screen.getByLabelText('Invite as')).getAllByRole('option').map((o) => o.textContent);
+		expect(roles).toEqual(['Member', 'Admin', 'Owner']);
+		fireEvent.change(screen.getByLabelText('Email to invite'), { target: { value: 'z@x.com' } });
+		fireEvent.change(screen.getByLabelText('Invite as'), { target: { value: 'admin' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		expect(await screen.findByTestId('sent-result')).toHaveTextContent('Invite sent to z@x.com.');
+		expect(calls.find((c) => c.url === '/v1/invitations/create')?.body).toEqual({ target_type: 'org', org_id: 'o1', email: 'z@x.com', role: 'admin' });
+		expect(calls.some((c) => c.url === '/v1/orgs/add_member')).toBe(false);
+	});
+
+	it('Invite without email set up shows the link to copy; an existing member says so', async () => {
+		let n = 0;
+		route_fetch({
 			'/v1/org_page/get': () => ({ ok: true, data: org_data() }),
-			'/v1/orgs/add_member': () => ({ ok: false, error: { message: 'User not found' }, status: 404 }),
+			'/v1/invitations/create': (b) => (n++ === 0 ? created(b, { email_sent: false, invite_url: 'https://app.example.test/invite/q7Zk' }) : { ok: false, error: { code: 'already_member', message: 'conflict', details: { user_id: 'u2' } }, status: 409 }),
 		});
 		open_org();
-		fireEvent.change(await screen.findByRole('textbox', { name: 'Add or invite' }), { target: { value: 'z@x.com' } });
-		fireEvent.change(screen.getByLabelText('Invite as'), { target: { value: 'admin' } });
-		fireEvent.click(screen.getByRole('button', { name: /Add or invite/ }));
-		expect(await screen.findByText('Invite sent to z@x.com.')).toBeInTheDocument();
-		expect(calls.find((c) => c.url === '/v1/invitations/create')?.body).toEqual({ target_type: 'org', org_id: 'o1', email: 'z@x.com', role: 'admin' });
+		fireEvent.change(await screen.findByLabelText('Email to invite'), { target: { value: 'z@x.com' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		expect(await screen.findByTestId('fallback-url')).toHaveTextContent('https://app.example.test/invite/q7Zk');
+		fireEvent.change(screen.getByLabelText('Email to invite'), { target: { value: 'm@x.com' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('m@x.com is already a member.');
+	});
+
+	it('admins can’t invite owners', async () => {
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data('admin') }) });
+		open_org();
+		const roles = within(await screen.findByLabelText('Invite as')).getAllByRole('option').map((o) => o.textContent);
+		expect(roles).not.toContain('Owner');
+	});
+
+	it('rows show Active / Pending / Deleted; pending rows have Send again (same create call) and Revoke', async () => {
+		const calls = route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }), '/v1/invitations/create': (b) => created(b, { resent: true }) });
+		open_org();
+		expect(within(await screen.findByTestId('member-maya')).getByText('Active')).toBeInTheDocument();
+		const gone = screen.getByTestId('member-gone');
+		expect(within(gone).getByText('Deleted')).toBeInTheDocument();
+		expect(within(gone).queryByRole('button', { name: 'Remove…' })).toBeNull();
+		expect(screen.queryByTestId('member-new')).toBeNull();
+		const pending = screen.getByTestId('invite-new@x.com');
+		expect(within(pending).getByText('Pending')).toBeInTheDocument();
+		expect(pending).toHaveTextContent('expires 15 Oct');
+		fireEvent.click(within(pending).getByRole('button', { name: 'Send again' }));
+		expect(await screen.findByTestId('sent-result')).toHaveTextContent('Invite sent again to new@x.com.');
+		expect(calls.find((c) => c.url === '/v1/invitations/create')?.body).toEqual({ target_type: 'org', org_id: 'o1', email: 'new@x.com', role: 'member' });
+	});
+
+	it('the Deleted chip lists former members', async () => {
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }) });
+		open_org();
+		fireEvent.click(await screen.findByRole('button', { name: /Deleted/ }));
+		expect(screen.getByTestId('member-gone')).toBeInTheDocument();
+		expect(screen.queryByTestId('member-maya')).toBeNull();
+	});
+
+	it('Waiting for owner: the header banner names who was invited and when the invite expires', async () => {
+		const data = org_data('site_admin', { status: 'waiting_for_owner', owner: { user_id: 'u9', username: null, status: 'invited' }, pending_owner_invite: { invite_id: 'i-own', email: 'owner@x.com', expires_at: '2026-10-15T00:00:00Z' } });
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data }) });
+		open_org();
+		expect(await screen.findByTestId('waiting-owner')).toHaveTextContent('owner@x.com was invited to own this org and hasn’t accepted yet. The invite expires 15 Oct.');
+	});
+
+	it('without the invite list, a pending member invited by email shows their email and Invited', async () => {
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: { ...org_data(), invites: null } }) });
+		open_org();
+		const row = await screen.findByTestId('member-u4');
+		expect(row).toHaveTextContent('new@x.com');
+		expect(within(row).getByText('Pending')).toBeInTheDocument();
+	});
+
+	it('roles: without the permission catalogue the grid uses the org’s own permission lists', async () => {
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: { ...org_data(), permissions: null } }) });
+		open_org('/orgs/o1?tab=roles');
+		await screen.findByTestId('roles-grid');
+		expect(screen.getByRole('button', { name: 'Release: org.manage' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Release: realms.create' })).toBeEnabled();
+	});
+
+	it('a deleted account’s email: non-site-admins are told to contact their admin', async () => {
+		route_fetch({
+			'/v1/org_page/get': () => ({ ok: true, data: org_data() }),
+			'/v1/invitations/create': () => ({ ok: false, error: { code: 'deleted', message: 'deleted', details: { kind: 'user', id: 'u-x', deleted_at: '2026-06-01T00:00:00Z', was_active: true } }, status: 409 }),
+		});
+		open_org();
+		fireEvent.change(await screen.findByLabelText('Email to invite'), { target: { value: 'gone@x.com' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		const notice = await screen.findByTestId('deleted-notice');
+		expect(notice).toHaveTextContent('gone@x.com belongs to a deleted account. Contact your admin.');
+		expect(within(notice).queryByRole('button', { name: 'Reactivate' })).toBeNull();
 	});
 
 	it('remove needs a confirm; revoke invite posts invitations/revoke', async () => {
@@ -98,7 +193,7 @@ describe('Organization page', () => {
 		fireEvent.click(within(row).getByRole('button', { name: 'Remove maya' }));
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/orgs/remove_member' && c.body.user_id === 'u2')).toBe(true));
 		fireEvent.click(within(screen.getByTestId('invite-new@x.com')).getByRole('button', { name: 'Revoke' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/invitations/revoke')?.body).toEqual({ target_type: 'org', invite_id: 'i1' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/invitations/revoke')?.body).toEqual({ invite_id: 'i1' }));
 	});
 
 	it('roles: system roles locked, custom role toggles and saves; owner-only perms locked', async () => {
@@ -139,8 +234,21 @@ describe('Organization page', () => {
 		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data('member') }) });
 		open_org();
 		expect(await screen.findByText(/owners and admins manage it/)).toBeInTheDocument();
-		expect(screen.queryByRole('textbox', { name: 'Add or invite' })).toBeNull();
+		expect(screen.queryByRole('form', { name: 'Invite' })).toBeNull();
 		expect(screen.queryByLabelText('Role for maya')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+	});
+
+	it('a plain member sees active members without emails (Core leaves them out)', async () => {
+		const data = org_data('member');
+		const members = data.org.members.filter((m) => m.status === 'active').map((m) => ({ ...m, email: null }));
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: { ...data, org: { ...data.org, members }, invites: null } }) });
+		open_org();
+		const maya = await screen.findByTestId('member-maya');
+		expect(maya).toHaveTextContent('@maya');
+		expect(maya).not.toHaveTextContent('m@x.com');
+		expect(screen.queryByTestId('member-gone')).toBeNull();
+		expect(screen.queryByTestId('member-u4')).toBeNull();
 	});
 
 	it('settings: rename posts orgs/update', async () => {
@@ -153,6 +261,17 @@ describe('Organization page', () => {
 });
 
 describe('Settings page', () => {
+	it('an org waiting for its owner shows the Waiting for owner pill in the org list', async () => {
+		route_fetch({}, () => {
+			const o = multi_org_overview();
+			o.orgs = o.orgs.map((x) => (x.slug === 'acme-labs' ? { ...x, org_status: 'waiting_for_owner' as const } : x));
+			return o;
+		});
+		open_settings();
+		expect(within(await screen.findByTestId('my-org-acme-labs')).getByText('Waiting for owner')).toBeInTheDocument();
+		expect(within(screen.getByTestId('my-org-measureone')).queryByText('Active')).toBeNull();
+	});
+
 	it('profile saves only changed fields and lists orgs', async () => {
 		const calls = route_fetch();
 		open_settings();
@@ -195,6 +314,33 @@ describe('Settings page', () => {
 		fireEvent.click(within(row).getByRole('button', { name: 'Revoke…' }));
 		fireEvent.click(within(row).getByRole('button', { name: 'Revoke' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/auth/revoke_token')?.body).toEqual({ type: 'user', token_id: 't1' }));
+	});
+
+	it('my scopes: shows orgs/get_scopes `items` (it used to read `scopes` and showed none) and sorts them in the page', async () => {
+		route_fetch({ '/v1/orgs/get_scopes': () => ({ ok: true, data: { items: [
+			{ id: 's1', slug: 'zeta', visibility: 'public', scope_type: 'org', org_id: 'o1', team_count: 1 },
+			{ id: 's2', slug: 'alpha', visibility: 'private', scope_type: 'user', org_id: null, team_count: 7 },
+		], total: 2, offset: 0, limit: 100 } }) });
+		open_settings('/settings?tab=scopes');
+		expect(await screen.findByText('@zeta')).toBeInTheDocument();
+		const order = () => screen.getAllByText(/^@(zeta|alpha)$/).map((n) => n.textContent);
+		expect(order()).toEqual(['@zeta', '@alpha']);
+		fireEvent.click(screen.getByRole('button', { name: 'Scope' }));
+		expect(order()).toEqual(['@alpha', '@zeta']);
+		expect(screen.getByRole('columnheader', { name: /Scope/ })).toHaveAttribute('aria-sort', 'ascending');
+		fireEvent.click(screen.getByRole('button', { name: 'Teams' }));
+		expect(order()).toEqual(['@alpha', '@zeta']);
+		expect(screen.getByRole('columnheader', { name: /Teams/ })).toHaveAttribute('aria-sort', 'descending');
+	});
+
+	it('org members sort in the page (whole member list is loaded)', async () => {
+		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }) });
+		open_org('/orgs/o1');
+		await screen.findByTestId('member-sapan');
+		const order = () => screen.getAllByTestId(/^member-/).map((r) => r.getAttribute('data-testid'));
+		expect(order()).toEqual(['member-sapan', 'member-maya', 'member-gone']);
+		fireEvent.click(screen.getByRole('button', { name: 'Member' }));
+		expect(order()).toEqual(['member-gone', 'member-maya', 'member-sapan']);
 	});
 
 	it('old tabs redirect', async () => {

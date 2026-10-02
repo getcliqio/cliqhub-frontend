@@ -9,6 +9,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { use_overview } from '@/lib/overview';
 import { ago, type Admin_daemon_row, type Admin_list_data } from '@/lib/admin';
 import { Admin_header, Chips, Empty_row, Hub_scope_note, Pager, Pill, Stat_tile, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -25,7 +26,9 @@ export function Component() {
 	const org_id = sp.get('org') ?? '';
 	const offset = Number(sp.get('offset') ?? 0) || 0;
 	const [draft, set_draft] = useState(q);
-	const read = use_bff_read<Admin_list_data<Admin_daemon_row>>('/v1/admin_list/get', { kind: 'daemons', filter, limit: LIMIT, offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { refresh_ms: 30_000, fallback_error: 'Could not load daemons.' });
+	const sort = use_table_sort({ keys: ['name', 'status', 'last_heartbeat'], first_dir: { last_heartbeat: 'desc' } });
+	const read = use_bff_read<Admin_list_data<Admin_daemon_row>>('/v1/admin_list/get', { kind: 'daemons', filter, ...sort.body, limit: LIMIT, offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { refresh_ms: 30_000, fallback_error: 'Could not load daemons.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const orgs = d?.org_options ?? overview.data?.orgs ?? [];
 	const set = (patch: Record<string, string | null>) => {
@@ -63,7 +66,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="daemons list" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Daemon</th><th className={TH}>Realms</th><th className={TH}>Status</th><th className={TH}>Heartbeat</th><th className={TH}>Capacity</th></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="name" className={TH}>Daemon</Sort_th><th className={TH}>Realms</th><Sort_th sort={cols} k="status" className={TH}>Status</Sort_th><Sort_th sort={cols} k="last_heartbeat" className={TH}>Heartbeat</Sort_th><th className={TH}>Capacity</th></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{d?.needs_org ? <Empty_row cols={5}>Pick one of your orgs to see its daemons.</Empty_row> : null}

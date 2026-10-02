@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { INBOX_SEEN_EVENT, read_inbox_seen, type Inbox_summary } from '@/lib/inbox';
+import type { Org_status } from '@/lib/admin';
 
 export interface Overview_counts {
 	needs_you: number;
@@ -38,6 +39,8 @@ export interface Overview_org {
 	slug: string;
 	display_name: string;
 	role: string;
+	/** The org's lifecycle state (`waiting_for_owner` until its owner accepts). */
+	org_status: Org_status;
 	status: 'ok' | 'error';
 	error: string | null;
 	counts: Overview_counts;

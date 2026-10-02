@@ -13,6 +13,7 @@ import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope } from '@/lib/view_scope';
 import { LEGEND_KINDS, phase_kind, team_href, type Team_list_data, type Team_list_row } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -143,11 +144,14 @@ export function Component() {
 	}, { replace: true });
 	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== q) set_param('q', draft.trim() || null); }, 300); return () => clearTimeout(t); }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// The BFF sorts the whole list before paging it (team_list/get sort_by).
+	const sort = use_table_sort({ keys: ['name', 'status'] });
 	const body = overview.data || overview.status === 'error'
-		? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...(q ? { q } : {}), ...(view_org ? { org_id: view_org.id, scope: view_org.slug } : {}) }
+		? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...(q ? { q } : {}), ...sort.body, ...(view_org ? { org_id: view_org.id, scope: view_org.slug } : {}) }
 		: null;
 	const read = use_bff_read<Team_list_data>('/v1/team_list/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load teams.' });
 	const data = read.data;
+	const cols = sort.with_sortable(data?.sortable);
 	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id).flatMap((o) => o.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
 	const from = data && data.total ? data.offset + 1 : 0;
 	const to = data ? Math.min(data.offset + data.limit, data.total) : 0;
@@ -197,9 +201,9 @@ export function Component() {
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
-											<th className="px-4 py-2.5 font-semibold">Team</th>
+											<Sort_th sort={cols} k="name" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Phases</th>
-											<th className="px-4 py-2.5 font-semibold">Status</th>
+											<Sort_th sort={cols} k="status" className="px-4 py-2.5 font-semibold">Status</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Latest</th>
 											<th className="px-4 py-2.5 font-semibold">Installed in</th>
 											<th className="w-[170px] px-4 py-2.5" />

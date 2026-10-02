@@ -115,4 +115,18 @@ describe('Realm runs page', () => {
 		expect(duration(1000, 1000 + 45_000)).toBe('45s');
 		expect(duration(1000, 1000 + 65 * 60_000)).toBe('1h 05m');
 	});
+
+	it('sortable headers sort in Core across pages: click → sort_by / sort_dir, back to page 1', async () => {
+		const calls = route_fetch((b) => ({ body: { ok: true, data: runs({ offset: Number(b.offset) || 0, sortable: ['run_name', 'state', 'team', 'started_at', 'last_updated_at'] }) } }));
+		render_page('/o/measureone/realms/prod-us/runs?page=2');
+		await screen.findByTestId('run-run-1');
+		expect(calls[0]).toEqual({ org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 50 });
+		expect(screen.queryByRole('button', { name: 'Phase' })).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Started' }));
+		await waitFor(() => expect(calls.at(-1)).toEqual({ org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0, sort_by: 'started_at', sort_dir: 'desc' }));
+		// Date columns start newest first.
+		expect(screen.getByTestId('where')).toHaveTextContent('?sort=started_at&dir=desc');
+		expect(await screen.findByRole('columnheader', { name: /Started/ })).toHaveAttribute('aria-sort', 'descending');
+	});
 });
+

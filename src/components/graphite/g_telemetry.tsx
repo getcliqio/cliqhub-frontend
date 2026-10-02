@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { X } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import {
 	KIND_COLOR,
 	KIND_LABEL,
@@ -269,6 +270,11 @@ export function Span_details({ bar, t, realm_id, on_close, on_logs }: { bar: Tel
 /* Usage                                                               */
 
 export function Usage({ t }: { t: Run_telemetry_data }) {
+	// Both tables are whole-run totals (every model / agent), so sorting here is exact.
+	const model_sort = use_table_sort({ keys: ['model', 'calls', 'tokens_in', 'tokens_out', 'cost'], mode: 'client', param: 'models', first_dir: { calls: 'desc', tokens_in: 'desc', tokens_out: 'desc', cost: 'desc' } });
+	const agent_sort = use_table_sort({ keys: ['agent', 'phase', 'runs', 'time', 'cost'], mode: 'client', param: 'agents', first_dir: { runs: 'desc', time: 'desc', cost: 'desc' } });
+	const by_model = sort_rows(t.by_model, model_sort, { model: (m) => m.model, calls: (m) => m.calls, tokens_in: (m) => m.tokens_in, tokens_out: (m) => m.tokens_out, cost: (m) => m.cost_usd });
+	const by_agent = sort_rows(t.by_agent, agent_sort, { agent: (g) => agent_label(g), phase: (g) => g.phase, runs: (g) => g.runs, time: (g) => g.duration_ms, cost: (g) => g.cost_usd });
 	const costs = phase_model_costs(t);
 	const models = [...new Set([...t.by_model.map((m) => m.model), ...costs.flatMap((c) => c.parts.map((p) => p.model))])];
 	const tone = (m: string) => (m === 'other' ? '#6b6e76' : MODEL_TONES[models.indexOf(m) % MODEL_TONES.length]);
@@ -319,9 +325,9 @@ export function Usage({ t }: { t: Run_telemetry_data }) {
 			</div>
 			<section aria-label="By model" className={`${CARD} overflow-x-auto`}>
 				<h3 className="border-b border-[var(--g-line)] px-4 py-2.5 text-[14px] font-semibold">By model</h3>
-				<table className="w-full text-[12.5px]"><thead><tr><th className={TH}>Model</th><th className={TH}>Calls</th><th className={TH}>Tokens in</th><th className={TH}>Cached</th><th className={TH}>Tokens out</th><th className={TH}>Cost</th><th className={`${TH} w-[140px]`}>Share</th></tr></thead>
+				<table className="w-full text-[12.5px]"><thead><tr><Sort_th sort={model_sort} k="model" className={TH}>Model</Sort_th><Sort_th sort={model_sort} k="calls" className={TH}>Calls</Sort_th><Sort_th sort={model_sort} k="tokens_in" className={TH}>Tokens in</Sort_th><th className={TH}>Cached</th><Sort_th sort={model_sort} k="tokens_out" className={TH}>Tokens out</Sort_th><Sort_th sort={model_sort} k="cost" className={TH}>Cost</Sort_th><th className={`${TH} w-[140px]`}>Share</th></tr></thead>
 					<tbody>
-						{!t.by_model.length ? <tr><td colSpan={7} className="px-4 py-4 text-[var(--g-ink-3)]">No model usage reported.</td></tr> : t.by_model.map((m) => (
+						{!t.by_model.length ? <tr><td colSpan={7} className="px-4 py-4 text-[var(--g-ink-3)]">No model usage reported.</td></tr> : by_model.map((m) => (
 							<tr key={m.model} className="border-t border-[var(--g-line-2,#1e2024)]" data-testid={`model-${m.model}`}>
 								<td className="px-4 py-2.5"><span className="flex items-center gap-2"><Swatch color={tone(m.model)} /><span className="g-mono">{m.model}</span>{m.provider ? <span className="text-[var(--g-ink-3)]">{m.provider}</span> : null}</span></td>
 								<td className="g-mono">{fmt_count(m.calls)}</td><td className="g-mono">{fmt_count(m.tokens_in)}</td>
@@ -334,10 +340,10 @@ export function Usage({ t }: { t: Run_telemetry_data }) {
 				</table>
 			</section>
 			<section aria-label="By agent" className={`${CARD} overflow-x-auto`}>
-				<h3 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-2.5 text-[14px] font-semibold">By agent <span className="text-[12px] font-normal text-[var(--g-ink-3)]">sorted by cost</span><button type="button" onClick={csv} className="ml-auto rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Export CSV</button></h3>
-				<table className="w-full text-[12.5px]"><thead><tr><th className={TH}>Agent</th><th className={TH}>Phase</th><th className={TH}>Runs</th><th className={TH}>Time</th><th className={TH}>Units</th><th className={TH}>Cost</th><th className={TH}>Outcome</th></tr></thead>
+				<h3 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-2.5 text-[14px] font-semibold">By agent {agent_sort.by ? null : <span className="text-[12px] font-normal text-[var(--g-ink-3)]">sorted by cost</span>}<button type="button" onClick={csv} className="ml-auto rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Export CSV</button></h3>
+				<table className="w-full text-[12.5px]"><thead><tr><Sort_th sort={agent_sort} k="agent" className={TH}>Agent</Sort_th><Sort_th sort={agent_sort} k="phase" className={TH}>Phase</Sort_th><Sort_th sort={agent_sort} k="runs" className={TH}>Runs</Sort_th><Sort_th sort={agent_sort} k="time" className={TH}>Time</Sort_th><th className={TH}>Units</th><Sort_th sort={agent_sort} k="cost" className={TH}>Cost</Sort_th><th className={TH}>Outcome</th></tr></thead>
 					<tbody>
-						{t.by_agent.map((g) => (
+						{by_agent.map((g) => (
 							<tr key={`${g.phase}/${g.agent}`} className="border-t border-[var(--g-line-2,#1e2024)]" data-testid={`agent-${g.agent}`}>
 								<td className="px-4 py-2"><span className="flex items-center gap-2"><Swatch color={KIND_COLOR[g.kind]} hatch={g.kind === 'human'} /><b>{agent_label(g)}</b></span></td>
 								<td className="g-mono text-[var(--g-ink-2)]">{g.phase}</td><td className="g-mono">{g.runs}</td><td className="g-mono">{fmt_ms(g.duration_ms)}</td>

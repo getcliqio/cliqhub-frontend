@@ -3,7 +3,7 @@ export interface Realm_settings_data {
 	realm: { id: string; slug: string; name: string; org_slug: string | null };
 	you: { role: string | null; is_admin: boolean };
 	members: Array<{ member_type: string; member_id: string; username: string | null; role: string; is_you: boolean }>;
-	invites: Array<{ id: string; email: string; role: string; expires_at: string | null }>;
+	invites: Array<{ invite_id: string; email: string; role: string; expires_at: string | null }>;
 	tokens: Array<{ id: string; name: string; created_at: string; last_used_at: string | null }>;
 	sections: Record<'members' | 'invites' | 'tokens', { status: 'ok' | 'error'; error: string | null }>;
 	partial: boolean;

@@ -12,10 +12,12 @@ import { Plus, Search } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
+import { handle, person_name } from '@/lib/admin';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Banner, Chips, Pill } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Secret_reveal } from '@/components/graphite/g_secret';
+import { use_invite } from '@/components/graphite/g_invites';
 
 export function slugify(s: string): string {
 	return s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
@@ -74,7 +76,12 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 	const [who, set_who] = useState('');
 	const [role, set_role] = useState<'admin' | 'operator' | 'member'>('operator');
 	const [people, set_people] = useState<string[]>([]);
-	const [found, set_found] = useState<Array<{ id: string; username: string; display_name?: string }>>([]);
+	const [found, set_found] = useState<Array<{ id: string; username: string | null; display_name: string; email: string }>>([]);
+	const invite = use_invite({ target_type: 'realm', realm_id: realm?.id ?? '' }, async (d) => {
+		const line = `${d.email} (invited) · ${d.role}`;
+		set_people((p) => (p.includes(line) ? p : [...p, line]));
+		set_who('');
+	});
 	// step 3
 	const [token, set_token] = useState<string | null>(null);
 	const org = orgs.find((o) => o.id === org_id);
@@ -120,7 +127,7 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 			try {
 				const res = await auth_fetch('/v1/users/get', { method: 'POST', body: JSON.stringify({ realm_id: realm.id, query: q }) });
 				const j = await res.json().catch(() => null);
-				set_found(j?.ok ? (j.data?.users ?? j.users ?? []).map((u: { id: string | number; username: string; display_name?: string }) => ({ ...u, id: String(u.id) })) : []);
+				set_found(j?.ok ? (j.data?.users ?? []) : []);
 			} catch { set_found([]); }
 		}, 250);
 		return () => clearTimeout(t);
@@ -134,16 +141,13 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 		if (!r.ok) { set_err(r.error); return; }
 		set_added((s) => { const n = new Set(s); if (on) n.delete(t.label); else n.add(t.label); return n; });
 	}
-	async function add_person(u?: { id: string; username: string }) {
+	async function add_person(u: { id: string; username: string | null; display_name: string; email: string }) {
 		if (!realm) return;
 		set_err(null); set_busy(true);
-		const email = who.trim();
-		const r = u
-			? await post('/v1/realms/add_member', { realm_id: realm.id, member_type: 'user', member_id: u.id, role })
-			: await post('/v1/invitations/create', { target_type: 'realm', realm_id: realm.id, email, role });
+		const r = await post('/v1/realms/add_member', { realm_id: realm.id, member_type: 'user', member_id: u.id, role });
 		set_busy(false);
 		if (!r.ok) { set_err(r.error); return; }
-		set_people((p) => [...p, `${u ? `@${u.username}` : `${email} (invited)`} · ${role}`]);
+		set_people((p) => [...p, `${u.username ? `@${u.username}` : u.email} · ${role}`]);
 		set_who(''); set_found([]);
 	}
 	async function mint() {
@@ -196,13 +200,14 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 							<div className="relative flex gap-2">
 								<input aria-label="Person" value={who} onChange={(e) => set_who(e.target.value)} placeholder="Username or email" className={`${G_INPUT} min-w-0 flex-1`} />
 								<select aria-label="Role" value={role} onChange={(e) => set_role(e.target.value as typeof role)} className={`${G_INPUT} w-[110px]`}><option value="admin">Admin</option><option value="operator">Operator</option><option value="member">Member</option></select>
-								{is_email ? <button type="button" disabled={busy} onClick={() => void add_person()} className={G_PRIMARY}>Invite</button> : null}
+								{is_email ? <button type="button" disabled={busy || invite.busy} onClick={() => { set_err(null); void invite.send(who.trim(), role); }} className={G_PRIMARY}>Invite</button> : null}
 								{found.length ? (
 									<ul role="listbox" aria-label="Matches" className="absolute left-0 right-0 top-10 z-40 rounded-lg border border-[#33363c] bg-[#16171a] py-1">
-										{found.map((u) => <li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); void add_person(u); }} className="cursor-pointer px-3 py-1.5 text-[12.5px] hover:bg-[var(--g-soft)]">{u.display_name || u.username} <span className="text-[var(--g-ink-3)]">@{u.username}</span></li>)}
+										{found.map((u) => <li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); void add_person(u); }} className="cursor-pointer px-3 py-1.5 text-[12.5px] hover:bg-[var(--g-soft)]">{person_name(u)} <span className="text-[var(--g-ink-3)]">{handle(u.username)}</span></li>)}
 									</ul>
 								) : null}
 							</div>
+							{invite.view}
 							<p className="text-[11.5px] text-[var(--g-ink-3)]">You’re already an admin. Operators run teams and answer reviews; members view.</p>
 							<ul className="flex flex-col gap-1 text-[12.5px]">{people.map((p) => <li key={p} className="text-[var(--g-ink-2)]">✓ {p}</li>)}</ul>
 						</div>

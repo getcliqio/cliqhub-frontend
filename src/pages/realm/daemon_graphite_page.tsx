@@ -13,6 +13,7 @@ import { realm_path } from '@/lib/realm_url';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { Banner, Empty_row, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Daemon_status, G_DANGER, Host_runs, Run_here, Run_state, team_label, type Daemon_page_data, type Host_team } from '@/components/graphite/g_host';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -30,6 +31,9 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 	const [confirm, set_confirm] = useState<string | null>(null);
 	const [msg, set_msg] = useState<Msg>(null);
 	const [busy, set_busy] = useState(false);
+	// The daemon page lists every installed team, so sorting here is exact.
+	const tsort = use_table_sort({ keys: ['team', 'version'], mode: 'client', param: 'teams' });
+	const installed = sort_rows(data.installed ?? [], tsort, { team: (t) => team_label(t), version: (t) => t.version });
 	async function install() {
 		if (!pick) return;
 		set_busy(true); set_msg(null);
@@ -56,10 +60,10 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 			{data.installed === null ? <p className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4 text-[12.5px] text-[var(--g-ink-3)]">{online ? 'The daemon didn’t answer the team list request.' : 'The daemon is offline, so its installed teams can’t be read right now.'}</p> : (
 				<div className={TABLE_WRAP}>
 					<table className="w-full text-[12.5px]">
-						<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Team</th><th className={TH}>Version</th><th className={TH} /></tr></thead>
+						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={tsort} k="team" className={TH}>Team</Sort_th><Sort_th sort={tsort} k="version" className={TH}>Version</Sort_th><th className={TH} /></tr></thead>
 						<tbody>
 							{!data.installed.length ? <Empty_row cols={3}>No teams installed.</Empty_row> : null}
-							{data.installed.map((t) => {
+							{installed.map((t) => {
 								const key = `${t.scope}/${t.slug}`;
 								return (
 									<tr key={key} className={TR} data-testid={`installed-${t.slug}`}>
@@ -90,14 +94,18 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 
 function Workspaces({ data, base, reload }: { data: Daemon_page_data; base: string; reload: () => Promise<void> }) {
 	const [run_in, set_run_in] = useState<string | null>(null);
-	const ws = data.workspaces;
+	const wsort = use_table_sort({ keys: ['workspace', 'teams', 'last_run_at'], mode: 'client', param: 'workspaces', first_dir: { last_run_at: 'desc', teams: 'desc' } });
+	// Every workspace of the daemon is loaded; null = couldn't be loaded.
+	const ws = data.workspaces === null ? null : sort_rows(data.workspaces, wsort, {
+		workspace: (w) => w.name || w.path.split('/').pop() || w.id, teams: (w) => w.teams.length, last_run_at: (w) => w.last_run_at,
+	});
 	const installed = data.installed ?? [];
 	return (
 		<section aria-label="Workspaces" className="flex flex-col gap-2">
 			<h2 className="text-[14px] font-semibold">Workspaces</h2>
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[12.5px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Workspace</th><th className={TH}>Teams</th><th className={TH}>Last run</th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={wsort} k="workspace" className={TH}>Workspace</Sort_th><Sort_th sort={wsort} k="teams" className={TH}>Teams</Sort_th><Sort_th sort={wsort} k="last_run_at" className={TH}>Last run</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
 						{ws === null ? <Empty_row cols={4}>Workspaces couldn’t be loaded.</Empty_row> : !ws.length ? <Empty_row cols={4}>No workspaces yet — one is created the first time a team runs in a folder.</Empty_row> : null}
 						{(ws ?? []).map((w) => (

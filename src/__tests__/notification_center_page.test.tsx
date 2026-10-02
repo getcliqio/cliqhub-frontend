@@ -25,25 +25,26 @@ function center(): Notification_center_data {
 	const org_a = { kind: 'org' as const, org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null, team_slug: null };
 	return {
 		orgs: [
-			{ id: ORG_A, slug: 'measureone', display_name: 'MeasureOne', role: 'owner', status: 'ok', error: null },
-			{ id: ORG_B, slug: 'acme-labs', display_name: 'Acme Labs', role: 'member', status: 'ok', error: null },
+			{ id: ORG_A, slug: 'measureone', display_name: 'MeasureOne', role: 'owner', status: 'ok', error: null, can_edit: true, can_edit_channels: true },
+			{ id: ORG_B, slug: 'acme-labs', display_name: 'Acme Labs', role: 'member', status: 'ok', error: null, can_edit: true, can_edit_channels: true },
 		],
 		realms: [
-			{ id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_id: ORG_A, org_slug: 'measureone', status: 'ok', error: null },
-			{ id: 'r-stage', slug: 'staging', name: 'staging', org_id: ORG_A, org_slug: 'measureone', status: 'ok', error: null },
-			{ id: 'r-sand', slug: 'sandbox', name: 'sandbox', org_id: ORG_B, org_slug: 'acme-labs', status: 'ok', error: null },
+			{ id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_id: ORG_A, org_slug: 'measureone', status: 'ok', error: null, can_edit: true },
+			{ id: 'r-stage', slug: 'staging', name: 'staging', org_id: ORG_A, org_slug: 'measureone', status: 'ok', error: null, can_edit: true },
+			{ id: 'r-sand', slug: 'sandbox', name: 'sandbox', org_id: ORG_B, org_slug: 'acme-labs', status: 'ok', error: null, can_edit: true },
 		],
 		channels: [
-			{ id: 'ch-oncall', name: 'oncall', owner: { kind: 'org', org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null }, destinations: [{ type: 'slack', label: 'Slack webhook …/abcd' }], enabled: true, rule_count: 1 },
-			{ id: 'ch-prod', name: 'prod-alerts', owner: { kind: 'realm', org_id: ORG_A, org_slug: 'measureone', realm_id: 'r-prod', realm_slug: 'prod-us' }, destinations: [{ type: 'email', label: 'ops@m1.com' }], enabled: false, rule_count: 1 },
-			{ id: 'ch-acme', name: 'acme-feed', owner: { kind: 'org', org_id: ORG_B, org_slug: 'acme-labs', realm_id: null, realm_slug: null }, destinations: [{ type: 'cliqhub', label: 'CliqHub' }], enabled: true, rule_count: 1 },
+			{ id: 'ch-oncall', name: 'oncall', owner: { kind: 'org', org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null }, destinations: [{ type: 'slack', label: 'Slack webhook …/abcd' }], enabled: true, rule_count: 1, system_key: null, locked: false, lock_reason: null },
+			{ id: 'ch-prod', name: 'prod-alerts', owner: { kind: 'realm', org_id: ORG_A, org_slug: 'measureone', realm_id: 'r-prod', realm_slug: 'prod-us' }, destinations: [{ type: 'email', label: 'ops@m1.com' }], enabled: false, rule_count: 1, system_key: null, locked: false, lock_reason: null },
+			{ id: 'ch-acme', name: 'acme-feed', owner: { kind: 'org', org_id: ORG_B, org_slug: 'acme-labs', realm_id: null, realm_slug: null }, destinations: [{ type: 'cliqhub', label: 'CliqHub' }], enabled: true, rule_count: 1, system_key: null, locked: false, lock_reason: null },
 		],
 		rules: [
-			{ id: 'rl-org', event: 'run.*', scope: org_a, channel_id: 'ch-oncall', channel_name: 'oncall', priority: 0, replaces: [] },
-			{ id: 'rl-realm', event: 'run.failed', scope: { ...org_a, kind: 'realm', realm_id: 'r-prod', realm_slug: 'prod-us' }, channel_id: 'ch-prod', channel_name: 'prod-alerts', priority: 0, replaces: ['rl-org'] },
-			{ id: 'rl-acme', event: 'hug.review_requested', scope: { kind: 'org', org_id: ORG_B, org_slug: 'acme-labs', realm_id: null, realm_slug: null, team_slug: null }, channel_id: 'ch-acme', channel_name: 'acme-feed', priority: 0, replaces: [] },
+			{ id: 'rl-org', event: 'run.*', scope: org_a, channel_id: 'ch-oncall', channel_name: 'oncall', priority: 0, replaces: [], recipients: [], system_key: null, locked: false, lock_reason: null },
+			{ id: 'rl-realm', event: 'run.failed', scope: { ...org_a, kind: 'realm', realm_id: 'r-prod', realm_slug: 'prod-us' }, channel_id: 'ch-prod', channel_name: 'prod-alerts', priority: 0, replaces: ['rl-org'], recipients: [], system_key: null, locked: false, lock_reason: null },
+			{ id: 'rl-acme', event: 'hug.review_requested', scope: { kind: 'org', org_id: ORG_B, org_slug: 'acme-labs', realm_id: null, realm_slug: null, team_slug: null }, channel_id: 'ch-acme', channel_name: 'acme-feed', priority: 0, replaces: [], recipients: [], system_key: null, locked: false, lock_reason: null },
 		],
 		event_types: ['run.failed', 'run.completed', 'hug.review_requested'],
+		realm_page: { offset: 0, limit: 10, total: 3, q: null, status: 'ok', error: null },
 		partial: false,
 	};
 }
@@ -170,6 +171,19 @@ describe('Notifications page', () => {
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 	});
 
+	it('a refused rule shows Core\'s message (422 recipients must be members)', async () => {
+		route_fetch({ write: (u) => (u === '/v1/notification_center/set_rules'
+			? { status: 422, body: { ok: false, error: { code: 'invalid_params', message: 'Recipients must be members of the organization', details: { field: 'recipients', not_members: ['u-9'] } } } }
+			: { body: { ok: true, data: {} } }) });
+		render_page('/notifications?org=measureone');
+		await screen.findByTestId('rule-rl-org');
+		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
+		const dlg = screen.getByRole('dialog', { name: 'New rule' });
+		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-oncall' } });
+		fireEvent.click(within(dlg).getByRole('button', { name: /^Save/ }));
+		expect(await within(dlg).findByText('Recipients must be members of the organization')).toBeInTheDocument();
+	});
+
 	it('new team rule posts to realms/set_notification_rules with team_slug, and says what it replaces', async () => {
 		const { calls } = route_fetch();
 		render_page('/notifications?org=measureone');
@@ -242,6 +256,31 @@ describe('Notifications — channels', () => {
 		}));
 	});
 
+	it.each([
+		[400, 'bad_request', 'At least one destination is required'],
+		[403, 'forbidden', 'Only org admins can manage channels'],
+	])('channel create: Core %i %s message is shown', async (status, code, message) => {
+		route_fetch({ write: (u) => (u === '/v1/notification_channels/create' ? { status, body: { ok: false, error: { code, message } } } : { body: { ok: true, data: {} } }) });
+		render_page('/notifications?tab=channels&org=measureone');
+		await screen.findByTestId('channel-ch-oncall');
+		fireEvent.click(screen.getByRole('button', { name: 'New channel' }));
+		const dlg = screen.getByRole('dialog', { name: 'New channel' });
+		fireEvent.change(within(dlg).getByLabelText(/Name/), { target: { value: 'eng-alerts' } });
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Create channel' }));
+		expect(await within(dlg).findByText(message)).toBeInTheDocument();
+	});
+
+	it.each([
+		[404, 'not_found', 'Channel not found'],
+		[409, 'conflict', 'Channel is used by rules'],
+	])('channel actions: Core %i %s message is shown', async (status, code, message) => {
+		route_fetch({ write: (u) => (u === '/v1/notification_channels/update' ? { status, body: { ok: false, error: { code, message } } } : { body: { ok: true, data: {} } }) });
+		render_page('/notifications?tab=channels&org=measureone&channel=ch-oncall');
+		const toggle = await screen.findByRole('button', { name: /^(Disable|Enable)$/ });
+		fireEvent.click(toggle);
+		expect(await screen.findByText(message)).toBeInTheDocument();
+	});
+
 	it('maps destination drafts to Core shapes', () => {
 		expect(draft_to_destination({ type: 'email', value: ' a@b.c ' })).toEqual({ type: 'email', address: 'a@b.c' });
 		expect(draft_to_destination({ type: 'webhook', value: 'https://x' })).toEqual({ type: 'webhook', url: 'https://x' });
@@ -300,7 +339,7 @@ describe('Notifications — edit only where you can', () => {
 	// Owner of MeasureOne, plain member of Acme Labs.
 	function limited() {
 		const d = center();
-		d.orgs = d.orgs.map((o) => ({ ...o, role: o.id === ORG_B ? 'member' : 'owner', can_edit: o.id !== ORG_B }));
+		d.orgs = d.orgs.map((o) => ({ ...o, role: o.id === ORG_B ? 'member' : 'owner', can_edit: o.id !== ORG_B, can_edit_channels: o.id !== ORG_B }));
 		d.realms = d.realms.map((r) => ({ ...r, can_edit: r.org_id !== ORG_B }));
 		return d;
 	}
@@ -336,8 +375,24 @@ describe('Notifications — edit only where you can', () => {
 		expect(screen.queryByRole('button', { name: 'Send test' })).toBeNull();
 	});
 
+	it('an org admin (channels, not org rules): org rules are view only, org channels editable', async () => {
+		route_fetch({ center: () => { const d = center(); d.orgs = d.orgs.map((o) => ({ ...o, role: 'admin', can_edit: false, can_edit_channels: o.id === ORG_A })); return d; } });
+		const { unmount } = render_page('/notifications?org=measureone');
+		expect(within(await screen.findByTestId('rule-rl-org')).getByTestId('view-only')).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
+		const whole_org = within(screen.getByRole('dialog', { name: 'New rule' })).getByRole('radio', { name: 'Whole org' });
+		expect(whole_org).toBeDisabled();
+		expect(whole_org).toHaveAttribute('title', 'Needs org owner');
+		unmount();
+		render_page('/notifications?tab=channels&org=measureone');
+		fireEvent.click(await screen.findByRole('button', { name: 'oncall' }));
+		expect(screen.getByRole('button', { name: 'Send test' })).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: 'New channel' }));
+		expect(within(screen.getByRole('dialog', { name: 'New channel' })).getByRole('radio', { name: 'The whole org' })).toBeEnabled();
+	});
+
 	it('no New rule / New channel when you can’t change anything', async () => {
-		route_fetch({ center: () => { const d = limited(); d.orgs = d.orgs.map((o) => ({ ...o, can_edit: false })); d.realms = d.realms.map((r) => ({ ...r, can_edit: false })); return d; } });
+		route_fetch({ center: () => { const d = limited(); d.orgs = d.orgs.map((o) => ({ ...o, can_edit: false, can_edit_channels: false })); d.realms = d.realms.map((r) => ({ ...r, can_edit: false })); return d; } });
 		render_page();
 		await screen.findByTestId('rule-rl-org');
 		expect(screen.queryByRole('button', { name: 'New rule' })).toBeNull();
@@ -362,7 +417,7 @@ describe('Notifications — create a channel from the rule panel', () => {
 		const { calls } = route_fetch({
 			center: () => {
 				const d = center();
-				if (created) d.channels.push({ id: 'ch-new', name: 'eng-new', owner: { kind: 'org', org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null }, destinations: [{ type: 'cliqhub', label: 'CliqHub' }], enabled: true, rule_count: 0 });
+				if (created) d.channels.push({ id: 'ch-new', name: 'eng-new', owner: { kind: 'org', org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null }, destinations: [{ type: 'cliqhub', label: 'CliqHub' }], enabled: true, rule_count: 0, system_key: null, locked: false, lock_reason: null });
 				return d;
 			},
 			write: (u) => {
@@ -458,5 +513,64 @@ describe('Notifications — realm paging', () => {
 		await waitFor(() => expect(reads().at(-1)).toEqual({ org_id: ORG_A, realm_limit: 10, realm_offset: 10 }));
 		fireEvent.change(screen.getByLabelText('Search realms'), { target: { value: 'pay' } });
 		await waitFor(() => expect(reads().at(-1)).toEqual({ org_id: ORG_A, realm_limit: 10, realm_offset: 0, realm_q: 'pay' }));
+	});
+});
+
+describe('Notifications — built-in rules and editable defaults', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	function seeded(can_edit = true): Notification_center_data {
+		const d = center();
+		const org_a = d.rules[0].scope;
+		d.orgs[0] = { ...d.orgs[0], can_edit };
+		d.channels.push({ id: 'ch-email', name: 'Email', owner: d.channels[0].owner, destinations: [{ type: 'email', label: 'Brevo' }], enabled: true, rule_count: 2, system_key: 'org.email', locked: true, lock_reason: 'Every org sends account and invite emails through this channel.' });
+		d.rules.push(
+			{ id: 'rl-inv', event: 'invite.org.sent', scope: org_a, channel_id: 'ch-email', channel_name: 'Email', priority: 0, replaces: [], recipients: ['invitee'], system_key: 'invite.sent.invitee', locked: true, lock_reason: 'Invites must reach the invited person.' },
+			{ id: 'rl-acc', event: 'invite.org.accepted', scope: org_a, channel_id: 'ch-email', channel_name: 'Email', priority: 0, replaces: [], recipients: ['org_owners', 'inviter'], system_key: 'invite.accepted.owners', locked: false, lock_reason: null },
+		);
+		return d;
+	}
+
+	it('a locked rule shows a lock and its reason with no delete; a default is tagged, deletable and lists recipients as chips', async () => {
+		const { calls } = route_fetch({ center: () => seeded() });
+		render_page('/notifications?org=measureone');
+		const locked = await screen.findByTestId('rule-rl-inv');
+		expect(within(locked).getByText('Invite sent')).toBeInTheDocument();
+		expect(within(locked).getByTestId('lock-reason')).toHaveTextContent('Invites must reach the invited person.');
+		expect(within(locked).getByTestId('locked')).toHaveTextContent('Built in');
+		expect(within(locked).queryByRole('button', { name: /Delete rule/ })).toBeNull();
+		expect(within(locked).getAllByTestId('recipient-chip').map((c) => c.textContent)).toEqual(['Invited person']);
+		const def = screen.getByTestId('rule-rl-acc');
+		expect(within(def).getByTestId('default-tag')).toHaveTextContent('Default');
+		expect(within(def).getAllByTestId('recipient-chip').map((c) => c.textContent)).toEqual(['Owners', 'Inviter']);
+		fireEvent.click(within(def).getByRole('button', { name: /Delete rule/ }));
+		fireEvent.click(within(def).getByRole('button', { name: 'Delete' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/orgs/remove_notification_rules', body: { id: 'rl-acc' } }));
+	});
+
+	it('“Only ones I can edit” leaves out built-in rules', async () => {
+		route_fetch({ center: () => seeded() });
+		render_page('/notifications?org=measureone');
+		await screen.findByTestId('rule-rl-inv');
+		fireEvent.click(screen.getByRole('button', { name: 'Only ones I can edit' }));
+		expect(screen.queryByTestId('rule-rl-inv')).toBeNull();
+		expect(screen.getByTestId('rule-rl-acc')).toBeInTheDocument();
+	});
+
+	it('defaults are view only for someone who can’t change org rules', async () => {
+		route_fetch({ center: () => seeded(false) });
+		render_page('/notifications?org=measureone');
+		const def = await screen.findByTestId('rule-rl-acc');
+		expect(within(def).getByTestId('view-only')).toBeInTheDocument();
+		expect(within(def).queryByRole('button', { name: /Delete rule/ })).toBeNull();
+	});
+
+	it('the built-in Email channel can’t be disabled or deleted', async () => {
+		route_fetch({ center: () => seeded() });
+		render_page('/notifications?tab=channels&org=measureone');
+		fireEvent.click(await screen.findByRole('button', { name: 'Email' }));
+		expect(screen.getByTestId('channel-locked')).toHaveTextContent('Every org sends account and invite emails through this channel.');
+		expect(screen.queryByRole('button', { name: 'Disable' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Delete…' })).toBeNull();
 	});
 });

@@ -67,8 +67,12 @@ describe('AuthProvider', () => {
     expect(screen.getByText('unauthenticated')).toBeInTheDocument();
   });
 
-  it('shows unauthenticated on network error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+  it('BFF unreachable (restart) → keeps loading and retries, never shows signed out', async () => {
+    vi.useFakeTimers();
+    const fetch_mock = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce(new Response('<html>Bad Gateway</html>', { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, data: { user: MOCK_USER, scopes: [], acting_as: null } })));
 
     render(
       <AuthProvider>
@@ -77,8 +81,13 @@ describe('AuthProvider', () => {
     );
 
     await act(async () => {});
-
-    expect(screen.getByText('unauthenticated')).toBeInTheDocument();
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByText('loading')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
+    expect(screen.getByText('user:admin')).toBeInTheDocument();
+    expect(fetch_mock).toHaveBeenCalledTimes(3);
+    vi.useRealTimers();
   });
 });
 
@@ -160,6 +169,36 @@ describe('AuthProvider actions', () => {
     expect(signup_error).toBe('Signup failed');
   });
 
+  it('sign-in and sign-up explain a deleted account; an invited account gets the plain sign-in error', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: { code: 'account_deleted', message: 'forbidden' } }), { status: 403 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: { code: 'unauthorized', message: 'Invalid credentials' } }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, error: { code: 'account_deleted', message: 'forbidden' } }), { status: 403 }));
+
+    const errors: Array<string | null> = [];
+    function Probe() {
+      const { login, signup } = useAuth();
+      return (
+        <div>
+          <button onClick={async () => { errors.push(await login('gone', 'x')); }}>in</button>
+          <button onClick={async () => { errors.push(await signup('gone', 'g@x.com', 'password1')); }}>up</button>
+        </div>
+      );
+    }
+
+    render(<AuthProvider><Probe /></AuthProvider>);
+    await act(async () => {});
+    await act(async () => { screen.getByText('in').click(); });
+    await act(async () => { screen.getByText('in').click(); });
+    await act(async () => { screen.getByText('up').click(); });
+    expect(errors).toEqual([
+      'This account was deleted. Contact your admin.',
+      'Invalid credentials',
+      'This account was deleted. Contact your admin.',
+    ]);
+  });
+
   it('logout clears state even when the request fails', async () => {
     Object.defineProperty(window, 'location', {
       value: { href: '' },
@@ -194,20 +233,24 @@ describe('useAuth', () => {
 });
 
 describe('useAuthFetch', () => {
-  it('logs out on 401 responses', async () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('a 401 re-checks the session; only a confirmed sign-out goes to /login (no session/delete)', async () => {
     const { useAuthFetch } = await import('@/lib/auth_context');
     Object.defineProperty(window, 'location', {
       value: { href: '' },
       writable: true,
     });
 
-    vi.spyOn(globalThis, 'fetch')
+    const fetch_mock = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
         data: { user: MOCK_USER, scopes: [], acting_as: null },
       })))
-      .mockResolvedValueOnce(new Response(null, { status: 401 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))                          // /v1/x
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false }), { status: 401 })); // re-check
 
     function FetchProbe() {
       const auth_fetch = useAuthFetch();
@@ -220,6 +263,40 @@ describe('useAuthFetch', () => {
       screen.getByText('go').click();
     });
     expect(window.location.href).toBe('/login');
+    const urls = fetch_mock.mock.calls.map((c) => String(c[0]));
+    expect(urls).toEqual(['/v1/session/get', '/v1/x', '/v1/session/get']);
+    expect(urls).not.toContain('/v1/session/delete');
+  });
+
+  it('a 401 while the session is still valid (or the BFF is down) keeps the user signed in', async () => {
+    const { useAuthFetch } = await import('@/lib/auth_context');
+    Object.defineProperty(window, 'location', {
+      value: { href: '' },
+      writable: true,
+    });
+
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        data: { user: MOCK_USER, scopes: [], acting_as: null },
+      })))
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))                                        // /v1/x (Core said no)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, data: { user: MOCK_USER, scopes: [] } }))) // session still there
+      .mockResolvedValueOnce(new Response(null, { status: 401 }))                                        // /v1/x again
+      .mockRejectedValueOnce(new Error('BFF restarting'));                                              // re-check fails
+
+    function FetchProbe() {
+      const auth_fetch = useAuthFetch();
+      const { user } = useAuth();
+      return <div><button onClick={() => void auth_fetch('/v1/x', { method: 'GET' })}>go</button><span>{user ? 'in' : 'out'}</span></div>;
+    }
+
+    render(<AuthProvider><FetchProbe /></AuthProvider>);
+    await act(async () => {});
+    await act(async () => { screen.getByText('go').click(); });
+    await act(async () => { screen.getByText('go').click(); });
+    expect(window.location.href).toBe('');
+    expect(screen.getByText('in')).toBeInTheDocument();
   });
 });
 

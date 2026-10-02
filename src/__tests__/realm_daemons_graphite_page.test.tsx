@@ -73,4 +73,20 @@ describe('Realm daemons page', () => {
 		fireEvent.click(within(screen.getByTestId('daemon-d-gpu')).getByRole('button', { name: 'Remove' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/daemons/remove', body: { daemon_id: 'd-gpu' } }));
 	});
+
+	it('sorts the loaded daemons in the page (no paging, no extra request)', async () => {
+		const calls = route_fetch();
+		render_page();
+		await screen.findByTestId('daemon-d-mbp');
+		const order = () => screen.getAllByTestId(/^daemon-/).map((r) => r.getAttribute('data-testid'));
+		expect(order()).toEqual(['daemon-d-mbp', 'daemon-d-gpu']);
+		fireEvent.click(screen.getByRole('button', { name: 'Host' }));
+		expect(order()).toEqual(['daemon-d-gpu', 'daemon-d-mbp']);
+		expect(screen.getByRole('columnheader', { name: /Host/ })).toHaveAttribute('aria-sort', 'ascending');
+		fireEvent.click(screen.getByRole('button', { name: 'Running' }));
+		expect(order()).toEqual(['daemon-d-mbp', 'daemon-d-gpu']);
+		expect(screen.getByRole('columnheader', { name: /Running/ })).toHaveAttribute('aria-sort', 'descending');
+		expect(calls.filter((c) => c.url === '/v1/realm_daemons/get')).toHaveLength(1);
+	});
 });
+

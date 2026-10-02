@@ -52,6 +52,8 @@ export interface Team_list_row {
 }
 
 export interface Team_list_data {
+	/** Columns the BFF can sort this list by. */
+	sortable?: string[];
 	items: Team_list_row[];
 	total: number;
 	offset: number;
@@ -121,6 +123,8 @@ export interface Team_page_data {
 		limit: number;
 		counts: { all: number | null; running: number | null; awaiting_input: number | null; failed_7d: number | null };
 		realms: Array<{ id: string; slug: string; name: string; org_slug: string | null }>;
+		/** Columns the BFF can sort the runs by. */
+		sortable?: string[];
 	};
 	installs?: {
 		items: Team_install[];

@@ -14,6 +14,7 @@ import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
 import { coverage_text, type Coverage_filter, type Realm_team_row, type Realm_teams_data } from '@/lib/realm_teams';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
@@ -180,12 +181,15 @@ export function Component() {
 	}, { replace: true });
 	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== q) set_param('q', draft.trim() || null); }, 300); return () => clearTimeout(t); }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// Sorted by Core (teams/get realm mode sort_by), so it is right across pages; default = team name.
+	const sort = use_table_sort({ keys: ['team', 'origin', 'coverage'], default_sort: { by: 'team', dir: 'asc' } });
 	const read = use_bff_read<Realm_teams_data>(
 		'/v1/realm_teams/get',
-		org && slug ? { org_slug: org, slug, limit: TEAMS_PAGE_SIZE, offset: page * TEAMS_PAGE_SIZE, ...(q ? { q } : {}), ...(coverage ? { coverage } : {}) } : null,
+		org && slug ? { org_slug: org, slug, limit: TEAMS_PAGE_SIZE, offset: page * TEAMS_PAGE_SIZE, ...(q ? { q } : {}), ...(coverage ? { coverage } : {}), ...sort.body } : null,
 		{ refresh_ms: 30_000, fallback_error: 'Could not load teams.' },
 	);
 	const data = read.data;
+	const cols = sort.with_sortable(data?.sortable);
 	const realm_id = data?.realm.id ?? null;
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 	const from = data && data.total ? data.offset + 1 : 0;
@@ -244,9 +248,9 @@ export function Component() {
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
-											<th className="px-4 py-2.5 font-semibold">Team</th>
+											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Version</th>
-											<th className="px-4 py-2.5 font-semibold" title="Online daemons in this realm that have the team installed">Daemons ready</th>
+											<Sort_th sort={cols} k="coverage" className="px-4 py-2.5 font-semibold" title="Online daemons in this realm that have the team installed">Daemons ready</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Last run</th>
 											<th className="w-[230px] px-4 py-2.5" />
 										</tr>

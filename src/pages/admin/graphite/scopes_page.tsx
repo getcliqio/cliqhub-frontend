@@ -8,6 +8,7 @@ import { Plus, X } from 'lucide-react';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { month_year, type Admin_list_data, type Admin_scope_row } from '@/lib/admin';
 import { Admin_header, Banner, Empty_row, Org_select, Pager, Pill, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -90,7 +91,9 @@ export function Component() {
 	const [draft, set_draft] = useState(q);
 	const [creating, set_creating] = useState(false);
 	const [flash, set_flash] = useState<string | null>(null);
-	const read = use_bff_read<Admin_list_data<Admin_scope_row>>('/v1/admin_list/get', { kind: 'scopes', limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load scopes.' });
+	const sort = use_table_sort({ keys: ['slug', 'visibility', 'team_count', 'created_at'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { team_count: 'desc', created_at: 'desc' } });
+	const read = use_bff_read<Admin_list_data<Admin_scope_row>>('/v1/admin_list/get', { kind: 'scopes', ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load scopes.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const orgs = d?.org_options ?? [];
 	const selected = d?.items.find((s) => s.id === sel) ?? null;
@@ -110,7 +113,7 @@ export function Component() {
 			<div className={`grid gap-4 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
 				<div className={TABLE_WRAP}>
 					<table className="w-full text-[13px]">
-						<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Scope</th><th className={TH}>Org</th><th className={TH}>Owner</th><th className={TH}>Visibility</th><th className={TH}>Teams</th><th className={TH}>Created</th></tr></thead>
+						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="slug" className={TH}>Scope</Sort_th><th className={TH}>Org</th><th className={TH}>Owner</th><Sort_th sort={cols} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={cols} k="team_count" className={TH}>Teams</Sort_th><Sort_th sort={cols} k="created_at" className={TH}>Created</Sort_th></tr></thead>
 						<tbody>
 							{read.status === 'loading' ? <Empty_row cols={6}>Loading…</Empty_row> : null}
 							{d && !d.items.length ? <Empty_row cols={6}>{q ? `No scopes match “${q}”.` : 'No scopes.'}</Empty_row> : null}

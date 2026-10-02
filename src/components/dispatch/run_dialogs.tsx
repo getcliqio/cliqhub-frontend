@@ -473,10 +473,8 @@ export function Quick_run_panel({
 				const ws_data = await ws_res.json();
 				if (cancelled) return;
 
-				const daemon_teams = teams_data.data?.payload?.data?.teams
-					?? teams_data.data?.teams
-					?? teams_data.teams
-					?? [];
+				// Core's teams/get {daemon_id}: `{ ok, data: { items, total, … } }` (the daemon's live teams).
+				const daemon_teams = teams_data.data?.items ?? [];
 				const match = (daemon_teams as Array<{
 					team_id?: string;
 					id?: string;
@@ -491,10 +489,8 @@ export function Quick_run_panel({
 				const team_id = match?.team_id ?? match?.id ?? null;
 				set_installed_team_id(team_id);
 
-				const raw_ws = ws_data.data?.payload?.data?.workspaces
-					?? ws_data.data?.workspaces
-					?? ws_data.workspaces
-					?? [];
+				// Core's workspaces/get {daemon_id}: `{ ok, data: { workspaces } }` (the daemon's `data`).
+				const raw_ws = ws_data.data?.workspaces ?? [];
 				const mapped: Workspace_option[] = (raw_ws as Array<{
 					workspace_id?: string;
 					id?: string;

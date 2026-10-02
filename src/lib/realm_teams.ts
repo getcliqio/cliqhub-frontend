@@ -15,6 +15,8 @@ export interface Realm_team_row {
 }
 
 export interface Realm_teams_data {
+	/** Columns the BFF can sort this list by. */
+	sortable?: string[];
 	realm: { id: string; slug: string; name: string; org_slug: string | null };
 	items: Realm_team_row[];
 	total: number;

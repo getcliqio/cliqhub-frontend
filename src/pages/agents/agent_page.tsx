@@ -17,6 +17,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { Agent_tile, G_BTN, Kind_chip, Origin_badge, Settings_form, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 
 const TABS: Array<{ id: Agent_view; label: string }> = [
 	{ id: 'settings', label: 'Settings' }, { id: 'realms', label: 'Realms' }, { id: 'used_by', label: 'Used by' }, { id: 'manifest', label: 'Manifest' }, { id: 'versions', label: 'Versions' },
@@ -42,6 +43,10 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 	const [busy, set_busy] = useState(false);
 	const read = use_bff_read<Agent_page_data>('/v1/agent_page/get', { org_id, id, ...(tab !== 'settings' ? { view: tab } : {}), ...(realm ? { realm } : {}) }, { fallback_error: 'Could not load this agent.' });
 	const d = read.data;
+	// Each tab's table holds every row (realms of the org, teams, versions), so sorting here is exact.
+	const realm_sort = use_table_sort({ keys: ['realm', 'used', 'ready'], mode: 'client', param: 'realms', first_dir: { used: 'desc', ready: 'desc' } });
+	const team_sort = use_table_sort({ keys: ['team', 'version', 'installed'], mode: 'client', param: 'teams', first_dir: { installed: 'desc' } });
+	const version_sort = use_table_sort({ keys: ['version', 'registered'], mode: 'client', param: 'versions', first_dir: { registered: 'desc' } });
 	const go_tab = (t: Agent_view) => set_search((p) => { const n = new URLSearchParams(p); if (t === 'settings') n.delete('tab'); else n.set('tab', t); return n; }, { replace: true });
 
 	async function remove(version_id: string, label: string) {
@@ -56,7 +61,9 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 	if (read.status === 'error' && !d) return <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="agent" />;
 	if (!d) return <div className="h-[360px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading agent" />;
 	const a = d.agent;
-	const used = d.used_by ?? [];
+	const used = sort_rows(d.used_by ?? [], team_sort, { team: (u) => `${u.scope}/${u.name}`, version: (u) => u.version, installed: (u) => u.realms.length });
+	const realm_rows = sort_rows(d.realms ?? [], realm_sort, { realm: (r) => r.realm.slug, used: (r) => r.used_here.length, ready: (r) => (r.ready ? 1 : 0) });
+	const versions = sort_rows(a.versions, version_sort, { version: (v) => v.version, registered: (v) => v.created_at });
 	const in_use_block = /still referenced by team/i.test(msg?.text ?? '');
 
 	let body: ReactNode = null;
@@ -101,8 +108,8 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 				<div className={CARD} data-testid="realms-grid">
 					{!d.realms?.length ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">This org has no realms yet.</p> : (
 						<table className="w-full text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Realm</th><th className="px-4 font-semibold">Used here</th>{d.required_keys.map((k) => <th key={k} className="g-mono px-4 font-normal normal-case">{k}</th>)}<th className="px-4 font-semibold">Ready?</th><th /></tr></thead>
-							<tbody>{d.realms.map((r) => (
+							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={realm_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={realm_sort} k="used" className="px-4 font-semibold">Used here</Sort_th>{d.required_keys.map((k) => <th key={k} className="g-mono px-4 font-normal normal-case">{k}</th>)}<Sort_th sort={realm_sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th /></tr></thead>
+							<tbody>{realm_rows.map((r) => (
 								<tr key={r.realm.id} className="border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0" data-testid={`realm-${r.realm.slug}`}>
 									<td className="px-4 py-2.5 font-semibold">{r.realm.slug}</td>
 									<td className="px-4">{d.used_by === null ? '?' : r.used_here.length ? <><span>{r.used_here.length} team{r.used_here.length === 1 ? '' : 's'}</span><div className="g-mono text-[11px] text-[var(--g-ink-3)]">{r.used_here.map((t) => t.split('/')[1]).join(' · ')}</div></> : <span className="text-[var(--g-ink-3)]">not used</span>}</td>
@@ -121,7 +128,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 		body = (
 			<div className={CARD}>
 				{d.used_by === null ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">Usage isn’t available from this Core version.</p> : !used.length ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">No team uses this agent.</p> : (
-					<table className="w-full text-[12.5px]"><thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Team</th><th className="px-4 font-semibold">Version checked</th><th className="px-4 font-semibold">Installed in</th></tr></thead>
+					<table className="w-full text-[12.5px]"><thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={team_sort} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th><Sort_th sort={team_sort} k="version" className="px-4 font-semibold">Version checked</Sort_th><Sort_th sort={team_sort} k="installed" className="px-4 font-semibold">Installed in</Sort_th></tr></thead>
 						<tbody>{used.map((u) => <tr key={`${u.scope}/${u.name}`} className="border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0"><td className="px-4 py-2.5"><Link to={team_href(u.scope, u.name)} className="g-mono font-semibold text-[var(--g-ink)] hover:underline">@{u.scope}/{u.name}</Link></td><td className="g-mono px-4">{u.version ?? '—'}</td><td className="px-4">{u.realms.length ? u.realms.map((r) => r.slug).join(', ') : <span className="text-[var(--g-ink-3)]">not installed</span>}</td></tr>)}</tbody></table>
 				)}
 			</div>
@@ -132,8 +139,8 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 		body = (
 			<>
 				<div className={CARD}>
-					<table className="w-full text-[12.5px]"><thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Version</th><th className="px-4 font-semibold">Registered</th><th /></tr></thead>
-						<tbody>{a.versions.map((v) => (
+					<table className="w-full text-[12.5px]"><thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={version_sort} k="version" className="px-4 py-2.5 font-semibold">Version</Sort_th><Sort_th sort={version_sort} k="registered" className="px-4 font-semibold">Registered</Sort_th><th /></tr></thead>
+						<tbody>{versions.map((v) => (
 							<tr key={v.id} className="border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0">
 								<td className="g-mono px-4 py-2.5 font-semibold">{v.version ?? '—'}{v.newest ? <span className="ml-2 font-sans text-[11.5px] font-normal text-[var(--g-ok)]">newest</span> : null}</td>
 								<td className="px-4">{v.created_at ? relative_time(v.created_at) : '—'}</td>

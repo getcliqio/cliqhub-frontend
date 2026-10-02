@@ -9,6 +9,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { use_overview } from '@/lib/overview';
 import { ago, run_href, type Admin_list_data, type Admin_run_row } from '@/lib/admin';
 import { Admin_header, Chips, Empty_row, Hub_scope_note, Org_select, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { State_pill } from '@/components/graphite/g_status';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -34,7 +35,9 @@ export function Component() {
 	const q = p.get('q');
 	const org_id = p.get('org');
 	const [draft, set_draft] = useState(q);
-	const read = use_bff_read<Admin_list_data<Admin_run_row>>('/v1/admin_list/get', { kind: 'runs', filter, range, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { refresh_ms: 30_000, fallback_error: 'Could not load runs.' });
+	const sort = use_table_sort({ keys: ['run_name', 'state', 'team', 'started_at', 'last_updated_at'], default_sort: { by: 'started_at', dir: 'desc' }, first_dir: { started_at: 'desc', last_updated_at: 'desc' } });
+	const read = use_bff_read<Admin_list_data<Admin_run_row>>('/v1/admin_list/get', { kind: 'runs', filter, range, ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { refresh_ms: 30_000, fallback_error: 'Could not load runs.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const c = d?.counts ?? {};
 	const orgs = d?.org_options ?? overview.data?.orgs ?? [];
@@ -61,7 +64,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="runs list" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Run</th><th className={TH}>Team</th><th className={TH}>Realm</th><th className={TH}>State</th><th className={TH}>Started</th><th className={TH}>Duration</th></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="run_name" className={TH}>Run</Sort_th><Sort_th sort={cols} k="team" className={TH}>Team</Sort_th><th className={TH}>Realm</th><Sort_th sort={cols} k="state" className={TH}>State</Sort_th><Sort_th sort={cols} k="started_at" className={TH}>Started</Sort_th><th className={TH}>Duration</th></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={6}>Loading…</Empty_row> : null}
 						{d?.needs_org ? <Empty_row cols={6}>Pick one of your orgs to see its runs.</Empty_row> : null}

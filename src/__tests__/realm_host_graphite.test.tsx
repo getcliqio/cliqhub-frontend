@@ -54,7 +54,7 @@ describe('host helpers', () => {
 	it('parse_inputs and run_id_of', () => {
 		expect(parse_inputs('a=1\n\n b = two=2 ')).toEqual({ ok: true, inputs: { a: '1', b: 'two=2' } });
 		expect(parse_inputs('a=1\nnope')).toEqual({ ok: false, line: 2 });
-		expect(run_id_of({ payload: { data: { run_id: 'r9' } } })).toBe('r9');
+		expect(run_id_of({ payload: { data: { run_id: 'r9' } } })).toBeNull(); // no daemon envelope since cliq-sdk 2.0
 		expect(run_id_of({ run_id: 'r1' })).toBe('r1');
 		expect(run_id_of(null)).toBeNull();
 	});
@@ -86,7 +86,7 @@ describe('Daemon page', () => {
 	});
 
 	it('run here enqueues on the daemon + workspace; cancel needs a confirm', async () => {
-		const calls = route_fetch({ '/v1/daemon_page/get': () => daemon_data(), '/v1/runs/enqueue': () => ({ payload: { data: { run_id: 'run-9' } } }) });
+		const calls = route_fetch({ '/v1/daemon_page/get': () => daemon_data(), '/v1/runs/enqueue': () => ({ run_id: 'run-9', daemon_id: 'd1', accepted: true }) });
 		open('/o/measureone/realms/prod-us/daemons/d1');
 		fireEvent.click(within(await screen.findByTestId('workspace-w1')).getByRole('button', { name: 'Run here' }));
 		fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: 'ticket=PROJ-9' } });

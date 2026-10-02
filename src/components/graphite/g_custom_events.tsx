@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Empty_row, Pill, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Realm_picker, type Picked_realm } from '@/components/graphite/g_realm_picker';
 
@@ -25,6 +26,9 @@ export function Custom_events_panel({ org_id, initial }: { org_id: string | null
 	const [confirm, set_confirm] = useState<string | null>(null);
 	const [busy, set_busy] = useState(false);
 	const realm_id = realm?.id ?? null;
+	// Every custom event of the realm is loaded, so sorting here is exact.
+	const sort = use_table_sort({ keys: ['event', 'label', 'source', 'team'], mode: 'client', param: 'events' });
+	const shown = rows === null ? null : sort_rows(rows, sort, { event: (e) => e.event_type, label: (e) => e.label, source: (e) => e.source, team: (e) => e.team_slug });
 	const load = useCallback(async () => {
 		if (!realm_id) { set_rows(null); return; }
 		const r = await post('/v1/events/custom/list', { realm_id });
@@ -71,10 +75,10 @@ export function Custom_events_panel({ org_id, initial }: { org_id: string | null
 					</form>
 					<div className={TABLE_WRAP}>
 						<table className="w-full text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Event</th><th className={TH}>Label</th><th className={TH}>Source</th><th className={TH}>Team</th><th className={TH} /></tr></thead>
+							<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={sort} k="event" className={TH}>Event</Sort_th><Sort_th sort={sort} k="label" className={TH}>Label</Sort_th><Sort_th sort={sort} k="source" className={TH}>Source</Sort_th><Sort_th sort={sort} k="team" className={TH}>Team</Sort_th><th className={TH} /></tr></thead>
 							<tbody>
 								{rows === null ? <Empty_row cols={5}>Loading…</Empty_row> : !rows.length ? <Empty_row cols={5}>No custom events in this realm yet.</Empty_row> : null}
-								{(rows ?? []).map((ev) => (
+								{(shown ?? []).map((ev) => (
 									<tr key={ev.id} className={TR} data-testid={`custom-${ev.event_type}`}>
 										<td className="g-mono px-4 py-2.5">{ev.event_type}</td>
 										<td className="px-4 text-[var(--g-ink-2)]">{ev.label ?? '—'}</td>

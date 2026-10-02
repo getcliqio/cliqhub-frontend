@@ -21,7 +21,7 @@ export function realm(over: Partial<Overview_realm> & { id: string; slug: string
 }
 
 export function org(over: Partial<Overview_org> & { id: string; slug: string }): Overview_org {
-	return { display_name: over.slug, role: 'member', status: 'ok', error: null, counts: counts(), realms: [], ...over };
+	return { display_name: over.slug, role: 'member', org_status: 'active', status: 'ok', error: null, counts: counts(), realms: [], ...over };
 }
 
 /** Two orgs: measureone (owner, 2 realms) and acme-labs (member, 1 realm). */

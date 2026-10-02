@@ -13,6 +13,7 @@ import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
 import type { Realm_daemons_data } from '@/lib/realm_daemons';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -25,6 +26,8 @@ const STATUS: Record<string, { label: string; color: string }> = {
 	stale: { label: 'Stale', color: 'var(--g-warn)' },
 	offline: { label: 'Offline', color: '#4a4d55' },
 };
+/** Status order for sorting (online first). */
+const STATUS_RANK: Record<string, number> = { online: 0, stale: 1, offline: 2 };
 
 export function Component() {
 	const { org = '', slug = '' } = useParams();
@@ -47,6 +50,12 @@ export function Component() {
 		{ refresh_ms: 15_000, fallback_error: 'Could not load daemons.' },
 	);
 	const data = read.data;
+	// Every daemon of the realm is loaded (no paging), so sorting here is exact. Default = the BFF's order (status, then heartbeat).
+	const sort = use_table_sort({ keys: ['name', 'status', 'hostname', 'last_heartbeat', 'running', 'teams_ready'], mode: 'client', first_dir: { last_heartbeat: 'desc', running: 'desc', teams_ready: 'desc' } });
+	const rows = data ? sort_rows(data.items, sort, {
+		name: (d) => d.name || d.id, status: (d) => STATUS_RANK[d.status] ?? 9, hostname: (d) => d.hostname,
+		last_heartbeat: (d) => d.last_heartbeat, running: (d) => d.running, teams_ready: (d) => d.teams_ready,
+	}) : [];
 	const realm_id = data?.realm.id ?? null;
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 
@@ -110,17 +119,17 @@ export function Component() {
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
-											<th className="px-4 py-2.5 font-semibold">Daemon</th>
-											<th className="px-4 py-2.5 font-semibold">Status</th>
-											<th className="px-4 py-2.5 font-semibold">Host</th>
-											<th className="px-4 py-2.5 font-semibold">Last heartbeat</th>
-											<th className="px-4 py-2.5 font-semibold">Running</th>
-											<th className="px-4 py-2.5 font-semibold" title="Teams on this realm’s team list that this daemon has installed">Teams ready</th>
+											<Sort_th sort={sort} k="name" className="px-4 py-2.5 font-semibold">Daemon</Sort_th>
+											<Sort_th sort={sort} k="status" className="px-4 py-2.5 font-semibold">Status</Sort_th>
+											<Sort_th sort={sort} k="hostname" className="px-4 py-2.5 font-semibold">Host</Sort_th>
+											<Sort_th sort={sort} k="last_heartbeat" className="px-4 py-2.5 font-semibold">Last heartbeat</Sort_th>
+											<Sort_th sort={sort} k="running" className="px-4 py-2.5 font-semibold">Running</Sort_th>
+											<Sort_th sort={sort} k="teams_ready" className="px-4 py-2.5 font-semibold" title="Teams on this realm’s team list that this daemon has installed">Teams ready</Sort_th>
 											<th className="w-[160px] px-4 py-2.5" />
 										</tr>
 									</thead>
 									<tbody>
-										{data.items.map((d) => {
+										{rows.map((d) => {
 											const st = STATUS[d.status] ?? { label: d.status, color: 'var(--g-ink-3)' };
 											const short = data.teams_total !== null && d.teams_ready !== null && d.teams_ready < data.teams_total;
 											return (

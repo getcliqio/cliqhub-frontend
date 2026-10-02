@@ -2,7 +2,7 @@
  * Realm › Settings (Graphite). Read: one `POST /v1/realm_settings/get`
  * (BFF: realm, members, pending invites, access tokens). Every write is one
  * existing route: realms/update, realms/add_member (also changes a role),
- * realms/remove_member, invitations/revoke, auth/generate_token,
+ * realms/remove_member, invitations/create, invitations/revoke, auth/generate_token,
  * auth/revoke_token, realms/delete. Agents and Notifications live in Manage.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -13,11 +13,14 @@ import { use_overview, relative_time } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
 import { Realm_a2a_panel } from '@/components/graphite/g_mesh';
+import { handle, person_name } from '@/lib/admin';
 import { REALM_ROLES, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
+import { use_invite } from '@/components/graphite/g_invites';
 
 const INPUT = 'h-9 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[13px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 const PRIMARY = 'rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
@@ -83,7 +86,7 @@ function General({ data, admin, post, reload }: { data: Realm_settings_data; adm
 function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post; on_added: () => Promise<void> }) {
 	const auth_fetch = useAuthFetch();
 	const [q, set_q] = useState('');
-	const [results, set_results] = useState<Array<{ id: string | number; username: string; display_name?: string; email?: string }>>([]);
+	const [results, set_results] = useState<Array<{ id: string; username: string | null; display_name: string; email: string }>>([]);
 	const [picked, set_picked] = useState<{ id: string; label: string } | null>(null);
 	const [role, set_role] = useState('operator');
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -96,7 +99,7 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 			try {
 				const res = await auth_fetch('/v1/users/get', { method: 'POST', body: JSON.stringify({ realm_id, query: term }) });
 				const data = await res.json().catch(() => null);
-				if (my === seq.current) set_results(data?.ok ? (data.data?.users ?? data.users ?? []) : []);
+				if (my === seq.current) set_results(data?.ok ? (data.data?.users ?? []) : []);
 			} catch { if (my === seq.current) set_results([]); }
 		}, 250);
 		return () => clearTimeout(t);
@@ -113,14 +116,7 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 	// No account yet: invite by email (they join the realm when they accept).
 	const email = q.trim();
 	const can_invite = !picked && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-	async function invite() {
-		set_msg(null);
-		const res = await post('/v1/invitations/create', { target_type: 'realm', realm_id, email, role });
-		if (!res.ok) { set_msg({ tone: 'bad', text: res.error }); return; }
-		set_msg({ tone: 'ok', text: `Invite sent to ${email} as ${role}.` });
-		set_q('');
-		await on_added();
-	}
+	const invite = use_invite({ target_type: 'realm', realm_id }, async () => { set_q(''); await on_added(); });
 	return (
 		<div className={`${CARD} flex flex-col gap-2 p-3`} aria-label="Add member" role="group">
 			<div className="flex flex-wrap items-center gap-2">
@@ -129,8 +125,8 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 					{results.length && !picked ? (
 						<ul role="listbox" aria-label="People" className="absolute left-0 right-0 top-10 z-40 max-h-[220px] overflow-y-auto rounded-lg border border-[#33363c] bg-[#16171a] py-1 shadow-[0_16px_40px_rgba(0,0,0,.55)]">
 							{results.map((u) => (
-								<li key={String(u.id)} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); set_picked({ id: String(u.id), label: u.display_name || u.username }); set_results([]); }} className="cursor-pointer px-3 py-1.5 text-[13px] hover:bg-[var(--g-soft)]">
-									{u.display_name || u.username} <span className="text-[var(--g-ink-3)]">@{u.username}{u.email ? ` · ${u.email}` : ''}</span>
+								<li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); set_picked({ id: u.id, label: person_name(u) }); set_results([]); }} className="cursor-pointer px-3 py-1.5 text-[13px] hover:bg-[var(--g-soft)]">
+									{person_name(u)} <span className="text-[var(--g-ink-3)]">{handle(u.username)} · {u.email}</span>
 								</li>
 							))}
 						</ul>
@@ -140,15 +136,19 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 					{REALM_ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
 				</select>
 				<button type="button" disabled={!picked} onClick={() => void add()} className={PRIMARY}>Add member</button>
-				{can_invite ? <button type="button" onClick={() => void invite()} className="rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-ink)] hover:bg-[var(--g-soft)]" title="They join the realm when they accept">Invite by email</button> : null}
+				{can_invite ? <button type="button" disabled={invite.busy} onClick={() => { set_msg(null); void invite.send(email, role); }} className="rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-ink)] hover:bg-[var(--g-soft)] disabled:opacity-50" title="They join the realm when they accept">Invite by email</button> : null}
 			</div>
 			<Msg msg={msg} />
+			{invite.view}
 		</div>
 	);
 }
 
 function Members({ data, admin, post, reload }: { data: Realm_settings_data; admin: boolean; post: Post; reload: () => Promise<void> }) {
 	const [confirm, set_confirm] = useState<string | null>(null);
+	// Every member of the realm is loaded, so sorting here is exact.
+	const msort = use_table_sort({ keys: ['member', 'role'], mode: 'client', param: 'members' });
+	const members = sort_rows(data.members, msort, { member: (m) => m.username ?? m.member_id, role: (m) => m.role });
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	async function run(path: string, body: Record<string, unknown>, done: string) {
 		set_msg(null);
@@ -166,9 +166,9 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 			{data.sections.members.status === 'error' ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{data.sections.members.error}</p> : null}
 			<div className={`${CARD} overflow-hidden`}>
 				<table className="w-full text-left text-[12.5px]">
-					<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Member</th><th className="px-4 py-2.5 font-semibold">Realm role</th><th className="w-[160px] px-4 py-2.5" /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={msort} k="member" className="px-4 py-2.5 font-semibold">Member</Sort_th><Sort_th sort={msort} k="role" className="px-4 py-2.5 font-semibold">Realm role</Sort_th><th className="w-[160px] px-4 py-2.5" /></tr></thead>
 					<tbody>
-						{data.members.map((m) => {
+						{members.map((m) => {
 							const key = `${m.member_type}:${m.member_id}`;
 							return (
 								<tr key={key} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`member-${m.member_id}`}>
@@ -200,9 +200,9 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 					<h3 className="text-[13px] font-semibold">Pending invites</h3>
 					<ul className={`${CARD} divide-y divide-[var(--g-line-2)]`}>
 						{data.invites.map((i) => (
-							<li key={i.id} className="flex items-center gap-3 px-4 py-2.5 text-[12.5px]">
+							<li key={i.invite_id} className="flex items-center gap-3 px-4 py-2.5 text-[12.5px]">
 								<span className="flex-1">{i.email} <span className="text-[var(--g-ink-3)]">· {i.role}{i.expires_at ? ` · expires ${new Date(i.expires_at).toLocaleDateString()}` : ''}</span></span>
-								{admin ? <button type="button" onClick={() => void run('/v1/invitations/revoke', { target_type: 'realm', invite_id: i.id }, `Invite to ${i.email} revoked.`)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Revoke</button> : null}
+								{admin ? <button type="button" onClick={() => void run('/v1/invitations/revoke', { invite_id: i.invite_id }, `Invite to ${i.email} revoked.`)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Revoke</button> : null}
 							</li>
 						))}
 					</ul>
@@ -216,6 +216,8 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 
 function Tokens({ data, admin, post, reload }: { data: Realm_settings_data; admin: boolean; post: Post; reload: () => Promise<void> }) {
 	const [name, set_name] = useState('');
+	const tsort = use_table_sort({ keys: ['name', 'created_at', 'last_used_at'], mode: 'client', param: 'tokens', first_dir: { created_at: 'desc', last_used_at: 'desc' } });
+	const tokens = sort_rows(data.tokens, tsort, { name: (t) => t.name, created_at: (t) => Date.parse(t.created_at) || null, last_used_at: (t) => (t.last_used_at ? Date.parse(t.last_used_at) : null) });
 	const [created, set_created] = useState<string | null>(null);
 	const [copied, set_copied] = useState(false);
 	const [confirm, set_confirm] = useState<string | null>(null);
@@ -260,9 +262,9 @@ function Tokens({ data, admin, post, reload }: { data: Realm_settings_data; admi
 			<div className={`${CARD} overflow-hidden`}>
 				{data.tokens.length === 0 ? <p className="px-4 py-8 text-center text-[12.5px] text-[var(--g-ink-3)]">No tokens for this realm.</p> : (
 					<table className="w-full text-left text-[12.5px]">
-						<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Name</th><th className="px-4 py-2.5 font-semibold">Created</th><th className="px-4 py-2.5 font-semibold">Last used</th><th className="w-[160px] px-4 py-2.5" /></tr></thead>
+						<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={tsort} k="name" className="px-4 py-2.5 font-semibold">Name</Sort_th><Sort_th sort={tsort} k="created_at" className="px-4 py-2.5 font-semibold">Created</Sort_th><Sort_th sort={tsort} k="last_used_at" className="px-4 py-2.5 font-semibold">Last used</Sort_th><th className="w-[160px] px-4 py-2.5" /></tr></thead>
 						<tbody>
-							{data.tokens.map((t) => (
+							{tokens.map((t) => (
 								<tr key={t.id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`token-${t.id}`}>
 									<td className="px-4 py-2.5 font-semibold">{t.name}</td>
 									<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{relative_time(Date.parse(t.created_at))}</td>

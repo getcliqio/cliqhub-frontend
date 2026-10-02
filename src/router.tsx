@@ -88,6 +88,14 @@ export const router = createBrowserRouter([
         path: 'realm-invite/:token',
         lazy: lazy_route(() => import('@/pages/invite_page')),
       },
+      {
+        path: 'reset/:token',
+        lazy: lazy_route(() => import('@/pages/reset_page')),
+      },
+      {
+        path: 'forgot-password',
+        lazy: lazy_route(() => import('@/pages/forgot_password_page')),
+      },
 
       // Public catalog browse (standalone layout with filter sidebar)
       {

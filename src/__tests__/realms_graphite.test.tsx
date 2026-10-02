@@ -52,6 +52,7 @@ describe('Realms page', () => {
 			'/v1/realms/create': () => ({ realm: { id: 'r-new', slug: 'qa', name: 'QA', org_slug: 'measureone' } }),
 			'/v1/teams/get': () => ({ data: { teams: [{ scope: 'measureone', name: 'feature-dev' }] } }),
 			'/v1/auth/generate_token': () => ({ data: { token: 'cliq_rt_abc' } }),
+			'/v1/invitations/create': () => ({ data: { invite_id: 'inv-1', status: 'pending', email: 'kim@x.com', role: 'operator', expires_at: '2026-10-16T00:00:00Z', resent: false, email_sent: true, invite_url: null } }),
 		});
 		open('/realms?new=1');
 		// only orgs you own/admin are offered: measureone
@@ -65,10 +66,26 @@ describe('Realms page', () => {
 		fireEvent.change(screen.getByLabelText('Person'), { target: { value: 'kim@x.com' } });
 		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/invitations/create')?.body).toEqual({ target_type: 'realm', realm_id: 'r-new', email: 'kim@x.com', role: 'operator' }));
+		expect(await screen.findByTestId('sent-result')).toHaveTextContent('Invite sent to kim@x.com.');
+		expect(screen.getByText('✓ kim@x.com (invited) · operator')).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Create enrollment token' }));
 		const reveal = await screen.findByTestId('secret-reveal');
 		expect(within(reveal).getByText(/cliq_rt_abc/)).toBeInTheDocument();
 		expect(calls.find((c) => c.url === '/v1/auth/generate_token')?.body).toEqual({ type: 'realm', realm_ids: ['r-new'], name: 'qa-enroll' });
+	});
+
+	it('new realm invite without email set up shows the link to copy', async () => {
+		route_fetch({
+			'/v1/realms/create': () => ({ realm: { id: 'r-new', slug: 'qa', name: 'QA', org_slug: 'measureone' } }),
+			'/v1/teams/get': () => ({ data: { teams: [] } }),
+			'/v1/invitations/create': () => ({ data: { invite_id: 'inv-1', status: 'pending', email: 'kim@x.com', role: 'operator', expires_at: '2026-10-16T00:00:00Z', resent: true, email_sent: false, invite_url: 'https://app.example.test/invite/kim' } }),
+		});
+		open('/realms?new=1');
+		fireEvent.change(await screen.findByLabelText('Realm name'), { target: { value: 'QA' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Create realm' }));
+		fireEvent.change(await screen.findByLabelText('Person'), { target: { value: 'kim@x.com' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		expect(await screen.findByTestId('fallback-url')).toHaveTextContent('https://app.example.test/invite/kim');
 	});
 });

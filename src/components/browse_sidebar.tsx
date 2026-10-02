@@ -1,18 +1,18 @@
 import { useSearchParams } from 'react-router';
-import { Filter, SortAsc, Tag } from 'lucide-react';
+import { SortAsc, Tag } from 'lucide-react';
 
-const CATEGORIES = [
-    { id: 'all', label: 'All teams' },
-    { id: 'agents', label: 'Custom Agents' },
-    { id: 'workflows', label: 'Workflows' },
-    { id: 'utilities', label: 'Utilities' },
-];
-
+/**
+ * Catalog orders → Core `teams/get` `sort_by` (Core API 6; the page maps them
+ * in `teams_page.tsx`). `popular` is Core's default (most installed first).
+ * Remove an id from CATALOG_SORTS to hide its button.
+ */
 const SORT_OPTIONS = [
     { id: 'popular', label: 'Most popular' },
     { id: 'recent', label: 'Recently updated' },
     { id: 'name', label: 'Name A–Z' },
 ];
+const CATALOG_SORTS: ReadonlySet<string> = new Set(['popular', 'recent', 'name']);
+const VISIBLE_SORTS = SORT_OPTIONS.filter((o) => CATALOG_SORTS.has(o.id));
 
 const POPULAR_TAGS = [
     'code-review',
@@ -23,10 +23,9 @@ const POPULAR_TAGS = [
     'data',
 ];
 
-/** Left sidebar for the Browse experience — category filters, sort, and tags. */
+/** Left sidebar for the Browse experience — sort and tags. */
 export function BrowseSidebar() {
     const [params, set_params] = useSearchParams();
-    const active_category = params.get('cat') || 'all';
     const active_sort = params.get('sort') || 'popular';
     const active_tag = params.get('tag') || '';
 
@@ -43,38 +42,17 @@ export function BrowseSidebar() {
 
     return (
         <aside className="hidden w-56 shrink-0 overflow-y-auto border-r border-white/10 px-4 py-5 lg:block">
-            {/* Categories */}
-            <section className="mb-6">
-                <h3 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-indigo-300/70">
-                    <Filter className="h-3.5 w-3.5" strokeWidth={1.75} />
-                    Category
-                </h3>
-                <nav className="space-y-0.5">
-                    {CATEGORIES.map((cat) => (
-                        <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => set_param('cat', cat.id, 'all')}
-                            className={`block w-full rounded-lg px-3 py-1.5 text-left text-sm font-medium transition ${
-                                active_category === cat.id
-                                    ? 'bg-white/10 text-white'
-                                    : 'text-indigo-200/80 hover:bg-white/5 hover:text-white'
-                            }`}
-                        >
-                            {cat.label}
-                        </button>
-                    ))}
-                </nav>
-            </section>
-
-            {/* Sort */}
+            {/* No category section: Core has no category field and its tags are free-form,
+                so category buttons could not filter anything (see teams_page.tsx). */}
+            {/* Sort — only when there is a real choice (see CATALOG_SORTS) */}
+            {VISIBLE_SORTS.length > 1 ? (
             <section className="mb-6">
                 <h3 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-indigo-300/70">
                     <SortAsc className="h-3.5 w-3.5" strokeWidth={1.75} />
                     Sort
                 </h3>
                 <nav className="space-y-0.5">
-                    {SORT_OPTIONS.map((opt) => (
+                    {VISIBLE_SORTS.map((opt) => (
                         <button
                             key={opt.id}
                             type="button"
@@ -90,6 +68,7 @@ export function BrowseSidebar() {
                     ))}
                 </nav>
             </section>
+            ) : null}
 
             {/* Tags */}
             <section>

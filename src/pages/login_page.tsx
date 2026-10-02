@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import { AlertCircle, ArrowRight, Eye, EyeOff, Terminal } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
 import { Cliq_mark } from '@/components/cliq_mark';
+import type { Invite_preview as Invite_wire } from '@/lib/invites';
 import { invite_from_redirect, safe_redirect, type Invite_target } from '@/lib/safe_redirect';
 import '@/styles/graphite.css';
 
@@ -26,17 +27,16 @@ type Invite_state =
 	| { status: 'ready'; preview: Invite_preview }
 	| { status: 'invalid'; message: string };
 
-function to_preview(kind: Invite_target['kind'], raw: Record<string, unknown>): Invite_preview {
-	const str = (k: string): string | null => (typeof raw[k] === 'string' && raw[k] ? (raw[k] as string) : null);
-	const is_realm = kind === 'realm' || raw.target_type === 'realm';
+function to_preview(raw: Invite_wire): Invite_preview {
+	const is_realm = raw.kind === 'realm';
 	return {
 		kind: is_realm ? 'realm' : 'org',
 		name: is_realm
-			? (str('realm_name') ?? str('realm_slug') ?? 'a realm')
-			: (str('org_display_name') ?? str('org_slug') ?? 'CliqHub'),
-		context: is_realm ? str('org_slug') : null,
-		role: str('role'),
-		email: str('email'),
+			? (raw.realm?.display_name || raw.realm?.slug || 'a realm')
+			: (raw.org.display_name || raw.org.slug),
+		context: is_realm ? raw.org.slug : null,
+		role: raw.role || null,
+		email: raw.invitee_email || null,
 	};
 }
 
@@ -67,7 +67,7 @@ function use_invite_preview(target: Invite_target | null): Invite_state {
 					set_state({ status: 'invalid', message });
 					return;
 				}
-				set_state({ status: 'ready', preview: to_preview(target.kind, data.data ?? {}) });
+				set_state({ status: 'ready', preview: to_preview(data.data as Invite_wire) });
 			} catch {
 				if (!cancelled) set_state({ status: 'invalid', message: 'Could not load the invitation.' });
 			}
@@ -301,9 +301,14 @@ function Login_form() {
 					</div>
 
 					<div>
-						<label htmlFor="password" className="mb-1.5 block text-[12.5px] font-medium text-[var(--g-ink-2)]">
-							Password
-						</label>
+						<div className="mb-1.5 flex items-baseline justify-between">
+							<label htmlFor="password" className="block text-[12.5px] font-medium text-[var(--g-ink-2)]">
+								Password
+							</label>
+							<Link to="/forgot-password" className="text-[12px] font-medium text-[var(--g-acc)] hover:underline">
+								Forgot password?
+							</Link>
+						</div>
 						<div className="relative">
 							<input
 								id="password"

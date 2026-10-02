@@ -147,7 +147,7 @@ describe('Login page', () => {
 
 	it('shows the org invitation being accepted', async () => {
 		fetch_spy.mockResolvedValue(
-			json({ ok: true, data: { target_type: 'org', org_slug: 'measureone', org_display_name: 'MeasureOne', role: 'member', email: 'jo@acme.com' } }),
+			json({ ok: true, data: { invite_id: 'i1', kind: 'org', status: 'pending', org: { slug: 'measureone', display_name: 'MeasureOne' }, realm: null, role: 'member', inviter: { display_name: 'Sapan Shah' }, invitee_email: 'jo@acme.com', account_exists: true, expires_at: '2026-10-16T10:20:00Z' } }),
 		);
 		render_at('/login?redirect=' + encodeURIComponent('/invite/tok_1'));
 		const card = await screen.findByText(/You're invited to/);
@@ -164,7 +164,7 @@ describe('Login page', () => {
 
 	it('shows the realm invitation with its org', async () => {
 		fetch_spy.mockResolvedValue(
-			json({ ok: true, data: { target_type: 'realm', realm_name: 'prod-us', org_slug: 'measureone', role: 'operator' } }),
+			json({ ok: true, data: { invite_id: 'i2', kind: 'realm', status: 'pending', org: { slug: 'measureone', display_name: 'MeasureOne' }, realm: { slug: 'prod-us', display_name: 'prod-us' }, role: 'operator', inviter: null, invitee_email: 'jo@acme.com', account_exists: true, expires_at: '2026-10-16T10:20:00Z' } }),
 		);
 		render_at('/login?redirect=' + encodeURIComponent('/realm-invite/tok_2'));
 		const card = await screen.findByText(/You're invited to/);
@@ -181,6 +181,20 @@ describe('Login page', () => {
 		await screen.findByText(/Invitation unavailable\./);
 		expect(screen.getByTestId('invite-card')).toHaveTextContent('Invitation expired.');
 		expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+	});
+
+	it('offers “Forgot password?”', () => {
+		render_at('/login');
+		expect(screen.getByRole('link', { name: 'Forgot password?' })).toHaveAttribute('href', '/forgot-password');
+	});
+
+	it('shows the deleted-account message the sign-in returns', async () => {
+		auth.login = vi.fn().mockResolvedValue('This account was deleted. Contact your admin.');
+		render_at('/login');
+		fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'gone' } });
+		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'whatever1' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('This account was deleted. Contact your admin.');
 	});
 
 	it('handles a network failure when loading the invitation', async () => {

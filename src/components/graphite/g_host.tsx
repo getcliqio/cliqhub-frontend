@@ -41,10 +41,9 @@ export function Run_state({ state }: { state: string }) {
 	return <Pill tone={RUN_TONE[state] ?? 'muted'}>{state.replace('_', ' ')}</Pill>;
 }
 
-/** Enqueue returns the run id in a daemon envelope or flat. */
+/** The run id of Core's `runs/enqueue` data (`{ run_id, daemon_id, accepted }`). */
 export function run_id_of(d: unknown): string | null {
-	const o = (d ?? {}) as { run_id?: unknown; payload?: { run_id?: unknown; data?: { run_id?: unknown } } };
-	const v = o.run_id ?? o.payload?.data?.run_id ?? o.payload?.run_id;
+	const v = ((d ?? {}) as { run_id?: unknown }).run_id;
 	return typeof v === 'string' ? v : null;
 }
 

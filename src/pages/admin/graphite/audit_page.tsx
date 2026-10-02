@@ -8,6 +8,7 @@ import { useSearchParams } from 'react-router';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { audit_is_sensitive, audit_summary, type Admin_audit_row, type Admin_list_data } from '@/lib/admin';
 import { Admin_header, Avatar, Chips, Empty_row, Pager, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -42,11 +43,13 @@ export function Component() {
 	const [draft, set_draft] = useState({ action, target });
 	// Round to the minute so polling doesn't produce a new request body each render.
 	const since_ms = range === 'all' ? undefined : Math.floor((Date.now() - RANGE_MS[range]) / 60_000) * 60_000;
+	const sort = use_table_sort({ keys: ['created_at', 'action'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { created_at: 'desc' } });
 	const read = use_bff_read<Admin_list_data<Admin_audit_row> & { unsupported: string[] }>('/v1/admin_list/get', {
-		kind: 'audit', limit: LIMIT, offset,
+		kind: 'audit', limit: LIMIT, offset, ...sort.body,
 		...(since_ms != null ? { since_ms } : {}),
 		...(action ? { action } : {}), ...(target_type ? { target_type } : {}), ...(target ? { target_id: target } : {}),
 	}, { fallback_error: 'Could not load the audit log.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const set = (patch: Record<string, string | null>) => {
 		const n = new URLSearchParams(sp);
@@ -75,7 +78,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="audit log" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>When</th><th className={TH}>Who</th><th className={TH}>Action</th><th className={TH}>Target</th><th className={TH}>Details</th></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="created_at" className={TH}>When</Sort_th><th className={TH}>Who</th><Sort_th sort={cols} k="action" className={TH}>Action</Sort_th><th className={TH}>Target</th><th className={TH}>Details</th></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{d && !d.items.length ? <Empty_row cols={5}>No matching entries.</Empty_row> : null}

@@ -15,6 +15,7 @@ import type { Agent_list_data, Agent_list_row } from '@/lib/agents';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { Agent_tile, G_INPUT, G_PILL, G_PRIMARY, Setup_badge } from '@/components/graphite/g_agents';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Agent_detail } from '@/pages/agents/agent_page';
 
@@ -39,13 +40,17 @@ export function Component() {
 	const base = realm_path(org, slug);
 	const read = use_bff_read<Agent_list_data>('/v1/agent_list/get', !id && org_id ? { org_id, realm: { org_slug: org, slug } } : null, { fallback_error: 'Could not load agents.' });
 	const data = read.data;
-	const rows = useMemo(() => (data?.items ?? []).filter((r) => {
+	// The BFF returns the org's whole agent list for this realm (no paging), so sorting here is exact.
+	const sort = use_table_sort({ keys: ['name', 'used', 'ready'], mode: 'client', first_dir: { used: 'desc' } });
+	const filtered = useMemo(() => (data?.items ?? []).filter((r) => {
 		if (q && !r.name.toLowerCase().includes(q.toLowerCase())) return false;
 		if (f === 'used') return data?.counts.in_use === null ? true : (r.used_count ?? 0) > 0;
 		if (f === 'not_ready') return Boolean(r.setup && r.setup.required_total > 0 && !r.setup.ready);
 		if (f === 'overridden') return r.overrides.length > 0;
 		return true;
 	}), [data, f, q]);
+	// Ready ascending puts agents that still need keys first; agents with nothing to set up sort last.
+	const rows = sort_rows(filtered, sort, { name: (r) => r.name, used: (r) => r.used_count, ready: (r) => (r.setup && r.setup.required_total > 0 ? (r.setup.ready ? 1 : 0) : null) });
 	const counts: Record<Filter, number | null> = {
 		used: data?.counts.in_use ?? null,
 		not_ready: data ? data.items.filter((r) => r.setup && r.setup.required_total > 0 && !r.setup.ready && (r.used_count ?? 1) > 0).length : null,
@@ -94,7 +99,7 @@ export function Component() {
 							{data && !rows.length ? <p className="px-4 py-10 text-center text-[13px] text-[var(--g-ink-3)]">{f === 'used' ? `No team installed in ${slug} uses an agent yet.` : 'Nothing here.'}</p> : null}
 							{rows.length ? (
 								<table className="w-full text-[12.5px]">
-									<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Agent</th><th className="px-4 font-semibold">Used by (here)</th><th className="px-4 font-semibold">Values</th><th className="px-4 font-semibold">Ready?</th><th className="w-[1%]" /></tr></thead>
+									<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={sort} k="name" className="px-4 py-2.5 font-semibold">Agent</Sort_th><Sort_th sort={sort} k="used" className="px-4 font-semibold">Used by (here)</Sort_th><th className="px-4 font-semibold">Values</th><Sort_th sort={sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th className="w-[1%]" /></tr></thead>
 									<tbody>{rows.map((r) => (
 										<tr key={r.id} onClick={() => navigate(`${base}/agents/${r.id}`)} className="cursor-pointer border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 hover:bg-[var(--g-soft)]" data-testid={`ragent-${r.name}`}>
 											<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Agent_tile agent_type={r.agent_type} name={r.name} size={28} /><Link to={`${base}/agents/${r.id}`} onClick={(e) => e.stopPropagation()} className="g-mono font-semibold text-[var(--g-ink)] hover:underline">{r.name}</Link></div></td>

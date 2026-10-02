@@ -8,6 +8,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { use_overview } from '@/lib/overview';
 import { ago, realm_href, type Admin_list_data, type Admin_realm_row } from '@/lib/admin';
 import { Admin_header, Empty_row, Hub_scope_note, Org_select, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -20,7 +21,9 @@ export function Component() {
 	const q = p.get('q');
 	const org_id = p.get('org');
 	const [draft, set_draft] = useState(q);
-	const read = use_bff_read<Admin_list_data<Admin_realm_row>>('/v1/admin_list/get', { kind: 'realms', limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load realms.' });
+	const sort = use_table_sort({ keys: ['slug', 'name', 'created_at', 'updated_at', 'created_by'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { created_at: 'desc' } });
+	const read = use_bff_read<Admin_list_data<Admin_realm_row>>('/v1/admin_list/get', { kind: 'realms', ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load realms.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const orgs = d?.org_options ?? overview.data?.orgs ?? [];
 	return (
@@ -36,7 +39,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realms list" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Realm</th><th className={TH}>Org</th><th className={TH}>Created by</th><th className={TH}>Created</th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="slug" className={TH}>Realm</Sort_th><th className={TH}>Org</th><Sort_th sort={cols} k="created_by" className={TH}>Created by</Sort_th><Sort_th sort={cols} k="created_at" className={TH}>Created</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{d && !d.items.length ? <Empty_row cols={5}>{q ? `No realms match “${q}”.` : 'No realms.'}</Empty_row> : null}

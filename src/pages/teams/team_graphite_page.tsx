@@ -24,6 +24,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { State_pill } from '@/components/graphite/g_status';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
 
@@ -225,6 +226,10 @@ export function Component() {
 	};
 	useEffect(() => { const t = setTimeout(() => { if (tab === 'runs' && q_draft.trim() !== runs_q) set_params({ q: q_draft.trim() || null, page: null }, true); }, 300); return () => clearTimeout(t); }, [q_draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// Runs tab: sorted by Core (runs/get sort_by), so it is right across pages; default = last updated first.
+	// Installs tab: every realm checked is in the answer (no paging), so sorting here is exact.
+	const installs_sort = use_table_sort({ keys: ['realm', 'version', 'daemons', 'last_run_at'], mode: 'client', param: 'installs', first_dir: { daemons: 'desc', last_run_at: 'desc' } });
+	const runs_sort = use_table_sort({ keys: ['run_name', 'state', 'started_at', 'last_updated_at'], default_sort: { by: 'last_updated_at', dir: 'desc' }, first_dir: { started_at: 'desc', last_updated_at: 'desc' } });
 	const body: Record<string, unknown> | null = team_scope && name && (overview.data || overview.status === 'error') ? {
 		scope: team_scope, name, view: tab,
 		...(version ? { version } : {}),
@@ -232,9 +237,10 @@ export function Component() {
 		...(tab === 'workflow' && run_sel !== 'none' ? { run_id: run_sel } : {}),
 		...(tab === 'versions' && cmp_from ? { compare_from: cmp_from } : {}),
 		...(tab === 'versions' && cmp_to ? { compare_to: cmp_to } : {}),
-		...(tab === 'runs' ? { limit: TEAM_RUNS_PAGE_SIZE, offset: runs_page * TEAM_RUNS_PAGE_SIZE, ...(runs_state ? { state: runs_state } : {}), ...(runs_realm ? { realm_id: runs_realm } : {}), ...(runs_q ? { q: runs_q } : {}) } : {}),
+		...(tab === 'runs' ? { limit: TEAM_RUNS_PAGE_SIZE, offset: runs_page * TEAM_RUNS_PAGE_SIZE, ...(runs_state ? { state: runs_state } : {}), ...(runs_realm ? { realm_id: runs_realm } : {}), ...runs_sort.body, ...(runs_q ? { q: runs_q } : {}) } : {}),
 	} : null;
 	const read = use_bff_read<Team_page_data>('/v1/team_page/get', body, { refresh_ms: tab === 'runs' || tab === 'workflow' ? 30_000 : 120_000, fallback_error: 'Could not load this team.' });
+	const run_cols = runs_sort.with_sortable(read.data?.runs?.sortable);
 	const any_data = read.data;
 	// Header survives tab switches; the body only renders data for this tab.
 	const data = any_data && any_data.view === tab ? any_data : null;
@@ -458,7 +464,7 @@ export function Component() {
 				<div className={`${CARD} overflow-hidden`}>
 					{r.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{runs_state || runs_realm || runs_q ? 'No runs match these filters.' : 'This team hasn’t run yet.'}</p> : (
 						<table className="w-full text-left text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Run</th><th className="px-4 py-2.5 font-semibold">Realm</th><th className="px-4 py-2.5 font-semibold">State</th><th className="px-4 py-2.5 font-semibold">Phase</th><th className="px-4 py-2.5 font-semibold">Started</th><th className="px-4 py-2.5 font-semibold">Updated</th></tr></thead>
+							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={run_cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th><th className="px-4 py-2.5 font-semibold">Realm</th><Sort_th sort={run_cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th><th className="px-4 py-2.5 font-semibold">Phase</th><Sort_th sort={run_cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th><Sort_th sort={run_cols} k="last_updated_at" className="px-4 py-2.5 font-semibold">Updated</Sort_th></tr></thead>
 							<tbody>
 								{r.items.map((x) => {
 									const realm = x.realm_id ? realm_by_id.get(x.realm_id) : undefined;
@@ -488,7 +494,9 @@ export function Component() {
 			</>
 		);
 	} else if (data?.installs) {
-		const ins = data.installs;
+		const ins = { ...data.installs, items: sort_rows(data.installs.items, installs_sort, {
+			realm: (i) => i.realm_name || i.realm_slug, version: (i) => i.version, daemons: (i) => i.installed_count, last_run_at: (i) => i.last_run_at,
+		}) };
 		content = (
 			<>
 				<div className="relative flex flex-wrap items-center gap-2">
@@ -502,7 +510,7 @@ export function Component() {
 				<div className={`${CARD} overflow-hidden`}>
 					{ins.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">Not installed in any realm yet.</p> : (
 						<table className="w-full text-left text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="px-4 py-2.5 font-semibold">Realm</th><th className="px-4 py-2.5 font-semibold">Version</th><th className="px-4 py-2.5 font-semibold" title="Online daemons in the realm that have this team">Daemons with it</th><th className="px-4 py-2.5 font-semibold">Last run</th><th className="w-[280px] px-4 py-2.5" /></tr></thead>
+							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={installs_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={installs_sort} k="version" className="px-4 py-2.5 font-semibold">Version</Sort_th><Sort_th sort={installs_sort} k="daemons" className="px-4 py-2.5 font-semibold" title="Online daemons in the realm that have this team">Daemons with it</Sort_th><Sort_th sort={installs_sort} k="last_run_at" className="px-4 py-2.5 font-semibold">Last run</Sort_th><th className="w-[280px] px-4 py-2.5" /></tr></thead>
 							<tbody>
 								{ins.items.map((i) => {
 									const short = i.installed_count < i.online_daemon_count;

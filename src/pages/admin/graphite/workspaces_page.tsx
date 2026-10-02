@@ -5,6 +5,7 @@
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, type Admin_list_data, type Admin_workspace_row } from '@/lib/admin';
 import { Admin_header, Empty_row, Pager, Pill, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { State_pill } from '@/components/graphite/g_status';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -12,7 +13,9 @@ const LIMIT = 25;
 
 export function Component() {
 	const p = use_list_params();
-	const read = use_bff_read<Admin_list_data<Admin_workspace_row>>('/v1/admin_list/get', { kind: 'workspaces', limit: LIMIT, offset: p.offset }, { refresh_ms: 30_000, fallback_error: 'Could not load workspaces.' });
+	const sort = use_table_sort({ keys: ['name', 'created_at'] });
+	const read = use_bff_read<Admin_list_data<Admin_workspace_row>>('/v1/admin_list/get', { kind: 'workspaces', ...sort.body, limit: LIMIT, offset: p.offset }, { refresh_ms: 30_000, fallback_error: 'Could not load workspaces.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	return (
 		<div className="flex flex-col gap-4">
@@ -20,7 +23,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="workspaces list" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Workspace</th><th className={TH}>Daemon</th><th className={TH}>Teams</th><th className={TH}>Now</th><th className={TH}>Last run</th></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="name" className={TH}>Workspace</Sort_th><th className={TH}>Daemon</th><th className={TH}>Teams</th><th className={TH}>Now</th><th className={TH}>Last run</th></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{d && !d.items.length ? <Empty_row cols={5}>No workspaces yet.</Empty_row> : null}

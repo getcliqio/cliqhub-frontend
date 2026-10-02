@@ -51,10 +51,34 @@ export interface Admin_home_data {
 	partial: boolean;
 }
 
+/** Account state. */
+export type User_status = 'invited' | 'active' | 'suspended' | 'deleted';
+/** Org state: an org waits for its owner until the owner invite is accepted. */
+export type Org_status = 'active' | 'waiting_for_owner' | 'deleted';
+/** Membership state in an org: pending until the invite is accepted. */
+export type Member_status = 'active' | 'pending' | 'deleted';
+
+/** `admin_list/get` accounts row; `username` is null for someone invited by email who has not accepted. */
 export interface Admin_account_row {
-	id: string; username: string; display_name: string; email: string;
-	role: 'user' | 'admin'; suspended_at: string | null; created_at: string | null;
+	id: string; username: string | null; display_name: string; email: string;
+	role: 'user' | 'admin'; status: User_status; suspended_at: string | null; deleted_at: string | null; created_at: string | null;
 }
+
+/** What to call a person whose username may be unset (invited by email, not accepted yet). */
+export function person_name(p: { display_name?: string | null; username: string | null; email?: string | null }): string {
+	return p.display_name || p.username || p.email || 'Invited';
+}
+
+/** How actions and messages name a person: the username, or the email until there is one. */
+export function login_name(p: { username: string | null; email?: string | null }): string {
+	return p.username ?? p.email ?? 'Invited';
+}
+
+/** "@username", or "Invited" while the person has no username yet. */
+export function handle(username: string | null): string {
+	return username ? `@${username}` : 'Invited';
+}
+
 export interface Admin_daemon_row {
 	id: string; name: string | null; hostname: string | null; status: string;
 	last_heartbeat: number | null; capacity: number | null;
@@ -80,6 +104,8 @@ export interface Admin_list_data<T> {
 	unsupported: string[];
 	/** Daemons, hub-wide: every org for the picker. */
 	org_options?: Array<{ id: string; slug: string; display_name: string }>;
+	/** Columns the BFF can sort this list by today (only what Core applies). */
+	sortable?: string[];
 }
 
 export interface Admin_realm_ref { id: string; slug: string; org_slug: string | null }
@@ -103,20 +129,51 @@ export function run_href(run_id: string, r: Admin_realm_ref | null): string | nu
 	return base ? `${base}/runs/${encodeURIComponent(run_id)}` : null;
 }
 
-/** `users/get_by_id` (site admin). */
+/** `users/get_by_id` (site admin); `orgs` are the live orgs the user is an active member of. */
 export interface Admin_user_detail {
-	id: string; username: string; display_name: string; email: string; role: 'user' | 'admin';
-	suspended_at: string | null; suspended_reason?: string; created_at: string | null;
-	scope_count?: number; team_count?: number; token_count?: number; draft_count?: number;
-	orgs?: Array<{ id: string; slug: string; display_name: string; role: string }>;
+	id: string; username: string | null; display_name: string; email: string; role: string;
+	status: User_status; deleted_at: string | null; suspended_at: string | null; suspended_reason: string; created_at: string;
+	scope_count: number; team_count: number; token_count: number; draft_count: number;
+	orgs: Array<{ id: string; slug: string; display_name: string; role: string }>;
 }
 
-/** `orgs/get_by_id` (site admin view). */
-export interface Admin_org_detail {
+/**
+ * One org member as `orgs/get_by_id` sends it; `username` is null until someone
+ * invited by email accepts. `email` is null unless the viewer manages members
+ * (org owner/admin) or is a site admin.
+ */
+export interface Org_member {
+	user_id: string; username: string | null; display_name: string; email: string | null; role: string; role_id: string | null;
+	status: Member_status; invited_at: string | null; joined_at: string | null; deleted_at: string | null;
+}
+
+/** An org role with its permissions. */
+export interface Org_role {
+	id: string; org_id: string; slug: string; name: string; permissions: string[];
+	is_system: boolean; is_default: boolean; member_count: number; created_at?: string;
+}
+
+/** A publishing scope of an org, with counts. */
+export interface Org_scope { id: string; slug: string; display_name: string; visibility: string; member_count: number; team_count: number }
+
+/** `orgs/get_by_id` (also `org_page/get`'s `org`). */
+export interface Org_detail {
 	id: string; slug: string; display_name: string; created_at: string;
-	members: Array<{ user_id: string; username: string; display_name: string; email?: string; role: string; role_id: string | null }>;
-	scopes: Array<{ id: string; slug: string; display_name: string; visibility: string; member_count: number | string; team_count?: number | string }>;
-	roles: Array<{ id: string; slug: string; name: string; is_system?: boolean; member_count?: number }>;
+	status: Org_status;
+	/** `username` is null until an owner invited by email accepts. */
+	owner: { user_id: string; username: string | null; status: User_status } | null;
+	deleted_at: string | null;
+	/** The open owner invite while the org waits for its owner; null otherwise. */
+	pending_owner_invite: { invite_id: string; email: string; expires_at: string } | null;
+	/** The caller's role slug. */
+	my_role: string;
+	members: Org_member[];
+	scopes: Org_scope[];
+	roles: Org_role[];
+	/** Permissions a custom role can hold. */
+	available_permissions: string[];
+	/** Permissions only the owner role has. */
+	owner_only_permissions: string[];
 }
 
 export function initials(name: string): string {
@@ -155,13 +212,13 @@ export function month_year(iso: string | null): string {
 }
 
 /**
- * Org owners: members holding the `owner` role (by id). Rows Core hasn't
+ * Org owners: current or invited members holding the `owner` role (by id). Rows Core hasn't
  * backfilled yet (role_id null) count when the legacy role is owner/admin —
  * Core promotes the first admin to owner on its next boot (same rule as Core's owner_count).
  */
-export function owners_of(org: Admin_org_detail): Admin_org_detail['members'] {
+export function owners_of(org: Org_detail): Org_member[] {
 	const owner_ids = new Set(org.roles.filter((r) => r.slug === 'owner').map((r) => r.id));
-	return org.members.filter((m) => (m.role_id ? owner_ids.has(m.role_id) : m.role === 'owner' || m.role === 'admin'));
+	return org.members.filter((m) => m.status !== 'deleted' && (m.role_id ? owner_ids.has(m.role_id) : m.role === 'owner' || m.role === 'admin'));
 }
 
 /** Human summary of audit details — secret-looking keys never show a value. */
@@ -181,3 +238,74 @@ export function audit_summary(details: Record<string, unknown>): string {
 export function audit_is_sensitive(action: string): boolean {
 	return /set_role|delete|act_as|force_delete|reset_password/.test(action);
 }
+
+/** One row of `orgs/get` (site-admin inventory). */
+export interface Admin_org_row {
+	id: string; slug: string; display_name: string; member_count: number; scope_count: number;
+	created_at: string;
+	status: Org_status;
+	/** `username` is null until an owner invited by email accepts. */
+	owner: { username: string | null; status: User_status } | null;
+	deleted_at: string | null;
+}
+
+/** `orgs/new` response: the org (waiting for its owner) and the owner invite. */
+export interface Org_new_data {
+	org: {
+		id: string; slug: string; display_name: string; status: Org_status;
+		owner: { user_id: string; email: string; status: User_status };
+		created_at: string; reactivated: boolean;
+	};
+	owner_invite: { invite_id: string; role: 'owner'; status: 'pending'; expires_at: string; email_sent: boolean; invite_url: string | null };
+}
+
+/** `users/new` response: the invited user and their set-password email. */
+export interface Users_new_data {
+	user: { id: string; username: string; email: string; status: User_status };
+	setup: { expires_at: string; email_sent: boolean; setup_url: string | null };
+}
+
+/** `users/reset_password` response for a site admin. */
+export interface Reset_email_data {
+	reset_id: string; expires_at: string; email_sent: boolean; reset_url: string | null;
+}
+
+/** Core's 409 `deleted` details: the name belongs to a soft-deleted org or user. */
+export interface Deleted_details {
+	kind: 'org' | 'user';
+	id: string;
+	deleted_at: string;
+	was_active: boolean;
+}
+
+/** Deleted-row details from an error's `details`, or null when they aren't. */
+export function as_deleted_details(d: Record<string, unknown> | null | undefined): Deleted_details | null {
+	if (!d || (d.kind !== 'org' && d.kind !== 'user') || typeof d.id !== 'string') return null;
+	return d as unknown as Deleted_details;
+}
+
+/** Who holds a name (Core's 409 `details` on org / scope / user create; see Core lib/namespace.ts). */
+export interface Namespace_holder {
+	kind: 'org' | 'scope' | 'user';
+	slug: string;
+	scope_type?: string;
+	org_slug?: string | null;
+	owner_username?: string | null;
+	personal?: boolean;
+	reason?: string;
+}
+
+/** A holder from an error's `details`, or null when it isn't one. */
+export function as_namespace_holder(d: Record<string, unknown> | null | undefined): Namespace_holder | null {
+	if (!d || (d.kind !== 'org' && d.kind !== 'scope' && d.kind !== 'user') || typeof d.slug !== 'string') return null;
+	return d as unknown as Namespace_holder;
+}
+
+/** Where an admin can look at the holder of a name. */
+export function namespace_holder_link(h: Namespace_holder): { href: string; label: string } {
+	const q = encodeURIComponent(h.slug);
+	if (h.kind === 'scope') return { href: `/admin/scopes?q=${q}`, label: 'View scope' };
+	if (h.kind === 'org') return { href: `/admin/orgs?q=${q}${h.personal ? '&personal=1' : ''}`, label: h.personal ? 'View personal org' : 'View org' };
+	return { href: `/admin/accounts?q=${q}`, label: 'View account' };
+}
+

@@ -16,8 +16,10 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, month_year } from '@/lib/admin';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Avatar, Banner, Empty_row, Pill, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Org_status_pill } from '@/components/graphite/g_invites';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Secret_reveal } from '@/components/graphite/g_secret';
+import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 
 type Tab = 'profile' | 'password' | 'tokens' | 'scopes';
 const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Access tokens', 'Account'], ['scopes', 'My scopes', 'Publishing']];
@@ -89,7 +91,7 @@ function Profile() {
 						return (
 							<li key={o.id} className="flex items-center gap-2.5" data-testid={`my-org-${o.slug}`}>
 								<Avatar name={o.display_name || o.slug} size={24} />
-								<span>{o.display_name || o.slug}</span><span className="text-[12.5px] text-[var(--g-ink-3)]">{o.role}</span>
+								<span>{o.display_name || o.slug}</span><span className="text-[12.5px] text-[var(--g-ink-3)]">{o.role}</span>{o.org_status !== 'active' ? <Org_status_pill status={o.org_status} /> : null}
 								<span className="ml-auto flex gap-2">
 									{manager ? <Link to={`/orgs/${o.id}`} className={G_BTN}>Manage</Link> : null}
 									{o.slug !== user.username ? (leaving === o.id
@@ -174,7 +176,12 @@ function Tokens() {
 		else set_msg({ tone: 'ok', text: `${t.name} revoked — anything using it stops working now.` });
 		void read.reload();
 	}
-	const tokens = read.data?.tokens ?? [];
+	// All of the caller's tokens are loaded (one page of 100), so sorting here is exact for any real account.
+	const tsort = use_table_sort({ keys: ['name', 'works_in', 'created_at', 'last_used_at'], mode: 'client', param: 'tokens', first_dir: { created_at: 'desc', last_used_at: 'desc' } });
+	const tokens = sort_rows(read.data?.tokens ?? [], tsort, {
+		name: (t) => t.name, works_in: (t) => works_in(t), created_at: (t) => Date.parse(t.created_at) || null,
+		last_used_at: (t) => (t.last_used_at ? Date.parse(t.last_used_at) : null),
+	});
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex flex-wrap items-center gap-3">
@@ -195,7 +202,7 @@ function Tokens() {
 			) : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Name</th><th className={TH}>Works in</th><th className={TH}>Created</th><th className={TH}>Last used</th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={tsort} k="name" className={TH}>Name</Sort_th><Sort_th sort={tsort} k="works_in" className={TH}>Works in</Sort_th><Sort_th sort={tsort} k="created_at" className={TH}>Created</Sort_th><Sort_th sort={tsort} k="last_used_at" className={TH}>Last used</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{read.data && !tokens.length ? <Empty_row cols={5}>No access tokens yet.</Empty_row> : null}
@@ -229,14 +236,19 @@ interface Scope_row { id: string; slug: string; display_name?: string; visibilit
 
 function Scopes() {
 	const { user } = useAuth();
-	const read = use_bff_read<{ scopes: Scope_row[] }>('/v1/orgs/get_scopes', user ? { user_id: user.id, limit: 100 } : null, { fallback_error: 'Could not load your scopes.' });
-	const rows = read.data?.scopes ?? [];
+	// orgs/get_scopes answers PagedData (`items`); `scopes` is kept for older BFFs.
+	const read = use_bff_read<{ items?: Scope_row[]; scopes?: Scope_row[] }>('/v1/orgs/get_scopes', user ? { user_id: user.id, limit: 100 } : null, { fallback_error: 'Could not load your scopes.' });
+	const ssort = use_table_sort({ keys: ['slug', 'type', 'visibility', 'teams'], mode: 'client', param: 'scopes', first_dir: { teams: 'desc' } });
+	const rows = sort_rows(read.data?.items ?? read.data?.scopes ?? [], ssort, {
+		slug: (s) => s.slug, type: (s) => (s.scope_type === 'user' || !s.org_id ? 'personal' : 'org'),
+		visibility: (s) => s.visibility ?? 'private', teams: (s) => Number(s.team_count ?? 0),
+	});
 	return (
 		<div className="flex flex-col gap-3">
 			<p className="text-[12.5px] text-[var(--g-ink-3)]">Namespaces you can publish teams under (<span className="g-mono">@scope/team</span>). Org scopes are managed in Manage › Organization › Scopes.</p>
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Scope</th><th className={TH}>Type</th><th className={TH}>Visibility</th><th className={TH}>Teams</th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={ssort} k="slug" className={TH}>Scope</Sort_th><Sort_th sort={ssort} k="type" className={TH}>Type</Sort_th><Sort_th sort={ssort} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={ssort} k="teams" className={TH}>Teams</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{read.data && !rows.length ? <Empty_row cols={5}>No scopes.</Empty_row> : null}

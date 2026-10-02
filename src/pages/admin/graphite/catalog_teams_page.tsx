@@ -9,6 +9,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { team_href } from '@/lib/team_page';
 import { ago, type Admin_list_data, type Admin_team_row } from '@/lib/admin';
 import { Admin_header, Banner, Chips, Empty_row, Pager, Pill, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -31,7 +32,9 @@ export function Component() {
 	const [busy, set_busy] = useState<string | null>(null);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const post = use_post();
-	const read = use_bff_read<Admin_list_data<Admin_team_row>>('/v1/admin_list/get', { kind: 'teams', filter, limit: LIMIT, offset, ...(q ? { query: q } : {}) }, { fallback_error: 'Could not load teams.' });
+	const sort = use_table_sort({ keys: ['name', 'install_count', 'created_at', 'updated_at'], default_sort: { by: 'updated_at', dir: 'desc' }, first_dir: { install_count: 'desc', updated_at: 'desc', created_at: 'desc' } });
+	const read = use_bff_read<Admin_list_data<Admin_team_row>>('/v1/admin_list/get', { kind: 'teams', filter, ...sort.body, limit: LIMIT, offset, ...(q ? { query: q } : {}) }, { fallback_error: 'Could not load teams.' });
+	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
 	const set = (patch: Record<string, string | null>) => {
 		const n = new URLSearchParams(sp);
@@ -65,7 +68,7 @@ export function Component() {
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="catalog" /> : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><th className={TH}>Team</th><th className={TH}>Author</th><th className={TH}>Versions</th><th className={TH}>Marketplace</th><th className={TH}>Installs</th><th className={TH}>Updated</th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="name" className={TH}>Team</Sort_th><th className={TH}>Author</th><th className={TH}>Versions</th><th className={TH}>Marketplace</th><Sort_th sort={cols} k="install_count" className={TH}>Installs</Sort_th><Sort_th sort={cols} k="updated_at" className={TH}>Updated</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
 						{read.status === 'loading' ? <Empty_row cols={7}>Loading…</Empty_row> : null}
 						{d && !d.items.length ? <Empty_row cols={7}>{q ? `No teams match “${q}”.` : 'Nothing here.'}</Empty_row> : null}

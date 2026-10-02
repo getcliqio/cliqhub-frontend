@@ -8,7 +8,9 @@
  * and notification_channels create/update/remove/test.
  *
  * Follows the view switcher: all orgs, one org, or one realm (org-wide rules
- * that reach that realm are included).
+ * that reach that realm are included). Built-in (locked) rules and channels
+ * show a lock and the reason, with no edit controls; seeded defaults carry a
+ * "Default" tag and stay editable. Rule recipients show as chips.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -20,9 +22,11 @@ import { use_view_scope, type View_scope } from '@/lib/view_scope';
 import {
 	can_edit_channel,
 	can_edit_org,
+	can_edit_org_channels,
 	can_edit_realm,
 	can_edit_rule,
 	event_label,
+	recipient_label,
 	view_only_orgs,
 	event_options,
 	rule_effect,
@@ -87,12 +91,21 @@ function Dest_icons({ destinations }: { destinations: Array<{ type: string; labe
 	);
 }
 
-function Event_cell({ selector }: { selector: string }) {
+function Event_cell({ selector, tag }: { selector: string; tag?: React.ReactNode }) {
 	return (
 		<div className="min-w-0">
-			<b className="block truncate text-[13px] font-semibold">{event_label(selector)}</b>
+			<b className="flex items-center gap-1.5 truncate text-[13px] font-semibold">{event_label(selector)}{tag}</b>
 			<span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{selector}</span>
 		</div>
+	);
+}
+
+function Recipient_chips({ recipients }: { recipients: string[] }) {
+	if (!recipients.length) return null;
+	return (
+		<span className="mt-1 flex flex-wrap gap-1" aria-label="Recipients">
+			{recipients.map((r) => <span key={r} className="rounded-full border border-[var(--g-line)] bg-[var(--g-soft)] px-2 py-0.5 text-[11px] text-[var(--g-ink-2)]" data-testid="recipient-chip">{recipient_label(r)}</span>)}
+		</span>
 	);
 }
 
@@ -213,7 +226,10 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 								const replaced = r.replaces.map((id) => by_id.get(id)).filter(Boolean) as Notif_rule[];
 								return (
 									<tr key={r.id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`rule-${r.id}`}>
-										<td className="px-4 py-2.5"><Event_cell selector={r.event} /></td>
+										<td className="px-4 py-2.5">
+											<Event_cell selector={r.event} tag={r.system_key && !r.locked ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] font-medium text-[var(--g-ink-3)]" data-testid="default-tag">Default</span> : null} />
+											{r.locked && r.lock_reason ? <span className="mt-0.5 block text-[11.5px] text-[var(--g-ink-3)]" data-testid="lock-reason">{r.lock_reason}</span> : null}
+										</td>
 										<td className="px-4 py-2.5"><Scope_tag kind={r.scope.kind} text={scope_text(r.scope)} org={org_by_id.get(r.scope.org_id)} /></td>
 										<td className="px-4 py-2.5">
 											<span className="inline-flex items-center gap-2">
@@ -221,6 +237,7 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 												<b className="font-medium">{r.channel_name ?? <span className="text-[var(--g-ink-3)]">unknown channel</span>}</b>
 												{ch && !ch.enabled ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span> : null}
 											</span>
+											<Recipient_chips recipients={r.recipients} />
 										</td>
 										<td className="px-4 py-2.5">
 											{replaced.length ? (
@@ -234,7 +251,11 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 											) : null}
 										</td>
 										<td className="px-4 py-2.5 text-right">
-											{!can_edit_rule(data, r) ? (
+											{r.locked ? (
+												<span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]" title={r.lock_reason ?? 'Built in'} data-testid="locked">
+													<Lock aria-hidden className="h-3 w-3" />Built in
+												</span>
+											) : !can_edit_rule(data, r) ? (
 												<span className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]" title="You can see this rule but not change it" data-testid="view-only">
 													<Lock aria-hidden className="h-3 w-3" />view only
 												</span>
@@ -366,7 +387,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 							role="radio"
 							aria-checked={kind === k}
 							disabled={k === 'org' && !can_edit_org(data, org_id)}
-							title={k === 'org' && !can_edit_org(data, org_id) ? 'Needs org owner or admin' : undefined}
+							title={k === 'org' && !can_edit_org(data, org_id) ? 'Needs org owner' : undefined}
 							onClick={() => { set_kind(k); set_channel_id(''); }}
 							className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold ${kind === k ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[var(--g-line)] hover:border-[#3a3d44]'} disabled:cursor-not-allowed disabled:opacity-40`}
 						>
@@ -483,7 +504,7 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 			<div className="flex min-w-0 flex-col gap-4">
 				<div className="flex items-center">
 					<p className="text-[13px] text-[var(--g-ink-3)]">Named places messages go. One channel can fan out to several destinations.</p>
-					{data.orgs.some((o) => o.status === 'ok' && can_edit_org(data, o.id)) || data.realms.some((r) => can_edit_realm(data, r.id))
+					{data.orgs.some((o) => o.status === 'ok' && can_edit_org_channels(data, o.id)) || data.realms.some((r) => can_edit_realm(data, r.id))
 						? <button type="button" onClick={() => set_creating(true)} className={`${PRIMARY} ml-auto inline-flex items-center gap-1.5`}><Plus className="h-3.5 w-3.5" aria-hidden />New channel</button>
 						: null}
 				</div>
@@ -510,6 +531,7 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 									>
 										<td className="px-4 py-2.5">
 											<button type="button" className="text-left font-semibold" onClick={() => set_open_id(c.id)}>{c.name}</button>
+											{c.locked ? <span title={c.lock_reason ?? 'Built in'}><Lock aria-label="Built in" className="ml-1.5 inline h-3 w-3 text-[var(--g-ink-3)]" /></span> : null}
 											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span>}
 										</td>
 										<td className="px-4 py-2.5">
@@ -550,7 +572,9 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 							) : <p className="text-[12.5px] text-[var(--g-ink-3)]">No rules use this channel yet.</p>}
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
-						{!can_edit_channel(data, open) ? (
+						{open.locked ? (
+							<p className="flex items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]" data-testid="channel-locked"><Lock aria-hidden className="h-3.5 w-3.5" />{open.lock_reason ?? 'Built in — this channel can’t be changed or removed.'}</p>
+						) : !can_edit_channel(data, open) ? (
 							<p className="flex items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]" data-testid="channel-view-only"><Lock aria-hidden className="h-3.5 w-3.5" />View only — ask an org admin to change this channel.</p>
 						) : <div className="flex flex-wrap gap-2">
 							<button type="button" onClick={() => void act('/v1/notification_channels/test', { id: open.id }, '')} className={PRIMARY}>Send test</button>
@@ -584,7 +608,7 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 }) {
 	const post = use_post();
 	const ok_orgs = data.orgs.filter((o) => o.status === 'ok');
-	const org_usable = (id: string) => can_edit_org(data, id) || data.realms.some((r) => r.org_id === id && can_edit_realm(data, r.id));
+	const org_usable = (id: string) => can_edit_org_channels(data, id) || data.realms.some((r) => r.org_id === id && can_edit_realm(data, r.id));
 	const view_org_id = scope.kind === 'org' ? scope.org.id : scope.kind === 'realm' ? scope.realm.org_id : null;
 	const start_org = preset?.org_id ?? (view_org_id && org_usable(view_org_id) ? view_org_id : ok_orgs.find((o) => org_usable(o.id))?.id ?? '');
 	const first_realm = (oid: string): Picked_realm | null => {
@@ -592,14 +616,14 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 		return r ? { id: r.id, slug: r.slug, org_slug: r.org_slug } : null;
 	};
 	const [name, set_name] = useState('');
-	const [owner, set_owner] = useState<'org' | 'realm'>(preset?.owner ?? (scope.kind === 'realm' || !can_edit_org(data, start_org) ? 'realm' : 'org'));
+	const [owner, set_owner] = useState<'org' | 'realm'>(preset?.owner ?? (scope.kind === 'realm' || !can_edit_org_channels(data, start_org) ? 'realm' : 'org'));
 	const [org_id, set_org_id] = useState(start_org);
 	const [realm, set_realm] = useState<Picked_realm | null>(preset?.realm ?? (scope.kind === 'realm' ? { id: scope.realm.id, slug: scope.realm.slug, org_slug: scope.realm.org_slug } : first_realm(start_org)));
 	const realm_id = realm?.id ?? '';
 	const [dests, set_dests] = useState<Dest_draft[]>([{ type: 'cliqhub', value: '' }]);
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
-	const allowed = owner === 'org' ? can_edit_org(data, org_id) : Boolean(realm_id) && can_edit_realm(data, realm_id);
+	const allowed = owner === 'org' ? can_edit_org_channels(data, org_id) : Boolean(realm_id) && can_edit_realm(data, realm_id);
 	const ready = allowed && name.trim() && dests.length > 0 && dests.every((d) => d.type === 'cliqhub' || d.value.trim()) && (owner === 'org' ? org_id : realm_id);
 
 	async function save() {
@@ -627,11 +651,11 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 				<span className={LABEL}>Owned by</span>
 				<div role="radiogroup" aria-label="Owned by" className="grid grid-cols-2 gap-2">
 					{([['org', 'The whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
-						<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org(data, org_id)} title={k === 'org' && !can_edit_org(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[var(--g-line)]'}`}>{l}</button>
+						<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org_channels(data, org_id)} title={k === 'org' && !can_edit_org_channels(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[var(--g-line)]'}`}>{l}</button>
 					))}
 				</div>
 				<div className="mt-2 grid gap-2">
-					<select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org(data, id)) set_owner('realm'); }} className={INPUT}>
+					<select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org_channels(data, id)) set_owner('realm'); }} className={INPUT}>
 						{ok_orgs.map((o) => <option key={o.id} value={o.id} disabled={!org_usable(o.id)}>{o.display_name}{org_usable(o.id) ? '' : ` — ${o.role}, view only`}</option>)}
 					</select>
 					{owner === 'realm' ? (
@@ -771,7 +795,6 @@ function Realm_pager({ data, paging }: { data: Notification_center_data; paging:
 	const page = data.realm_page;
 	const [draft, set_draft] = useState(paging.q);
 	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== paging.q) paging.set_q(draft.trim()); }, 300); return () => clearTimeout(t); }, [draft, paging]);
-	if (!page) return null;
 	const from = page.total ? page.offset + 1 : 0;
 	const to = Math.min(page.offset + page.limit, page.total);
 	const own = (id: string) => data.rules.filter((r) => r.scope.realm_id === id).length;

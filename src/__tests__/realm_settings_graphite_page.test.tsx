@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { overview_for_realm } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
 import type { Realm_settings_data } from '@/lib/realm_settings';
+import type { Invite_create_data } from '@/lib/invites';
 
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
@@ -20,7 +21,7 @@ function settings(over: Partial<Realm_settings_data> = {}): Realm_settings_data 
 			{ member_type: 'user', member_id: 'u1', username: 'sapan', role: 'admin', is_you: true },
 			{ member_type: 'user', member_id: 'u2', username: 'lena', role: 'member', is_you: false },
 		],
-		invites: [{ id: 'i1', email: 'new@x.com', role: 'operator', expires_at: '2026-10-10T00:00:00Z' }],
+		invites: [{ invite_id: 'i1', email: 'new@x.com', role: 'operator', expires_at: '2026-10-10T00:00:00Z' }],
 		tokens: [{ id: '7', name: 'ci-runners', created_at: '2026-09-01T00:00:00Z', last_used_at: null }],
 		sections: { members: { status: 'ok', error: null }, invites: { status: 'ok', error: null }, tokens: { status: 'ok', error: null } },
 		partial: false,
@@ -31,7 +32,11 @@ function settings(over: Partial<Realm_settings_data> = {}): Realm_settings_data 
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}{l.search}</div>; }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(data: () => Realm_settings_data = () => settings(), org_role = 'member') {
+const invite_created = (over: Partial<Invite_create_data> = {}): Invite_create_data => ({
+	invite_id: 'inv-9', status: 'pending', email: 'newbie@x.com', role: 'member', expires_at: '2026-10-16T00:00:00Z', resent: false, email_sent: true, invite_url: null, ...over,
+});
+
+function route_fetch(data: () => Realm_settings_data = () => settings(), org_role = 'member', invite: Invite_create_data = invite_created()) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -42,6 +47,7 @@ function route_fetch(data: () => Realm_settings_data = () => settings(), org_rol
 		if (u === '/v1/realm_settings/get') return new Response(JSON.stringify({ ok: true, data: data() }));
 		if (u === '/v1/users/get' && String(body.query).includes('@')) return new Response(JSON.stringify({ ok: true, data: { users: [] } }));
 		if (u === '/v1/users/get') return new Response(JSON.stringify({ ok: true, data: { users: [{ id: 'u9', username: 'priya', display_name: 'Priya Nair', email: 'p@x.com' }] } }));
+		if (u === '/v1/invitations/create') return new Response(JSON.stringify({ ok: true, data: invite }));
 		if (u === '/v1/auth/generate_token') return new Response(JSON.stringify({ ok: true, data: { token: 'cliq_dt_secret', name: 'x' } }));
 		return new Response(JSON.stringify({ ok: true }));
 	});
@@ -67,7 +73,7 @@ describe('Realm settings page', () => {
 		fireEvent.click(within(lena).getByRole('button', { name: 'Remove' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/remove_member', body: { realm_id: 'r-prod', member_type: 'user', member_id: 'u2' } }));
 		fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/revoke', body: { target_type: 'realm', invite_id: 'i1' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/revoke', body: { invite_id: 'i1' } }));
 		const nav = screen.getByRole('navigation', { name: 'Settings sections' });
 		expect(within(nav).getByRole('link', { name: /Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone');
 	});
@@ -91,6 +97,27 @@ describe('Realm settings page', () => {
 		fireEvent.change(screen.getByLabelText('Role for new member'), { target: { value: 'member' } });
 		fireEvent.click(await screen.findByRole('button', { name: 'Invite by email' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/create', body: { target_type: 'realm', realm_id: 'r-prod', email: 'newbie@x.com', role: 'member' } }));
+		expect(await screen.findByTestId('sent-result')).toHaveTextContent('Invite sent to newbie@x.com.');
+		expect(screen.getByLabelText('Find a person')).toHaveValue('');
+	});
+
+	it('invite outcome: sent again, and the copy-link fallback when email is not set up', async () => {
+		route_fetch(undefined, undefined, invite_created({ resent: true }));
+		const first = render_page();
+		await screen.findByTestId('member-u2');
+		fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'newbie@x.com' } });
+		fireEvent.click(await screen.findByRole('button', { name: 'Invite by email' }));
+		expect(await screen.findByTestId('sent-result')).toHaveTextContent('Invite sent again to newbie@x.com.');
+		first.unmount();
+		vi.restoreAllMocks();
+
+		route_fetch(undefined, undefined, invite_created({ email_sent: false, invite_url: 'https://app.example.test/invite/abc' }));
+		render_page();
+		await screen.findByTestId('member-u2');
+		fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'newbie@x.com' } });
+		fireEvent.click(await screen.findByRole('button', { name: 'Invite by email' }));
+		expect(await screen.findByTestId('fallback-url')).toHaveTextContent('https://app.example.test/invite/abc');
+		expect(screen.queryByTestId('sent-result')).toBeNull();
 	});
 
 	it('A2A section renders the realm A2A panel in place', async () => {

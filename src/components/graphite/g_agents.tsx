@@ -43,14 +43,18 @@ export function Setup_badge({ setup, used }: { setup: { has_settings: boolean; r
 
 export function use_post() {
 	const auth_fetch = useAuthFetch();
-	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true; data: unknown } | { ok: false; error: string; code: string | null }> => {
+	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true; data: unknown } | { ok: false; error: string; code: string | null; details: Record<string, unknown> | null }> => {
 		try {
 			const res = await auth_fetch(path, { method: 'POST', body: JSON.stringify(body) });
 			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) return { ok: false, error: api_message(payload, 'Request failed'), code: (payload?.error?.code as string | undefined) ?? null };
+			if (!res.ok || !payload?.ok) {
+				// `details`: machine-readable context from Core via the BFF (e.g. who holds a conflicting name).
+				const details = payload?.error?.details;
+				return { ok: false, error: api_message(payload, 'Request failed'), code: (payload?.error?.code as string | undefined) ?? null, details: details && typeof details === 'object' && !Array.isArray(details) ? details as Record<string, unknown> : null };
+			}
 			return { ok: true, data: payload.data ?? payload };
 		} catch {
-			return { ok: false, error: 'Network error — check your connection.', code: null };
+			return { ok: false, error: 'Network error — check your connection.', code: null, details: null };
 		}
 	};
 }

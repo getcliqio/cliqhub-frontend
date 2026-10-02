@@ -1,7 +1,8 @@
-/** Accept an invitation (Graphite): org + realm, signed in / out. */
+/** Accept or decline an invitation (Graphite): new person, existing account, signed in, and every closed state. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
+import type { Invite_preview } from '@/lib/invites';
 
 const auth = { user: null as null | { id: string; username: string; email: string }, loading: false, refresh: vi.fn(async () => {}) };
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth }));
@@ -18,95 +19,158 @@ function open(path: string) {
 		<Route path="*" element={<Where />} />
 	</Routes></MemoryRouter>);
 }
+
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(preview: Record<string, unknown> | null, accept: { ok: boolean; data?: unknown; error?: string } = { ok: true, data: {} }) {
+type Reply = { status?: number; body: unknown };
+function route_fetch(preview: Invite_preview | null, accept: Reply = { body: { ok: true, data: { decision: 'accept', user: { id: 'u9', username: 'kim', status: 'active', created: true }, org: { id: 'o1', slug: 'm1' }, realm: null, membership: { role: 'member', status: 'active' } } } }) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
-		if (u === '/v1/invitations/get_by_token') return new Response(JSON.stringify(preview ? { ok: true, data: preview } : { ok: false, error: { message: 'Invite not found' } }), { status: preview ? 200 : 404 });
-		if (u === '/v1/invitations/accept') return new Response(JSON.stringify(accept), { status: accept.ok ? 200 : 400 });
+		if (u === '/v1/invitations/get_by_token') {
+			return preview
+				? new Response(JSON.stringify({ ok: true, data: preview }))
+				: new Response(JSON.stringify({ ok: false, error: { code: 'not_found', message: 'Invite not found' } }), { status: 404 });
+		}
+		if (u === '/v1/invitations/accept') return new Response(JSON.stringify(accept.body), { status: accept.status ?? 200 });
 		return new Response('{}');
 	});
 	return calls;
 }
-const ORG = { target_type: 'org', email: 'kim@x.com', role: 'member', org_slug: 'm1', org_display_name: 'MeasureOne' };
-const REALM = { target_type: 'realm', email: 'kim@x.com', role: 'operator', realm_id: 'r1', realm_slug: 'prod-us', realm_name: 'Prod US' };
-afterEach(() => { vi.restoreAllMocks(); auth.user = null; });
+const fail = (status: number, code: string, message: string, details?: Record<string, unknown>): Reply => ({ status, body: { ok: false, error: { code, message, ...(details ? { details } : {}) } } });
 
-describe('Invite page', () => {
-	it('org, signed out: create account & join', async () => {
-		const calls = route_fetch(ORG);
+const ORG: Invite_preview = {
+	invite_id: 'i1', kind: 'org', status: 'pending', org: { slug: 'm1', display_name: 'MeasureOne' }, realm: null, role: 'member',
+	inviter: { display_name: 'Krupali Patel' }, invitee_email: 'kim@x.com', account_exists: false, expires_at: '2026-10-16T10:20:00Z',
+};
+const OWNER: Invite_preview = { ...ORG, kind: 'owner', role: 'owner', inviter: { display_name: 'Sapan Shah' } };
+const REALM: Invite_preview = { ...ORG, kind: 'realm', role: 'operator', realm: { slug: 'prod-us', display_name: 'Prod US' } };
+afterEach(() => { vi.restoreAllMocks(); auth.user = null; auth.refresh.mockClear(); });
+
+describe('Invite page · pending', () => {
+	it('new person: preview card, then username / display name / password → account + accept → their username → /home', async () => {
+		const calls = route_fetch(OWNER);
 		open('/invite/tok1');
-		expect(await screen.findByTestId('invite-summary')).toHaveTextContent('MeasureOne');
-		const btn = screen.getByRole('button', { name: 'Create account & join' });
+		const card = await screen.findByTestId('invite-summary');
+		expect(card).toHaveTextContent('You’re invited to own MeasureOne');
+		expect(card).toHaveTextContent('as Owner · invited by Sapan Shah · expires 16 Oct');
+		const btn = screen.getByRole('button', { name: 'Create account & accept' });
+		expect(btn).toBeDisabled();
 		fireEvent.change(screen.getByLabelText('Username'), { target: { value: '9kim' } });
 		expect(screen.getByText(/Start with a letter/)).toBeInTheDocument();
 		fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Kim' } });
+		fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Kim Lee' } });
 		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'longpassword' } });
-		expect(btn).toBeEnabled();
 		fireEvent.click(btn);
-		expect(await screen.findByTestId('where')).toHaveTextContent('/home');
-		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok1', username: 'kim', password: 'longpassword' });
+		expect(await screen.findByTestId('joined')).toHaveTextContent('You joined MeasureOne. Your username is @kim; sign in with it or your email.');
+		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok1', decision: 'accept', username: 'kim', password: 'longpassword', display_name: 'Kim Lee' });
 		expect(auth.refresh).toHaveBeenCalled();
-	});
-
-	it('org, signed in with the invited email: one-click accept', async () => {
-		auth.user = { id: 'u1', username: 'kim', email: 'KIM@x.com' };
-		const calls = route_fetch(ORG);
-		open('/invite/tok1');
-		fireEvent.click(await screen.findByRole('button', { name: 'Accept invitation' }));
+		fireEvent.click(screen.getByRole('link', { name: 'Continue' }));
 		expect(await screen.findByTestId('where')).toHaveTextContent('/home');
-		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok1' });
 	});
 
-	it('signed in with another email: explains, no accept button', async () => {
+	it('a reactivated invitee keeps their username: the page shows the one Core kept, not the one typed', async () => {
+		route_fetch(ORG, { body: { ok: true, data: { decision: 'accept', user: { id: 'u7', username: 'kimlee', status: 'active', created: true }, org: { id: 'o1', slug: 'm1' }, realm: null, membership: { role: 'member', status: 'active' } } } });
+		open('/invite/tok1');
+		fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'kim' } });
+		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'longpassword' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Create account & accept' }));
+		expect(await screen.findByTestId('joined')).toHaveTextContent('Your username is @kimlee');
+	});
+
+	it('new person: a taken username shows next to the field', async () => {
+		route_fetch(ORG, fail(409, 'conflict', 'Username kim is taken.'));
+		open('/invite/tok1');
+		fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'kim' } });
+		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'longpassword' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Create account & accept' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Username kim is taken.');
+		expect(screen.getByLabelText('Username')).toHaveAttribute('aria-invalid', 'true');
+	});
+
+	it('existing account, signed out: sign in, then come back to this link', async () => {
+		route_fetch({ ...ORG, account_exists: true });
+		open('/invite/tok1');
+		expect(await screen.findByText('This email already has a CliqHub account. Sign in to accept.')).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Sign in to accept' })).toHaveAttribute('href', `/login?redirect=${encodeURIComponent('/invite/tok1')}`);
+		expect(screen.queryByLabelText('Password')).toBeNull();
+	});
+
+	it('signed in as the invited email: Accept sends decision accept', async () => {
+		auth.user = { id: 'u1', username: 'kim', email: 'KIM@x.com' };
+		const calls = route_fetch({ ...ORG, account_exists: true }, { body: { ok: true, data: { decision: 'accept', user: { id: 'u1', username: 'kim', status: 'active', created: false }, org: { id: 'o1', slug: 'm1' }, realm: null, membership: { role: 'member', status: 'active' } } } });
+		open('/invite/tok1');
+		fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+		expect(await screen.findByTestId('where')).toHaveTextContent('/home');
+		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok1', decision: 'accept' });
+	});
+
+	it('Decline sends decision decline and says so, without signing in', async () => {
+		auth.user = { id: 'u1', username: 'kim', email: 'kim@x.com' };
+		const calls = route_fetch({ ...ORG, account_exists: true }, { body: { ok: true, data: { decision: 'decline' } } });
+		open('/invite/tok1');
+		fireEvent.click(await screen.findByRole('button', { name: 'Decline' }));
+		expect(await screen.findByRole('heading', { name: 'Invite declined' })).toBeInTheDocument();
+		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok1', decision: 'decline' });
+		expect(auth.refresh).not.toHaveBeenCalled();
+	});
+
+	it('signed in with another email: explains, no Accept', async () => {
 		auth.user = { id: 'u2', username: 'bob', email: 'bob@x.com' };
 		route_fetch(ORG);
 		open('/invite/tok1');
-		expect(await screen.findByText(/this invitation is for/)).toBeInTheDocument();
-		expect(screen.queryByRole('button', { name: 'Accept invitation' })).toBeNull();
+		expect(await screen.findByTestId('email-mismatch')).toHaveTextContent('This invite is for kim@x.com. Sign out and sign in with that address.');
+		expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
 	});
 
-	it('realm, signed out: create the account and join (#15)', async () => {
-		const calls = route_fetch(REALM, { ok: true, data: { target_type: 'realm', realm_slug: 'prod-us', username: 'kim' } });
-		open('/realm-invite/tok2');
-		expect(await screen.findByTestId('invite-summary')).toHaveTextContent('Prod US');
-		expect(screen.queryByText(/can’t create one/)).toBeNull();
-		fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'Kim' } });
-		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Create account & join' }));
-		expect(await screen.findByTestId('where')).toHaveTextContent('/realms?joined=prod-us');
-		expect(calls.find((c) => c.url === '/v1/invitations/accept')?.body).toEqual({ token: 'tok2', username: 'kim', password: 'password123' });
-	});
-
-	it('realm, signed out: existing users can still sign in instead', async () => {
-		route_fetch(REALM);
-		open('/realm-invite/tok2');
-		expect(await screen.findByRole('link', { name: 'Sign in' })).toHaveAttribute('href', `/login?redirect=${encodeURIComponent('/realm-invite/tok2')}`);
-	});
-
-	it('realm, signed in: accept → realms with joined banner', async () => {
+	it('realm invite: accept goes to the realms page with the joined realm', async () => {
 		auth.user = { id: 'u1', username: 'kim', email: 'kim@x.com' };
-		route_fetch(REALM, { ok: true, data: { realm_slug: 'prod-us' } });
+		route_fetch(REALM, { body: { ok: true, data: { decision: 'accept', user: { id: 'u1', username: 'kim', status: 'active', created: false }, org: { id: 'o1', slug: 'm1' }, realm: { id: 'r1', slug: 'prod-us' }, membership: { role: 'operator', status: 'active' } } } });
 		open('/realm-invite/tok2');
-		fireEvent.click(await screen.findByRole('button', { name: 'Accept invitation' }));
+		expect(await screen.findByTestId('invite-summary')).toHaveTextContent('You’re invited to join Prod US');
+		fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
 		expect(await screen.findByTestId('where')).toHaveTextContent('/realms?joined=prod-us');
 	});
 
-	it('bad token and accept errors are shown', async () => {
-		route_fetch(null);
-		const { unmount } = open('/invite/nope');
-		expect(await screen.findByRole('heading', { name: 'Invitation unavailable' })).toBeInTheDocument();
-		expect(screen.getByText(/Invite not found/)).toBeInTheDocument();
-		unmount();
-		vi.restoreAllMocks();
+	it('accepting after expiry switches to the expired state', async () => {
 		auth.user = { id: 'u1', username: 'kim', email: 'kim@x.com' };
-		route_fetch(ORG, { ok: false, error: 'Invite expired' });
+		route_fetch(ORG, fail(410, 'expired', 'expired', { expired_at: '2026-10-01T00:00:00Z' }));
 		open('/invite/tok1');
-		fireEvent.click(await screen.findByRole('button', { name: 'Accept invitation' }));
-		expect(await screen.findByRole('alert')).toHaveTextContent('Invite expired');
+		fireEvent.click(await screen.findByRole('button', { name: 'Accept' }));
+		expect(await screen.findByRole('heading', { name: 'This invite has expired' })).toBeInTheDocument();
+		expect(screen.getByText('Ask Krupali Patel to send it again.')).toBeInTheDocument();
+	});
+
+	it('a deleted account trying to sign up is told to contact the admin', async () => {
+		route_fetch(ORG, fail(403, 'account_deleted', 'forbidden'));
+		open('/invite/tok1');
+		fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'kim' } });
+		fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'longpassword' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Create account & accept' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('This account was deleted. Contact your admin.');
+	});
+});
+
+describe('Invite page · closed links', () => {
+	it.each([
+		['expired', 'This invite has expired', 'Ask Krupali Patel to send it again.'],
+		['revoked', 'This invite is no longer valid', 'Ask Krupali Patel for a new one.'],
+		['accepted', 'This invite was already accepted', 'Sign in to CliqHub to continue.'],
+		['declined', 'This invite was declined', 'If that was a mistake, ask Krupali Patel to send it again.'],
+	] as const)('%s', async (status, title, body) => {
+		route_fetch({ ...ORG, status });
+		open('/invite/tok1');
+		expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+		expect(screen.getByText(body)).toBeInTheDocument();
+		expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+	});
+
+	it('an unknown token says the link isn’t valid', async () => {
+		route_fetch(null);
+		open('/invite/nope');
+		expect(await screen.findByRole('heading', { name: 'This invite link isn’t valid' })).toBeInTheDocument();
+		expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login');
 	});
 
 	it('signup explains invite-only and keeps the redirect for sign-in', () => {

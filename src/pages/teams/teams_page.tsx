@@ -11,17 +11,16 @@ interface BffTeamListResponse {
     total: number;
 }
 
-const CATEGORIES = [
-    { id: 'all', label: 'All' },
-    { id: 'agents', label: 'Custom Agents' },
-    { id: 'workflows', label: 'Workflows' },
-    { id: 'utilities', label: 'Utilities' },
-    { id: 'devops', label: 'DevOps' },
-    { id: 'testing', label: 'Testing' },
-    { id: 'security', label: 'Security' },
-];
+/**
+ * Sidebar sort (`?sort=`) → Core `teams/get` sort (Core API 6). `popular` is
+ * Core's default order (most installed first), so it sends nothing.
+ */
+export const CATALOG_SORT_BODY: Readonly<Record<string, { sort_by: string; sort_dir: 'asc' | 'desc' }>> = {
+    recent: { sort_by: 'updated_at', sort_dir: 'desc' },
+    name: { sort_by: 'name', sort_dir: 'asc' },
+};
 
-/** Marketplace browse page — hero, trending, category filters, and card grid. */
+/** Marketplace browse page — hero, trending, and the card grid (sorted from the sidebar). */
 export function Component() {
     const api_fetch = useOrgFetch();
     const [params, set_params] = useSearchParams();
@@ -38,7 +37,6 @@ export function Component() {
     const limit = (PAGE_SIZE_OPTIONS as readonly number[]).includes(limit_raw)
         ? limit_raw
         : PAGE_LIMIT;
-    const category = params.get('cat') || 'all';
     const sort = params.get('sort') || 'popular';
     const tag = params.get('tag') || '';
 
@@ -46,7 +44,8 @@ export function Component() {
     useEffect(() => {
         api_fetch('/v1/teams/get', {
             method: 'POST',
-            body: JSON.stringify({ limit: 4, offset: 0, sort: 'popular' }),
+            // Core's catalog is already most-installed first; it has no `sort` field.
+            body: JSON.stringify({ limit: 4, offset: 0 }),
         })
             .then((res) => res.json())
             .then((data) => {
@@ -59,8 +58,7 @@ export function Component() {
         set_loading(true);
         const body: Record<string, unknown> = { limit, offset };
         if (query) body.query = query;
-        if (category !== 'all') body.category = category;
-        if (sort !== 'popular') body.sort = sort;
+        Object.assign(body, CATALOG_SORT_BODY[sort] ?? {});
         if (tag) body.tag = tag;
 
         api_fetch('/v1/teams/get', {
@@ -75,7 +73,7 @@ export function Component() {
                 set_total(d.total);
             })
             .finally(() => set_loading(false));
-    }, [api_fetch, query, offset, limit, category, sort, tag]);
+    }, [api_fetch, query, offset, limit, sort, tag]);
 
     function handle_search(q: string) {
         const next = new URLSearchParams(params);
@@ -83,17 +81,6 @@ export function Component() {
             next.set('q', q);
         } else {
             next.delete('q');
-        }
-        next.delete('offset');
-        set_params(next, { replace: true });
-    }
-
-    function set_category(cat: string) {
-        const next = new URLSearchParams(params);
-        if (cat === 'all') {
-            next.delete('cat');
-        } else {
-            next.set('cat', cat);
         }
         next.delete('offset');
         set_params(next, { replace: true });
@@ -136,23 +123,8 @@ export function Component() {
                 </section>
             )}
 
-            {/* Category chips */}
-            <nav className="mt-10 flex flex-wrap gap-2" aria-label="Filter by category">
-                {CATEGORIES.map((cat) => (
-                    <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => set_category(cat.id)}
-                        className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
-                            category === cat.id
-                                ? 'bg-indigo-600 text-white shadow-sm'
-                                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                        }`}
-                    >
-                        {cat.label}
-                    </button>
-                ))}
-            </nav>
+            {/* No category chips: Core has no category field and its tags are free-form
+                (team.yml), so there is nothing a category could reliably filter on. */}
 
             {/* Results heading */}
             <div className="mt-8 flex items-baseline justify-between">

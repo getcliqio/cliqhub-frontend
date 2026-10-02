@@ -12,6 +12,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import { run_href } from '@/lib/realm_inbox';
 import { duration, RANGE_MS, type Realm_runs_data, type Run_range, type Run_state_filter } from '@/lib/realm_runs';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -63,12 +64,15 @@ export function Component() {
 
 	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== q) set_param('q', draft.trim() || null); }, 300); return () => clearTimeout(t); }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
+	// Sorted by Core (runs/get sort_by), so it is right across pages; default = last updated first.
+	const sort = use_table_sort({ keys: ['run_name', 'state', 'team', 'started_at', 'last_updated_at'], default_sort: { by: 'last_updated_at', dir: 'desc' }, first_dir: { started_at: 'desc', last_updated_at: 'desc' } });
 	const body: Record<string, unknown> | null = org && slug ? {
 		org_slug: org, slug, limit: RUNS_PAGE_SIZE, offset: page * RUNS_PAGE_SIZE,
-		...(state ? { state } : {}), ...(q ? { q } : {}), ...(range ? { since_ms: since_base - RANGE_MS[range] } : {}),
+		...(state ? { state } : {}), ...(q ? { q } : {}), ...sort.body, ...(range ? { since_ms: since_base - RANGE_MS[range] } : {}),
 	} : null;
 	const read = use_bff_read<Realm_runs_data>('/v1/realm_runs/get', body, { refresh_ms: RUNS_REFRESH_MS, fallback_error: 'Could not load runs.' });
 	const data = read.data;
+	const cols = sort.with_sortable(data?.sortable);
 	const realm_id = data?.realm.id ?? null;
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 	const from = data && data.total ? data.offset + 1 : 0;
@@ -121,11 +125,11 @@ export function Component() {
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
-											<th className="px-4 py-2.5 font-semibold">Run</th>
-											<th className="px-4 py-2.5 font-semibold">Team</th>
-											<th className="px-4 py-2.5 font-semibold">State</th>
+											<Sort_th sort={cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th>
+											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
+											<Sort_th sort={cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Phase</th>
-											<th className="px-4 py-2.5 font-semibold">Started</th>
+											<Sort_th sort={cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Took</th>
 											<th className="px-4 py-2.5 font-semibold">Daemon</th>
 										</tr>

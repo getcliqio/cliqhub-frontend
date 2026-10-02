@@ -13,6 +13,8 @@ export interface Realm_run_row {
 }
 
 export interface Realm_runs_data {
+	/** Columns the BFF can sort this list by. */
+	sortable?: string[];
 	realm: { id: string; slug: string; name: string; org_slug: string | null };
 	items: Realm_run_row[];
 	total: number;
