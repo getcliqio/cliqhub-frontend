@@ -91,6 +91,10 @@ export interface Run_row {
 	pending_control?: Pending_control | null;
 	force_terminate?: Force_terminate_status | null;
 	state_lost_at?: number | null;
+	/** Reviewers chosen per human phase when the run was started. */
+	reviewers?: Record<string, string[]> | null;
+	/** Channels that get this run's notifications instead of the realm rules. */
+	notify_channels?: string[] | null;
 }
 
 export interface Run_detail_data {
@@ -98,8 +102,21 @@ export interface Run_detail_data {
 	phases: Run_detail_phase[];
 	realm: Control_realm | null;
 	reviews: Array<{ id: string; title: string; phase: string | null; requested_at: number | null; message: string | null }>;
-	sections: Record<'phases' | 'labels' | 'realm' | 'reviews', Section_status>;
+	/** Files the run's phases produced, oldest first. */
+	artifacts?: Run_artifact[];
+	sections: Record<'phases' | 'labels' | 'realm' | 'reviews', Section_status> & { artifacts?: Section_status };
 	partial: boolean;
+}
+
+export interface Run_artifact {
+	artifact_id: string;
+	phase: string;
+	name: string;
+	description: string | null;
+	mime_type: string;
+	size_bytes: number;
+	download_url: string | null;
+	created_at: number | null;
 }
 
 export function run_href(org_slug: string, realm_slug: string, run_id: string): string {

@@ -11,7 +11,8 @@ import { useEffect, useRef, useCallback } from 'react';
 
 /** Shape of a streaming event received via SSE. */
 export interface StreamEvent {
-    id: number;
+    /** Event id (UUID from the Hub); also the reconnect cursor. */
+    id: number | string;
     event_type: string;
     phase: string | null;
     agent: string | null;
@@ -28,7 +29,7 @@ export interface UseRunEventStreamOptions {
     /** Whether the stream is enabled (default true). */
     enabled?: boolean;
     /** Initial cursor — skip events up to this ID (e.g. from historical fetch). */
-    initial_cursor?: number;
+    initial_cursor?: number | string;
 }
 
 /** Stale connection timeout — reopen if no data for 60s. */
@@ -49,16 +50,16 @@ export function use_run_event_stream({
     on_event_ref.current = on_event;
 
     /** Last received event ID — used as cursor on reconnect. */
-    const last_id_ref = useRef(initial_cursor);
-    if (initial_cursor > last_id_ref.current) {
+    const last_id_ref = useRef<number | string>(initial_cursor);
+    if (initial_cursor && !last_id_ref.current) {
         last_id_ref.current = initial_cursor;
     }
 
     const connect = useCallback(() => {
-        if (!run_id || !enabled) return null;
+        if (!run_id || !enabled || typeof EventSource === 'undefined') return null;
 
         const params = new URLSearchParams({ run_id });
-        if (last_id_ref.current > 0) params.set('after_id', String(last_id_ref.current));
+        if (last_id_ref.current) params.set('after_id', String(last_id_ref.current));
         const url = `/v1/runs/stream?${params.toString()}`;
         const es = new EventSource(url);
 
@@ -106,6 +107,10 @@ export function use_run_event_stream({
             'phase_complete', 'phase_completed',
             'phase_failed', 'phase_error',
             'phase_awaiting_input', 'phase_inputs_supplied',
+            // The daemon's run executor names lifecycle events with dots.
+            'phase.started', 'phase.completed', 'phase.failed', 'phase.skipped', 'phase.idle',
+            'phase.timed_out', 'phase.input_required', 'phase.inputs_supplied',
+            'run.completed', 'run.failed', 'run.crashed', 'run.cancelled',
             'agent_started', 'agent_completed', 'agent_failed',
             'run_complete', 'run_failed', 'run_crashed', 'run_cancelled',
             'orchestrator_registered',

@@ -4,7 +4,7 @@
  * canonical realm redirect, polling cadence.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { run_detail, overview_for_realm, REALM } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
@@ -92,23 +92,26 @@ describe('Graphite run detail', () => {
 		route_fetch(run_detail());
 		render_page();
 		await ready();
+		fireEvent.click(screen.getByRole('tab', { name: 'List 2' }));
 		const rows = screen.getAllByTestId('phase-row');
 		expect(rows.map((r) => r.querySelector('.g-mono')?.textContent)).toEqual(['fetch', 'match']);
 		expect(screen.getByText('ledger timeout')).toBeInTheDocument();
 		expect(screen.getByTestId('run-error')).toHaveTextContent('Timeout talking to ledger');
-		expect(screen.getByRole('link', { name: 'ledger' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/workspaces/ws-1');
-		expect(screen.getByRole('link', { name: 'd-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d-1');
+		const meta = screen.getByTestId('run-meta');
+		expect(within(meta).getByRole('link', { name: 'ledger' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/workspaces/ws-1');
+		expect(within(meta).getByRole('link', { name: 'd-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d-1');
+		fireEvent.click(screen.getByRole('button', { name: 'Inputs & details' }));
 		expect(screen.getByText('month')).toBeInTheDocument();
 		expect(screen.queryByRole('link', { name: /Timeline & DAG/ })).toBeNull();
 	});
 
 	it.each([
-		['running', ['Cancel']],
-		['awaiting_input', ['Provide input', 'Cancel', 'Resume from…']],
-		['failed', ['Resume from…', 'Run again']],
-		['crashed', ['Resume from…', 'Run again']],
-		['completed', ['Run again']],
-		['cancelled', []],
+		['running', ['Inputs & details', 'Cancel']],
+		['awaiting_input', ['Inputs & details', 'Provide input', 'Resume from…', 'Cancel']],
+		['failed', ['Inputs & details', 'Resume from…', 'Run again']],
+		['crashed', ['Inputs & details', 'Resume from…', 'Run again']],
+		['completed', ['Inputs & details', 'Run again']],
+		['cancelled', ['Inputs & details']],
 	])('state %s shows actions %j', async (state, expected) => {
 		route_fetch(run_detail({}, { state, error: null }));
 		render_page();
@@ -265,8 +268,8 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/runs/get_logs')[0]).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], offset: 0 });
 		fireEvent.click(screen.getByRole('button', { name: 'error' }));
 		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ levels: ['error'] }));
-		fireEvent.click(screen.getByRole('tab', { name: /Phases/ }));
-		expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs');
+		fireEvent.click(screen.getByRole('tab', { name: 'Live' }));
+		await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs'));
 	});
 
 	it('redirects to the run’s real realm when opened under another realm URL', async () => {

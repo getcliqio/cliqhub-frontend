@@ -77,15 +77,15 @@ describe('Run page telemetry', () => {
 	it('summary strip and phases clock with cost; no classic link', async () => {
 		const calls = route_fetch();
 		open();
-		const strip = await screen.findByTestId('run-summary');
+		const strip = await screen.findByTestId('run-kpis');
 		await waitFor(() => expect(within(strip).getByText('$1.25')).toBeInTheDocument());
-		expect(strip).toHaveTextContent('120k in');
-		expect(strip).toHaveTextContent('50% of input from cache');
-		expect(strip).toHaveTextContent('3 agent runs · 1 rework');
+		expect(strip).toHaveTextContent('in 120k');
+		expect(strip).toHaveTextContent('1 / 2 phases');
 		expect(calls.find((c) => c.url === '/v1/run_telemetry/get')?.body).toEqual({ run_id: 'run-77' });
+		fireEvent.click(screen.getByRole('tab', { name: 'List 2' }));
 		const costs = screen.getAllByTestId('phase-cost').map((e) => e.textContent);
 		expect(costs).toContain('$1.25');
-		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases 2', 'Timeline', 'Usage', 'DAG', 'Logs']);
+		expect(within(screen.getByRole('tablist', { name: 'Run views' })).getAllByRole('tab').map((t) => t.textContent)).toEqual(['Timeline', 'Usage', 'Steps', 'Events']);
 	});
 
 	it('timeline: lanes, filters, select a bar → details replace the side column → logs for that agent', async () => {
@@ -96,7 +96,7 @@ describe('Run page telemetry', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Gates' }));
 		expect(screen.queryByTestId('lane-fetch')).toBeNull();
 		fireEvent.click(screen.getByRole('button', { name: 'All' }));
-		expect(screen.getByRole('complementary', { name: 'Run details' })).toBeInTheDocument();
+		expect(screen.getByTestId('phase-inspector')).toBeInTheDocument();
 		fireEvent.click(screen.getByTestId('bar-b3'));
 		const d = await screen.findByTestId('span-details');
 		expect(d).toHaveTextContent('claude-sonnet-4.5 · anthropic');
@@ -104,7 +104,7 @@ describe('Run page telemetry', () => {
 		expect(d).toHaveTextContent('$1.00 (80% of run) · est.');
 		expect(await within(d).findByText('[matcher] 12 rows matched')).toBeInTheDocument();
 		expect(calls.find((c) => c.url === '/v1/runs/get_logs')?.body).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], q: '[matcher]', limit: 4 });
-		expect(screen.queryByRole('complementary', { name: 'Run details' })).toBeNull();
+		expect(screen.queryByTestId('phase-inspector')).toBeNull();
 		fireEvent.click(within(d).getByRole('button', { name: /Logs for this agent/ }));
 		expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
 		expect(screen.getByDisplayValue('[matcher]')).toBeInTheDocument();
@@ -134,11 +134,12 @@ describe('Run page telemetry', () => {
 		route_fetch(telemetry({ bars: [], by_model: [], by_agent: [], totals: { ...telemetry().totals, cost_usd: null, tokens_in: null, tokens_out: null, cached_in: null, model_calls: null, agent_runs: 0, reworks: 0 }, sections: { usage: 'empty', spans: 'empty', phases: 'ok', workflow: 'ok' } }));
 		const { unmount } = open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
 		expect(await screen.findByText(/No timeline yet/)).toBeInTheDocument();
-		expect(screen.getByTestId('run-summary')).toHaveTextContent('No telemetry reported for this run yet');
+		expect(screen.getByTestId('run-kpis')).toHaveTextContent('no model usage reported');
 		unmount(); vi.restoreAllMocks();
 		route_fetch(null);
 		open();
 		expect(await screen.findByText('boom')).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('tab', { name: 'List 2' }));
 		expect(screen.getAllByTestId('phase-row')).toHaveLength(2);
 	});
 });

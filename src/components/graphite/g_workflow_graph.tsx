@@ -32,6 +32,10 @@ export function Workflow_graph({
 	statuses = null,
 	height = 300,
 	label = 'Team workflow',
+	subs = null,
+	attempts = null,
+	gate_counts = null,
+	loop_labels = null,
 }: {
 	phases: Team_phase[];
 	selected?: string | null;
@@ -40,6 +44,14 @@ export function Workflow_graph({
 	statuses?: Record<string, string> | null;
 	height?: number;
 	label?: string;
+	/** Run overlay: second line per phase (e.g. "running · 3:10") instead of its type. */
+	subs?: Record<string, string> | null;
+	/** Run overlay: how many times a phase ran; 2+ shows a "×2" badge. */
+	attempts?: Record<string, number> | null;
+	/** Run overlay: a gate's verdict count ("1/3") instead of its budget. */
+	gate_counts?: Record<string, string> | null;
+	/** Run overlay: the route-back label per gate (e.g. the reason it sent work back). */
+	loop_labels?: Record<string, string> | null;
 }) {
 	const uid = useId().replace(/[:]/g, '');
 	const L = layout_phases(phases);
@@ -120,13 +132,16 @@ export function Workflow_graph({
 				const gx = g.x + W / 2; const tx = t.x + W / 2;
 				const peak = Math.min(g.y, t.y) - 50;
 				const mx = (gx + tx) / 2;
+				const text = loop_labels?.[lp.from] ?? `↺ route back${lp.max ? ` · ≤ ${lp.max}` : ''}`;
+				const short = text.length > 44 ? `${text.slice(0, 43)}…` : text;
+				const lw = Math.max(116, short.length * 6.2 + 20);
 				return (
 					<g key={`loop-${lp.from}`} data-loop={`${lp.from}->${lp.to}`}>
 						<path className="g-march" d={`M${gx} ${g.y - 2} C${gx} ${peak}, ${tx} ${peak}, ${tx} ${t.y - 2}`} stroke="#f5a524" strokeWidth={1.5} strokeDasharray="5 5" fill="none" opacity={0.9} style={{ animation: 'g-march 1.2s linear infinite' }} />
 						<path d={`M${tx - 4} ${t.y - 9} L${tx} ${t.y - 3} L${tx + 4} ${t.y - 9}`} stroke="#f5a524" strokeWidth={1.6} fill="none" strokeLinecap="round" />
-						<g transform={`translate(${mx - 58},${peak + 1})`}>
-							<rect width={116} height={22} rx={11} fill="#221a0b" stroke="#f5a524" strokeOpacity={0.55} />
-							<text x={58} y={15} textAnchor="middle" fontSize={10.5} fill="#ffc766" fontWeight={600} fontFamily="var(--g-font)">↺ route back{lp.max ? ` · ≤ ${lp.max}` : ''}</text>
+						<g transform={`translate(${mx - lw / 2},${peak + 1})`}>
+							<rect width={lw} height={22} rx={11} fill="#221a0b" stroke="#f5a524" strokeOpacity={0.55} />
+							<text x={lw / 2} y={15} textAnchor="middle" fontSize={10.5} fill="#ffc766" fontWeight={600} fontFamily="var(--g-font)">{short}<title>{text}</title></text>
 						</g>
 					</g>
 				);
@@ -139,7 +154,8 @@ export function Workflow_graph({
 				const is_sel = selected === p.name;
 				const st = statuses ? overlay_state(statuses[p.name]) : null;
 				const title = p.name.length > 15 ? `${p.name.slice(0, 14)}…` : p.name;
-				const sub = phase_subtitle(p);
+				const sub = subs?.[p.name] ?? phase_subtitle(p);
+				const runs = attempts?.[p.name] ?? 0;
 				return (
 					<g
 						key={p.name}
@@ -168,10 +184,15 @@ export function Workflow_graph({
 								<text x={20} y={13.2} fontSize={9.5} fill={REVIEW_COLOR} fontWeight={700} letterSpacing=".04em" fontFamily="var(--g-font)">REVIEW</text>
 							</g>
 						) : null}
-						{k.id === 'gate' && p.max_iterations ? (
-							<g transform={`translate(${W - 46},-10)`}>
+						{k.id === 'gate' && (gate_counts?.[p.name] || p.max_iterations) ? (
+							<g transform={`translate(${W - 46},-10)`} data-gate-count={gate_counts?.[p.name] ?? undefined}>
 								<rect width={42} height={19} rx={9.5} fill="#221a0b" stroke="#f5a524" strokeOpacity={0.6} />
-								<text x={21} y={13.2} textAnchor="middle" fontSize={9.5} fill="#ffc766" fontWeight={700} fontFamily="var(--g-mono)">×{p.max_iterations}</text>
+								<text x={21} y={13.2} textAnchor="middle" fontSize={9.5} fill="#ffc766" fontWeight={700} fontFamily="var(--g-mono)">{gate_counts?.[p.name] ?? `×${p.max_iterations}`}</text>
+							</g>
+						) : runs > 1 ? (
+							<g transform={`translate(${W - 34},-10)`} data-attempts={runs}>
+								<rect width={30} height={19} rx={9.5} fill="#221a0b" stroke="#f5a524" strokeOpacity={0.6} />
+								<text x={15} y={13.2} textAnchor="middle" fontSize={9.5} fill="#ffc766" fontWeight={700} fontFamily="var(--g-mono)">×{runs}</text>
 							</g>
 						) : null}
 						{st && st !== 'idle' ? (
