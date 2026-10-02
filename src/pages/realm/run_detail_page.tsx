@@ -7,7 +7,7 @@
  *
  * Control actions stay on the existing Core routes:
  *   /v1/runs/supply_inputs · /v1/runs/cancel · /v1/runs/resume
- * "Run again" reuses Run_in_realm_dialog (prefilled from this run).
+ * "Run again" opens the New run drawer prefilled from this run.
  * Telemetry (summary strip, Timeline, Usage, DAG): one `POST /v1/run_telemetry/get`.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -29,7 +29,7 @@ import {
 import { realm_path } from '@/lib/realm_url';
 import { format_datetime } from '@/lib/format_time';
 import { parse_kv_lines, pick_default_resume_phase } from '@/components/dispatch/run_dialogs';
-import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
+import { New_run_drawer } from '@/components/graphite/g_new_run';
 import { sort_phases_workflow } from '@/components/runs/run_phases_panel';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
@@ -556,11 +556,10 @@ export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_da
 			</div>
 
 			{run_again && again_target && data.realm ? (
-				<Run_in_realm_dialog
-					scope={again_target.scope}
-					slug={again_target.slug}
-					fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }}
-					prefill_from={{ inputs: inputs ?? {}, run_name: run.run_name ? `${run.run_name} (rerun)` : null, source_run_id: run.run_id }}
+				<New_run_drawer
+					team={{ scope: again_target.scope, slug: again_target.slug }}
+					realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: data.realm.org_slug ?? null }}
+					prefill={{ inputs: inputs ?? {}, run_name: run.run_name ? `${run.run_name} (rerun)` : null, source_run_id: run.run_id }}
 					on_close={() => { set_run_again(false); void reload(); }}
 				/>
 			) : null}

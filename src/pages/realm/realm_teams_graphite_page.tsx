@@ -17,7 +17,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
+import { New_run_drawer } from '@/components/graphite/g_new_run';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
 export const TEAMS_PAGE_SIZE = 25;
@@ -310,7 +310,7 @@ export function Component() {
 				<Install_drawer realm_id={realm_id} installed={new Set((data?.items ?? []).filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
 			) : null}
 			{running && running.scope && data ? (
-				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }} on_close={() => set_running(null)} />
+				<New_run_drawer team={{ scope: running.scope, slug: running.slug }} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org ?? null }} on_close={() => set_running(null)} />
 			) : null}
 		</Graphite_shell>
 	);

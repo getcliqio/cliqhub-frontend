@@ -10,7 +10,7 @@ import { coverage_text } from '@/lib/realm_teams';
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
-vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: ({ scope, slug, fixed_realm }: { scope: string; slug: string; fixed_realm: { slug: string } }) => <div role="dialog" aria-label="Run dialog">{scope}/{slug} in {fixed_realm.slug}</div> }));
+vi.mock('@/components/graphite/g_new_run', () => ({ New_run_drawer: ({ team, realm }: { team: { scope: string; slug: string }; realm: { slug: string } }) => <div role="dialog" aria-label="Run dialog">{team.scope}/{team.slug} in {realm.slug}</div> }));
 
 import { Component as TeamsPage } from '@/pages/realm/realm_teams_graphite_page';
 

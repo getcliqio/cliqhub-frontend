@@ -19,10 +19,10 @@ const auth = {
 };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
-vi.mock('@/components/run_in_realm_dialog', () => ({
-	Run_in_realm_dialog: (p: { scope: string; slug: string; fixed_realm: { id: string }; prefill_from: { inputs: unknown; run_name: string | null; source_run_id: string } }) => (
+vi.mock('@/components/graphite/g_new_run', () => ({
+	New_run_drawer: (p: { team: { scope: string; slug: string }; realm: { id: string }; prefill: { inputs: unknown; run_name: string | null; source_run_id: string } }) => (
 		<div role="dialog" aria-label="Run again">
-			{p.scope}/{p.slug} in {p.fixed_realm.id} · {JSON.stringify(p.prefill_from)}
+			{p.team.scope}/{p.team.slug} in {p.realm.id} · {JSON.stringify(p.prefill)}
 		</div>
 	),
 }));

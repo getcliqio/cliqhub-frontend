@@ -6,7 +6,8 @@
  */
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { RefreshCw } from 'lucide-react';
+import { Play, RefreshCw } from 'lucide-react';
+import { New_run_drawer } from '@/components/graphite/g_new_run';
 import { use_overview, relative_time } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { run_href } from '@/lib/realm_inbox';
@@ -51,6 +52,7 @@ export function Component() {
 	const q = search.get('q') ?? search.get('team') ?? '';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
 	const [draft, set_draft] = useState(q);
+	const [new_run, set_new_run] = useState(false);
 	// Round "since" to the minute so polling doesn't change the request every tick.
 	const [since_base] = useState(() => Math.floor(Date.now() / 60_000) * 60_000);
 
@@ -84,9 +86,12 @@ export function Component() {
 			current_realm_id={realm_id}
 			title="Runs"
 			actions={
-				<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
-					<RefreshCw className="h-3.5 w-3.5" />
-				</button>
+				<div className="flex items-center gap-2">
+					<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
+						<RefreshCw className="h-3.5 w-3.5" />
+					</button>
+					{data ? <button type="button" onClick={() => set_new_run(true)} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]"><Play aria-hidden className="h-3.5 w-3.5" />New run</button> : null}
+				</div>
 			}
 		>
 			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
@@ -166,6 +171,7 @@ export function Component() {
 					</>
 				)}
 			</div>
+		{new_run && data ? <New_run_drawer team={null} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org }} on_close={() => { set_new_run(false); void read.reload(); }} /> : null}
 		</Graphite_shell>
 	);
 }

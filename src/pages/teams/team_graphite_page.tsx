@@ -23,7 +23,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { State_pill } from '@/components/graphite/g_status';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
-import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
+import { New_run_drawer } from '@/components/graphite/g_new_run';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
@@ -207,7 +207,7 @@ export function Component() {
 	const cmp_from = search.get('from');
 	const cmp_to = search.get('to');
 	const [q_draft, set_q_draft] = useState(runs_q);
-	const [running, set_running] = useState(false);
+	const [running, set_running] = useState<false | { realm_id: string | null }>(false);
 	const [adding, set_adding] = useState(false);
 	const [forking, set_forking] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
@@ -304,7 +304,7 @@ export function Component() {
 				{can_add && !in_realm ? (
 					<button type="button" onClick={() => set_adding(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Plus aria-hidden className="h-3.5 w-3.5" />{in_org ? 'Add to a realm' : 'Add to your org'}</button>
 				) : null}
-				{team?.status === 'published' && team.scope && in_realm ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
+				{team?.status === 'published' && team.scope && in_realm ? <button type="button" onClick={() => set_running({ realm_id: null })} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
 			</div>
 		</div>
 	);
@@ -680,11 +680,15 @@ export function Component() {
 					</>
 				)}
 			</div>
-			{running && team?.scope ? <Run_in_realm_dialog scope={team.scope} slug={team.name} on_close={() => set_running(false)} /> : null}
+			{running && team?.scope ? (
+				<New_run_drawer team={{ scope: team.scope, slug: team.name }} on_close={() => set_running(false)}
+					realm={running.realm_id ? ((r) => (r ? { id: r.id, slug: r.slug, org_slug: r.org_slug } : null))(realm_by_id.get(running.realm_id)) : null}
+					on_add_to_realm={() => { set_running(false); set_adding(true); }} />
+			) : null}
 			{adding && team?.scope ? (
 				<Add_team_drawer team_id={team.id} label={label} scope={team.scope} name={team.name} version={team.latest_version}
 					orgs={(overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id)} states={org_states ?? []}
-					on_close={() => set_adding(false)} on_added={() => void read.reload()} on_run={() => { set_adding(false); set_running(true); }} />
+					on_close={() => set_adding(false)} on_added={() => void read.reload()} on_run={(realm_id) => { set_adding(false); set_running({ realm_id }); }} />
 			) : null}
 			{forking && team ? (
 				<Fork_dialog team_id={team.id} label={label} name={team.name} version={team.version} versions={team.versions}

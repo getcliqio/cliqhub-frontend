@@ -10,7 +10,7 @@ import { critical_path, dag_layers, fmt_count, fmt_ms, fmt_usd, phase_model_cost
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
-vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: () => null }));
+vi.mock('@/components/graphite/g_new_run', () => ({ New_run_drawer: () => null }));
 
 import { Component as RunPage } from '@/pages/realm/run_detail_page';
 
