@@ -104,12 +104,12 @@ export function Banner({ tone, children }: { tone: 'bad' | 'warn' | 'ok'; childr
 /** URL state for admin list pages: `get(key)`, and `set(patch)` which drops empty keys (and the offset unless it's in the patch). */
 export function use_list_params() {
 	const [sp, set_sp] = useSearchParams();
-	const set = (patch: Record<string, string | null>) => {
-		const n = new URLSearchParams(sp);
+	const set = (patch: Record<string, string | null>) => set_sp((prev) => {
+		const n = new URLSearchParams(prev);
 		if (!('offset' in patch)) n.delete('offset');
 		for (const [k, v] of Object.entries(patch)) { if (!v) n.delete(k); else n.set(k, v); }
-		set_sp(n, { replace: true });
-	};
+		return n;
+	}, { replace: true });
 	return { get: (k: string) => sp.get(k) ?? '', offset: Number(sp.get('offset') ?? 0) || 0, set };
 }
 
@@ -119,6 +119,29 @@ export function Org_select({ value, options, on_change, placeholder = 'Org: all'
 		<select aria-label="Organization" value={value} onChange={(e) => on_change(e.target.value)} className="min-w-0 w-[200px] rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-1.5 text-[13px] text-[var(--g-ink)]">
 			<option value="">{placeholder}</option>
 			{options.map((o) => <option key={o.id} value={o.id}>{o.display_name || o.slug}</option>)}
+		</select>
+	);
+}
+
+/**
+ * A filter picker that shows how many rows each value has ("prod-us · 214").
+ * The picked value stays listed even when it has no rows under the other filters.
+ */
+export function Facet_select({ label, value, options, on_change, width = 170 }: {
+	label: string;
+	value: string;
+	options: Array<{ value: string; label: string; count: number }> | undefined;
+	on_change: (v: string | null) => void;
+	width?: number;
+}) {
+	const list = options ?? [];
+	const has = !value || list.some((o) => o.value === value);
+	return (
+		<select aria-label={label} value={value} onChange={(e) => on_change(e.target.value || null)} style={{ width }}
+			className={`h-8 rounded-md border bg-[var(--g-bg)] px-2.5 text-[12.5px] outline-none focus:border-[var(--g-acc-line)] ${value ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-2)]'}`}>
+			<option value="">{label}: any</option>
+			{!has ? <option value={value}>{value}</option> : null}
+			{list.map((o) => <option key={o.value} value={o.value}>{o.label} · {o.count}</option>)}
 		</select>
 	);
 }

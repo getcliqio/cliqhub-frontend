@@ -30,7 +30,8 @@ export interface Admin_audit_row {
 	action: string;
 	target_type: string;
 	target_id: string;
-	details: Record<string, unknown>;
+	/** An object from current Cores; older ones send the JSON text. */
+	details: Record<string, unknown> | string;
 	created_at: string;
 }
 
@@ -106,7 +107,12 @@ export interface Admin_list_data<T> {
 	org_options?: Array<{ id: string; slug: string; display_name: string }>;
 	/** Columns the BFF can sort this list by today (only what Core applies). */
 	sortable?: string[];
+	/** Logs and audit: counts per value of each filter. */
+	facets?: Record<string, Admin_facet[]>;
 }
+
+/** One value of a filter with how many rows have it. */
+export interface Admin_facet { value: string; label: string; count: number }
 
 export interface Admin_realm_ref { id: string; slug: string; org_slug: string | null }
 export interface Admin_realm_row { id: string; slug: string; name: string; org_slug: string | null; created_by_username: string | null; created_at: number | null }
@@ -223,15 +229,56 @@ export function owners_of(org: Org_detail): Org_member[] {
 
 /** Human summary of audit details — secret-looking keys never show a value. */
 const SECRET_KEY = /(^|_)(key|token|secret|password)$/i;
-export function audit_summary(details: Record<string, unknown>): string {
+/** Audit details as an object, whichever way Core sent them. */
+export function audit_details(details: Record<string, unknown> | string | null | undefined): Record<string, unknown> {
+	if (!details) return {};
+	if (typeof details !== 'string') return details;
+	try {
+		const v = JSON.parse(details);
+		return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : { value: v };
+	} catch {
+		return { note: details };
+	}
+}
+
+/** Key facts of an entry's details, secrets masked: "reason: spam · role: admin". */
+export function audit_summary(details: Record<string, unknown> | string): string {
 	const parts: string[] = [];
-	for (const [k, v] of Object.entries(details ?? {})) {
-		if (v == null || v === '') continue;
-		if (SECRET_KEY.test(k)) { parts.push(`${k}: set`); continue; }
-		if (typeof v === 'object') { parts.push(`${k}: ${Array.isArray(v) ? v.join(', ') : '…'}`); continue; }
-		parts.push(`${k}: ${String(v)}`);
+	for (const [k, v] of Object.entries(audit_details(details))) {
+		if (v == null || v === '' || NAME_KEYS.includes(k)) continue;
+		if (SECRET_KEY.test(k)) { parts.push(`${k.replace(/_/g, ' ')}: set`); continue; }
+		if (typeof v === 'object') { if (Array.isArray(v)) parts.push(`${k.replace(/_/g, ' ')}: ${v.join(', ')}`); continue; }
+		parts.push(`${k.replace(/_/g, ' ')}: ${String(v)}`);
 	}
 	return parts.slice(0, 3).join(' · ');
+}
+
+const NAME_KEYS = ['username', 'slug', 'name', 'email', 'display_name', 'label'];
+const VERBS: Record<string, string> = {
+	create: 'created', delete: 'deleted', force_delete: 'force-deleted', update: 'updated', reactivate: 'reactivated',
+	suspend: 'suspended', unsuspend: 'unsuspended', set_role: 'changed the role of', reset_password: 'reset the password of',
+	unpublish: 'unpublished', publish: 'published', act_as: 'acted as', add: 'added', remove: 'removed',
+};
+const NOUN: Record<string, string> = { user: 'account', org: 'org', team: 'team', scope: 'scope', agent: 'agent', realm: 'realm' };
+
+/**
+ * One audit entry as a sentence fragment after the admin's name:
+ * "suspended account bob", "deleted org acme", "added a member to scope @acme".
+ */
+export function audit_sentence(e: Pick<Admin_audit_row, 'action' | 'target_type' | 'target_id' | 'details'>): string {
+	const d = audit_details(e.details);
+	const name = NAME_KEYS.map((k) => d[k]).find((v): v is string => typeof v === 'string' && v.trim() !== '')
+		?? (e.target_id.length > 24 ? `${e.target_id.slice(0, 8)}…` : e.target_id);
+	const parts = e.action.split('.');
+	const noun = NOUN[e.target_type] ?? e.target_type.replace(/_/g, ' ');
+	const shown = e.target_type === 'scope' && !name.startsWith('@') ? `@${name}` : name;
+	// scope.member.add → "added a member to scope @acme"
+	if (parts.length === 3 && (parts[2] === 'add' || parts[2] === 'remove')) {
+		return `${VERBS[parts[2]]} a ${parts[1]} ${parts[2] === 'add' ? 'to' : 'from'} ${noun} ${shown}`;
+	}
+	const verb = VERBS[parts.at(-1) ?? ''] ?? (parts.at(-1) ?? e.action).replace(/_/g, ' ');
+	const role = e.action.endsWith('set_role') && typeof d.role === 'string' ? ` to ${d.role}` : '';
+	return `${verb} ${noun} ${shown}${role}`;
 }
 
 /** Actions worth highlighting (privilege changes, act-as, deletes). */

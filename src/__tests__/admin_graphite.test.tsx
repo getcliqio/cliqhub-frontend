@@ -4,7 +4,7 @@ import { render, screen, fireEvent, within, waitFor } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
 import type { Admin_home_data, Admin_list_data, Admin_org_row, Admin_user_detail, Org_detail, Org_new_data, Org_role } from '@/lib/admin';
-import { audit_summary, owners_of } from '@/lib/admin';
+import { audit_sentence, audit_summary, owners_of } from '@/lib/admin';
 
 const act_as = vi.fn(async () => null as string | null);
 const auth = { user: { id: 'me', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'admin' as const, preferences: {} }, scopes: [], loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn(), act_as };
@@ -75,7 +75,9 @@ describe('Admin › Home', () => {
 		expect(screen.getByTestId('stat-Daemons online')).toHaveTextContent('57 / 64');
 		expect(screen.getByTestId('core-badge')).toHaveTextContent('BFF ↔ Core compatible');
 		expect(within(screen.getByTestId('attn-daemons_offline')).getByRole('link', { name: 'See daemons' })).toHaveAttribute('href', '/admin/daemons?filter=offline');
-		expect(screen.getByText('user.suspend')).toBeInTheDocument();
+		// Recent activity reads as a sentence, not raw details.
+		expect(screen.getByText('suspended account ana')).toBeInTheDocument();
+		expect(screen.getByText(/reason: 8 failed sign-ins/)).toBeInTheDocument();
 		expect(screen.queryByTestId('hub-scope-note')).toBeNull();
 		expect(calls.filter((c) => c.url.startsWith('/v1/')).map((c) => c.url)).toEqual(['/v1/admin_home/get']);
 	});
@@ -247,6 +249,37 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ run_id: 'run-7' }));
 	});
 
+	it('logs: narrow by org, realm, team and daemon with counts; Clear resets', async () => {
+		const facets = {
+			org: [{ value: 'o1', label: 'MeasureOne', count: 30 }], realm: [{ value: 'r1', label: 'm1 › prod', count: 25 }, { value: 'r2', label: 'm1 › stg', count: 5 }],
+			team: [{ value: '@cliq/dev', label: '@cliq/dev', count: 30 }], run: [], daemon: [{ value: 'd1', label: 'mac (d1)', count: 30 }],
+		};
+		const calls = route_fetch({ '/v1/admin_list/get': () => list('logs', [], { counts: { all: 30 }, facets }) });
+		at('/admin/logs', '/admin/logs', <LogsPage />);
+		const realm = await screen.findByRole('combobox', { name: 'Realm' });
+		await waitFor(() => expect(within(realm).getByRole('option', { name: 'm1 › prod · 25' })).toBeInTheDocument());
+		fireEvent.change(screen.getByRole('combobox', { name: 'Org' }), { target: { value: 'o1' } });
+		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ kind: 'logs', org_id: 'o1' }));
+		fireEvent.change(screen.getByRole('combobox', { name: 'Realm' }), { target: { value: 'r2' } });
+		await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('realm=r2'));
+		fireEvent.change(screen.getByRole('combobox', { name: 'Daemon' }), { target: { value: 'd1' } });
+		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ org_id: 'o1', realm_id: 'r2', daemon_id: 'd1' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+		await waitFor(() => expect(calls.at(-1)?.body).not.toHaveProperty('org_id'));
+	});
+
+	it('audit: filter by action, target and admin from their counts', async () => {
+		const facets = { action: [{ value: 'user.suspend', label: 'user.suspend', count: 3 }], target_type: [{ value: 'user', label: 'user', count: 3 }], admin: [{ value: '11111111-1111-4111-8111-111111111111', label: 'sapan', count: 3 }] };
+		const calls = route_fetch({ '/v1/admin_list/get': () => list('audit', [{ id: 'a1', admin_id: 'me', admin_username: 'sapan', action: 'user.suspend', target_type: 'user', target_id: 'u-bob', details: '{"username":"bob","reason":"spam"}', created_at: new Date().toISOString() }], { facets }) });
+		at('/admin/audit', '/admin/audit', <AuditPage />);
+		expect(await screen.findByText('suspended account bob')).toBeInTheDocument();
+		expect(screen.getByText('reason: spam')).toBeInTheDocument();
+		fireEvent.change(screen.getByRole('combobox', { name: 'Admin' }), { target: { value: '11111111-1111-4111-8111-111111111111' } });
+		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ kind: 'audit', admin_id: '11111111-1111-4111-8111-111111111111' }));
+		fireEvent.change(screen.getByRole('combobox', { name: 'Action' }), { target: { value: 'user.suspend' } });
+		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ action: 'user.suspend' }));
+	});
+
 	it('scopes: create and edit org scopes; personal scopes are read-only', async () => {
 		const orgs = [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', display_name: 'Acme' }];
 		const rows = [
@@ -275,8 +308,18 @@ describe('admin helpers', () => {
 	it('owners_of reads the owner role by id and skips former members', () => {
 		expect(owners_of({ id: 'o', slug: 's', display_name: '', created_at: '', status: 'active', owner: null, deleted_at: null, ...org_extras, scopes: [], roles: [role('r1', 'owner', 'Owner')], members: [{ user_id: 'a', username: 'a', display_name: '', email: null, role: 'admin', role_id: 'r1', status: 'active', invited_at: null, joined_at: null, deleted_at: null }, { user_id: 'b', username: 'b', display_name: '', email: null, role: 'member', role_id: null, status: 'active', invited_at: null, joined_at: null, deleted_at: null }, { user_id: 'c', username: 'c', display_name: '', email: null, role: 'admin', role_id: null, status: 'active', invited_at: null, joined_at: null, deleted_at: null }, { user_id: 'd', username: 'd', display_name: '', email: null, role: 'admin', role_id: 'r2', status: 'active', invited_at: null, joined_at: null, deleted_at: null }, { user_id: 'e', username: 'e', display_name: '', email: null, role: 'owner', role_id: 'r1', status: 'deleted', invited_at: null, joined_at: null, deleted_at: '2026-09-01T00:00:00Z' }] }).map((m) => m.user_id)).toEqual(['a', 'c']);
 	});
-	it('audit_summary masks secret-looking keys', () => {
-		expect(audit_summary({ username: 'ana', api_token: 'xyz', reason: '' })).toBe('username: ana · api_token: set');
+	it('audit_summary masks secret-looking keys and reads JSON text from older Cores', () => {
+		expect(audit_summary({ username: 'ana', api_token: 'xyz', reason: '' })).toBe('api token: set');
+		expect(audit_summary('{"slug":"acme","reason":"spam"}')).toBe('reason: spam');
+	});
+
+	it('audit_sentence says what happened to whom', () => {
+		const e = (action: string, target_type: string, details: Record<string, unknown> | string = {}) => audit_sentence({ action, target_type, target_id: '0f8a7b6c-1111-4111-8111-111111111111', details });
+		expect(e('user.suspend', 'user', { username: 'bob' })).toBe('suspended account bob');
+		expect(e('org.delete', 'org', '{"slug":"acme"}')).toBe('deleted org acme');
+		expect(e('scope.member.add', 'scope', { slug: 'acme' })).toBe('added a member to scope @acme');
+		expect(e('user.set_role', 'user', { username: 'ana', role: 'admin' })).toBe('changed the role of account ana to admin');
+		expect(e('team.force_delete', 'team')).toBe('force-deleted team 0f8a7b6c…');
 	});
 });
 
@@ -322,7 +365,7 @@ describe('Admin › sortable tables', () => {
 		['teams', '/admin/teams', TeamsPage, 'Installs', 'install_count', 'desc', ['name', 'install_count', 'created_at', 'updated_at']],
 		['scopes', '/admin/scopes', ScopesPage, 'Teams', 'team_count', 'desc', ['slug', 'visibility', 'team_count', 'created_at']],
 		['workspaces', '/admin/workspaces', WorkspacesPage, 'Workspace', 'name', 'asc', ['name', 'created_at']],
-		['audit', '/admin/audit', AuditPage, 'Action', 'action', 'asc', ['created_at', 'action']],
+		['audit', '/admin/audit', AuditPage, 'What happened', 'action', 'asc', ['created_at', 'action']],
 	] as const)('%s: with Core API 6 the headers light up and the click sends sort_by / sort_dir', async (kind, path, Page, label, key, dir, sortable) => {
 		const calls = route_fetch({ '/v1/admin_list/get': (b) => list(kind as Admin_list_data<unknown>['kind'], [], { offset: Number(b.offset) || 0, sortable: [...sortable] }) });
 		at(`${path}?offset=25`, path, <Page />);

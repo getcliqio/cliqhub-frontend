@@ -111,7 +111,7 @@ export function Component() {
 
 			{org.status === 'waiting_for_owner' && !org.deleted_at ? <Waiting_owner_banner invite={org.pending_owner_invite} /> : null}
 
-			{owners.length === 0 && owner_role && org.members.length ? (
+			{owners.length === 0 && owner_role && org.members.length && org.status !== 'waiting_for_owner' && !org.members.some((m) => m.status !== 'active' && role_of(org, m)?.slug === 'owner') ? (
 				<div role="alert" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-[rgba(255,178,36,.4)] bg-[var(--g-warn-soft)] px-4 py-3" data-testid="ownerless">
 					<div className="min-w-0 flex-1"><b className="text-[13.5px]">This org has no owner</b><p className="text-[12.5px] text-[var(--g-ink-2)]">Nobody can manage owner-only settings or delete the org.</p></div>
 					{candidate ? <button type="button" disabled={busy} onClick={() => void run('/v1/users/update_role', { user_id: candidate.user_id, role_id: owner_role.id }, `${login_name(candidate)} is now an owner`)} className={G_PRIMARY}>Make {person_name(candidate)} owner</button> : null}

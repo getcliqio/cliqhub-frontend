@@ -5,7 +5,7 @@
 import { Link } from 'react-router';
 import { RefreshCw } from 'lucide-react';
 import { use_bff_read } from '@/lib/use_bff_read';
-import { ago, audit_summary, type Admin_home_data } from '@/lib/admin';
+import { ago, audit_summary, audit_sentence, type Admin_home_data } from '@/lib/admin';
 import { Admin_header, Avatar, Hub_scope_note, Stat_tile } from '@/components/graphite/g_admin';
 import { G_BTN } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -75,7 +75,7 @@ export function Component() {
 							<ul>{d.recent_audit.map((e) => (
 								<li key={e.id} className="flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-2.5 text-[13px] last:border-b-0">
 									<Avatar name={e.admin_username ?? '?'} size={24} />
-									<span className="min-w-0 flex-1 truncate"><b>{e.admin_username ?? 'deleted user'}</b> <span className="g-mono text-[12px] text-[var(--g-ink-2)]">{e.action}</span> <span className="text-[var(--g-ink-3)]">{audit_summary(e.details) || `${e.target_type} ${e.target_id.slice(0, 8)}`}</span></span>
+									<span className="min-w-0 flex-1 truncate" title={e.action}><b>{e.admin_username ?? 'A deleted user'}</b> <span className="text-[var(--g-ink-2)]">{audit_sentence(e)}</span>{audit_summary(e.details) ? <span className="text-[var(--g-ink-3)]"> · {audit_summary(e.details)}</span> : null}</span>
 									<span className="g-mono shrink-0 text-[11.5px] text-[var(--g-ink-3)]">{ago(e.created_at)}</span>
 								</li>
 							))}</ul>
