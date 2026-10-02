@@ -73,7 +73,7 @@ export function steps_for(d: Getting_started_data): Step_def[] {
 			done: d.team.done,
 			hint: 'Find a team in Marketplace (try @cliq/hello-world) — or one of your own under Teams — and install it into a realm.',
 			done_text: d.team.realm ? <>Installed in <span className="g-mono">{realm_label(d.team.realm)}</span>.</> : 'A team has been installed.',
-			action: { label: 'Open Marketplace', to: '/browse' },
+			action: { label: 'Open Marketplace', to: '/marketplace' },
 		},
 		{
 			key: 'run',

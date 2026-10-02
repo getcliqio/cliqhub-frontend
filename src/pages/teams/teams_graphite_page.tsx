@@ -194,7 +194,7 @@ export function Component() {
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
 							{data && data.items.length === 0 ? (
 								<div className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">
-									{q || status !== 'all' ? 'No teams match these filters.' : <>No teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link> or find one in the <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace</Link>.</>}
+									{q || status !== 'all' ? 'No teams match these filters.' : <>No teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link> or find one in the <Link to="/marketplace" className="text-[var(--g-acc)] hover:underline">Marketplace</Link>.</>}
 								</div>
 							) : null}
 							{data && data.items.length ? (
@@ -275,7 +275,7 @@ export function Component() {
 						<div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
 							<span>Phases:</span>
 							{LEGEND_KINDS.map((k) => <span key={k} className="inline-flex items-center gap-1.5"><i className="block h-2.5 w-2.5 rounded-[2px]" style={{ background: phase_kind(k).color }} />{phase_kind(k).label}</span>)}
-							<span className="ml-auto">Looking for other people’s teams? <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace →</Link></span>
+							<span className="ml-auto">Looking for other people’s teams? <Link to="/marketplace" className="text-[var(--g-acc)] hover:underline">Marketplace →</Link></span>
 						</div>
 					</>
 				)}

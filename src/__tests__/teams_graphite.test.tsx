@@ -279,16 +279,14 @@ describe('Team page', () => {
 		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/teams/measureone/feature-dev?tab=settings'));
 	});
 
-	it('no settings tab without edit/delete rights; Open in Builder fetches the version then navigates', async () => {
+	it('no settings tab or Builder without edit rights; Fork opens the fork dialog', async () => {
 		route_fetch(() => ({ team: { ...HEADER, can_edit: false, can_delete: false } }));
 		render_at('/teams/measureone/feature-dev-js');
 		await screen.findByRole('group', { name: 'Team workflow' });
 		expect(within(screen.getByRole('navigation', { name: 'Team' })).queryByRole('button', { name: 'Settings' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Open in Builder' })).toBeNull();
-		const calls = (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls;
-		fireEvent.click(screen.getByRole('button', { name: 'Fork' }));
-		// The version is read on click (an action, not a view read); the Builder hand-off uses sessionStorage.
-		await waitFor(() => expect(calls.some(([u, init]) => u === '/v1/teams/get_by_id' && JSON.parse(String(init.body)).name === 'feature-dev-js')).toBe(true));
+		fireEvent.click(screen.getByRole('button', { name: 'Fork to edit' }));
+		expect(screen.getByRole('dialog', { name: 'Fork @measureone/feature-dev-js' })).toBeInTheDocument();
 	});
 
 	it('404 shows the blocking error', async () => {

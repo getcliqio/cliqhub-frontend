@@ -129,6 +129,11 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/getting_started_graphite_page')),
           },
           {
+            // Marketplace: every team you can see, with facets and install state (BFF composition).
+            path: 'marketplace',
+            lazy: lazy_route(() => import('@/pages/marketplace_page')),
+          },
+          {
             // Build › Teams: your teams, phase shape, where they're installed (BFF composition).
             path: 'teams',
             lazy: lazy_route(() => import('@/pages/teams/teams_graphite_page')),

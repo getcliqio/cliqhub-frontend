@@ -21,7 +21,14 @@ export interface Team_phase {
 	support: boolean;
 }
 
-export interface Team_input { name: string; description: string | null; required: boolean; default: string | null }
+export interface Team_input {
+	name: string;
+	description: string | null;
+	required: boolean;
+	default: string | null;
+	/** Declared input type (e.g. `channel`); null for free text. */
+	type?: string | null;
+}
 
 export interface Team_install {
 	realm_id: string;
@@ -49,6 +56,34 @@ export interface Team_list_row {
 	/** Builder kinds (agent, gate, human, …) — preferred over phase_types when present. */
 	phase_kinds?: string[] | null;
 	installs: Team_install[];
+	/** Marketplace details (team_list/get source catalog). */
+	catalog?: Team_catalog;
+}
+
+/** Workflow features the marketplace filters by. */
+export type Catalog_has = 'human' | 'gate' | 'team' | 'connector';
+
+export interface Team_catalog {
+	tags: string[];
+	install_count: number;
+	version_count: number;
+	fork_count: number;
+	verified: boolean;
+	updated_at: number | null;
+	has: Catalog_has[];
+	/** Installed in the realm asked about, on an online daemon, with every agent set up. */
+	runnable: boolean;
+	/** Slugs of the caller's orgs that have the team in their library. */
+	in_orgs?: string[];
+}
+
+export interface Catalog_facets {
+	tags: Array<{ tag: string; count: number }>;
+	publishers: Array<{ scope: string; count: number; verified: boolean }>;
+	has: Record<Catalog_has, number>;
+	verified: number;
+	installed: number | null;
+	runnable: number | null;
 }
 
 export interface Team_list_data {
@@ -62,6 +97,8 @@ export interface Team_list_data {
 	realms_checked: number;
 	realms_total: number;
 	partial: boolean;
+	/** Marketplace facet counts (source catalog). */
+	facets?: Catalog_facets;
 }
 
 export interface Team_release { version: string; changelog: string | null; published_at: number | null; is_latest: boolean }
@@ -82,6 +119,49 @@ export interface Team_header {
 	can_edit: boolean;
 	can_delete: boolean;
 	can_toggle_listing: boolean;
+	/** Where this team was forked from (name/scope null when the origin is hidden or gone); null for an original. */
+	forked_from?: Team_fork_origin | null;
+	/** How many teams were forked from this one. */
+	fork_count?: number;
+	/** When the unversioned working copy was last saved (editors only). */
+	draft_saved_at?: string | null;
+	/** The caller's orgs and the team's place in each (null when they could not be read). */
+	orgs?: Team_org_state[] | null;
+}
+
+/** One of the caller's orgs: whether its team library has the team, and which of its realms do. */
+export interface Team_org_state {
+	org_id: string;
+	org_slug: string;
+	org_name: string;
+	role: string;
+	in_library: boolean;
+	/** One of the org's scopes owns the team. */
+	own: boolean;
+	added_at: string | null;
+	added_by: string | null;
+	realms: Array<{ realm_id: string; slug: string }>;
+}
+
+export interface Team_fork_origin {
+	team_id: string;
+	scope: string | null;
+	name: string | null;
+	version: string | null;
+	latest_version: string | null;
+}
+
+/** A human phase of the team and who reviews it by default. */
+export interface Team_human_phase { name: string; default_reviewers: string | null }
+
+/** The New run form (team_page/get view run). */
+export interface Team_run_form {
+	realms: Team_install[];
+	realm_id: string | null;
+	inputs: Team_input[];
+	human_phases: Team_human_phase[];
+	people: Array<{ username: string; role: string }>;
+	channels: Array<{ name: string; enabled: boolean; types: string[] }>;
 }
 
 export interface Team_run_row {
@@ -104,10 +184,13 @@ export interface Team_change { kind: 'added' | 'removed' | 'changed'; target: 'p
 
 export type Team_view = 'overview' | 'workflow' | 'files' | 'runs' | 'installs' | 'versions' | 'settings';
 
+/** `team_page/get` views: the page's tabs plus the New run form. */
+export type Team_page_view = Team_view | 'run';
+
 export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
-	view: Team_view;
+	view: Team_page_view;
 	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; latest: Team_release | null; installs: Team_install[] };
 	workflow?: {
 		phases: Team_phase[];
@@ -133,6 +216,7 @@ export interface Team_page_data {
 		realms_total: number;
 	};
 	versions?: { items: Team_release[]; compare: { from: string; to: string; changes: Team_change[] } | null };
+	run?: Team_run_form;
 	partial: boolean;
 }
 

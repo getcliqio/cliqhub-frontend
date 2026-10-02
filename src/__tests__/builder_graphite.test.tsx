@@ -45,7 +45,7 @@ function route_fetch(handlers: Record<string, Handler> = {}) {
 		if (key === 'build:validate') return new Response(JSON.stringify({ ok: true, data: { valid: true, errors: [], warnings: [] } }));
 		if (u === '/v1/teams/create') return new Response(JSON.stringify({ ok: true, data: { id: 'draft-9' } }));
 		if (u === '/v1/teams/update') return new Response(JSON.stringify({ ok: true, data: { id: body.team_id } }));
-		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { team_json: JSON.stringify(TEAM) } }));
+		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', latest_version: '1.0.0', draft: { manifest: JSON.stringify(TEAM), description: null, saved_at: '2026-10-03T10:00:00.000Z' } } }));
 		if (u === '/v1/team_page/get') return new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
 		return new Response(JSON.stringify({ ok: true, data: {} }));
 	});
@@ -143,7 +143,7 @@ describe('Graphite builder — start screen', () => {
 		expect(create.body).toMatchObject({ name: 'linear-pipeline', scope: 'measureone' });
 		expect(JSON.parse(String(create.body.team_json)).phases.length).toBeGreaterThan(1);
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('draft=draft-9'));
-		expect(screen.getByText(/draft · saved/)).toBeTruthy();
+		expect(screen.getByText(/not published/)).toBeTruthy();
 		// next edit updates the same draft
 		fireEvent.click(screen.getByTestId('tile-script'));
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
@@ -194,7 +194,7 @@ describe('Graphite builder — start screen', () => {
 });
 
 describe('Graphite builder — workspace', () => {
-	it('loads a draft by id and autosaves edits with teams/update', async () => {
+	it('opens a team by id from its unpublished changes and autosaves them without minting a version', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const calls = await open_draft();
 		expect(outline()).toEqual(['design', 'build', 'check']);
@@ -204,8 +204,9 @@ describe('Graphite builder — workspace', () => {
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
 		const up = calls.find((c) => c.url === '/v1/teams/update')!;
-		expect(up.body.team_id).toBe('d1');
+		expect(up.body).toMatchObject({ team_id: 'd1', save_as: 'draft' });
 		expect(JSON.parse(String(up.body.team_json)).phases[1].model).toBe('opus');
+		expect(screen.getByTestId('editing-note').textContent).toContain('realms keep running v1.0.0 until you publish');
 		expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(false);
 	});
 

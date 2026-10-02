@@ -4,7 +4,11 @@
  * inspector (phase or team) on the right.
  *
  * Reads/writes (no new endpoints):
- *   drafts     /v1/teams/create → /v1/teams/update (autosave, debounced)
+ *   saving     /v1/teams/create once for a new team, then /v1/teams/update
+ *              { save_as: 'draft' } (autosave, debounced): edits are kept as the
+ *              team's unpublished changes and never mint a version
+ *   versions   only Publish mints one (/v1/teams/publish), which also clears
+ *              the unpublished changes
  *   validate   /v1/teams/build {action: 'validate'} (debounced; local checks are instant)
  *   AI         /v1/teams/build {chat | suggest | improve_role | generate | status}
  *   publish    /v1/team_page/get (installs) · /v1/teams/publish · /v1/realms/add_team
@@ -68,7 +72,7 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 		set_state({ kind: 'saving' });
 		try {
 			const body = draft_id
-				? { team_id: draft_id, description: t.description || '', team_json: JSON.stringify(t) }
+				? { team_id: draft_id, save_as: 'draft', description: t.description || '', team_json: JSON.stringify(t) }
 				: { name: team_slug(t), scope: team_scope(t, scopes[0]?.slug ?? user.username ?? ''), description: t.description || '', team_json: JSON.stringify(t) };
 			const res = await auth_fetch(draft_id ? '/v1/teams/update' : '/v1/teams/create', { method: 'POST', body: JSON.stringify(body) });
 			const p = await res.json().catch(() => null);
@@ -148,7 +152,7 @@ function Changes_view({ baseline, team, on_revert }: { baseline: GeneratedTeam |
 function Save_badge({ s, on_save }: { s: Save_state; on_save: () => void }) {
 	const base = 'g-mono whitespace-nowrap rounded px-1.5 py-0.5 text-[11px]';
 	if (s.kind === 'saving') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">saving…</span>;
-	if (s.kind === 'saved') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">draft · saved {ago(s.at)}</span>;
+	if (s.kind === 'saved') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">saved {ago(s.at)} · not published</span>;
 	if (s.kind === 'error') return <button type="button" onClick={on_save} title={s.message} className={`${base} bg-[var(--g-bad-soft)] text-[var(--g-bad)]`}>not saved · retry</button>;
 	if (s.kind === 'unnamed') return <span className={`${base} bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]`}>name it to save</span>;
 	if (s.kind === 'signed_out') return <span className={`${base} bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]`}>sign in to save</span>;
@@ -317,6 +321,11 @@ export function Gb_app() {
 
 						{/* center */}
 						<section className="relative flex min-h-0 flex-col">
+							{state.draft_id && team.version ? (
+								<p className="border-b border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-1.5 text-[12px] text-[var(--g-ink-3)]" data-testid="editing-note">
+									Editing <span className="g-mono text-[var(--g-ink-2)]">{team.name}</span>. Changes save here as you go; realms keep running <span className="g-mono">v{team.version}</span> until you publish a new version.
+								</p>
+							) : null}
 							<div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--g-line)] px-3 py-2" data-testid="status-pills">
 								{errors.length ? (
 									<button type="button" onClick={() => { const p = errors.find((x) => x.phase); if (p?.phase) select(p.phase); else select(null); }} className="rounded-full bg-[var(--g-bad-soft)] px-2.5 py-0.5 text-[12px] text-[var(--g-bad)]">✕ {errors.length} problem{errors.length === 1 ? '' : 's'}</button>

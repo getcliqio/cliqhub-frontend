@@ -4,12 +4,13 @@
  *   Operate — Runs · Installs
  *   Ship    — Versions · Settings (only for people who can edit)
  * Read: one `POST /v1/team_page/get` per tab (BFF composes Core). Writes are
- * single existing routes (realms/add_team, realms/remove_team, teams/rename,
- * teams/unpublish, teams/delete_version, teams/delete).
+ * single existing routes (orgs/add_team, realms/add_team, realms/remove_team,
+ * teams/create with forked_from, teams/rename, teams/unpublish,
+ * teams/delete_version, teams/delete).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowRight, Copy, Download, Play, RefreshCw } from 'lucide-react';
+import { ArrowRight, Copy, Download, GitFork, Play, Plus, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { relative_time, use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
@@ -18,7 +19,6 @@ import { run_href } from '@/lib/realm_inbox';
 import {
 	REVIEW_COLOR, phase_kind, team_href, type Team_install, type Team_page_data, type Team_phase, type Team_view,
 } from '@/lib/team_page';
-import { builder_href } from '@/lib/team_builder';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { State_pill } from '@/components/graphite/g_status';
@@ -26,7 +26,8 @@ import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflo
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
-import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
+import { Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
+import { Add_team_drawer, Fork_dialog, Lineage_strip } from '@/components/graphite/g_team_get';
 
 export const TEAM_RUNS_PAGE_SIZE = 25;
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
@@ -193,7 +194,6 @@ export function Component() {
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
 	const post = use_post();
-	const auth_fetch = useAuthFetch();
 	const [search, set_search] = useSearchParams();
 	const tab = ((t) => (VIEWS.includes(t as Team_view) ? t : 'overview'))(search.get('tab') ?? '') as Team_view;
 	const version = search.get('v');
@@ -208,7 +208,8 @@ export function Component() {
 	const cmp_to = search.get('to');
 	const [q_draft, set_q_draft] = useState(runs_q);
 	const [running, set_running] = useState(false);
-	const [install_open, set_install_open] = useState<string | null>(null);
+	const [adding, set_adding] = useState(false);
+	const [forking, set_forking] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm, set_confirm] = useState<string | null>(null);
@@ -248,22 +249,18 @@ export function Component() {
 	const label = team?.label ?? (team_scope ? `@${team_scope}/${name}` : name);
 	const is_latest = !team || team.version === team.latest_version;
 	const can_settings = Boolean(team && (team.can_edit || team.can_delete));
-	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id).flatMap((o) => o.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
+	// A team runs only in a realm that has it, and joins one of your orgs before any of its realms.
+	const org_states = team?.orgs ?? null;
+	const in_org = org_states === null || org_states.some((o) => o.in_library || o.own);
+	const in_realm = org_states === null || org_states.some((o) => o.realms.length > 0);
+	const can_add = Boolean(team?.status === 'published' && team.scope);
+	const where = (org_states ?? []).filter((o) => o.in_library || o.own);
 	const realm_by_id = useMemo(() => new Map((overview.data?.orgs ?? []).flatMap((o) => o.realms).map((r) => [r.id, r])), [overview.data]);
 
-	async function open_builder(fork: boolean) {
-		set_busy(fork ? 'fork' : 'builder');
-		try {
-			const res = await auth_fetch('/v1/teams/get_by_id', { method: 'POST', body: JSON.stringify({ name, scope: team_scope, ...(version ? { version } : {}) }) });
-			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) { set_msg({ tone: 'bad', text: api_message(payload, 'Could not open the Builder.') }); return; }
-			const href = builder_href(payload.data, { label, version: team?.version, fork, from: window.location.pathname });
-			if (href) navigate(href); else set_msg({ tone: 'bad', text: 'Could not open the Builder.' });
-		} catch {
-			set_msg({ tone: 'bad', text: 'Network error — check your connection.' });
-		} finally {
-			set_busy(null);
-		}
+	/** Owners edit the team itself: the Builder saves a working copy until a version is published. */
+	function open_builder() {
+		if (!team) return;
+		navigate(`/builder?draft=${encodeURIComponent(team.id)}&from=${encodeURIComponent(window.location.pathname)}`);
 	}
 
 	async function act(key: string, path: string, payload: Record<string, unknown>, ok_text: string, after?: () => void) {
@@ -291,16 +288,23 @@ export function Component() {
 					) : null}
 				</div>
 				{full && team?.description ? <p className="mt-1.5 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
-				{full && team?.author ? <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">by {team.author}{team.tags.length ? ` · ${team.tags.join(' · ')}` : ''}</p> : null}
+				{full && team?.author ? <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">by {team.author}{team.tags.length ? ` · ${team.tags.join(' · ')}` : ''}{team.fork_count ? ` · ${team.fork_count} fork${team.fork_count === 1 ? '' : 's'}` : ''}</p> : null}
+				{full && org_states !== null ? (
+					<p className="mt-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-where">
+						{where.length ? where.map((o, i) => <span key={o.org_id}>{i ? ' · ' : 'In '}<b className="font-medium text-[var(--g-ink-2)]">{o.org_name}</b>{o.realms.length ? ` (${o.realms.map((r) => r.slug).join(', ')})` : ' — not in a realm yet'}</span>)
+							: 'Not in any of your orgs yet. Add it to your org and a realm to run it, or fork it to make your own version.'}
+					</p>
+				) : null}
+				{full && team?.can_edit && team.draft_saved_at ? <p className="mt-1 text-[12px] text-[var(--g-warn-text)]">Unpublished changes saved {relative_time(Date.parse(team.draft_saved_at))} — <button type="button" onClick={open_builder} className="underline">continue in the Builder</button></p> : null}
 			</div>
 			<div className="relative flex shrink-0 items-center gap-1.5">
-				{team?.status === 'published' && team.scope ? <button type="button" aria-expanded={install_open === 'header'} onClick={() => set_install_open(install_open === 'header' ? null : 'header')} className={ROW_ACTION_CLS}>Install ▾</button> : null}
-				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>{busy === 'builder' ? 'Opening…' : 'Open in Builder'}</button> : null}
-				{team ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(true)} className={ROW_ACTION_CLS}>{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
-				{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
-				{install_open === 'header' && team?.scope ? (
-					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((data?.overview?.installs ?? data?.installs?.items ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(null)} on_done={(m) => { set_install_open(null); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
+				{team?.can_edit && is_latest ? <button type="button" onClick={open_builder} className={ROW_ACTION_CLS}>Open in Builder</button> : null}
+				{team && team.versions.length ? <button type="button" onClick={() => set_forking(true)} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><GitFork aria-hidden className="h-3.5 w-3.5" />{team.can_edit ? 'Fork' : 'Fork to edit'}</button> : null}
+				{can_add && in_realm ? <button type="button" onClick={() => set_adding(true)} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Plus aria-hidden className="h-3.5 w-3.5" />Add to a realm</button> : null}
+				{can_add && !in_realm ? (
+					<button type="button" onClick={() => set_adding(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Plus aria-hidden className="h-3.5 w-3.5" />{in_org ? 'Add to a realm' : 'Add to your org'}</button>
 				) : null}
+				{team?.status === 'published' && team.scope && in_realm ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
 			</div>
 		</div>
 	);
@@ -371,7 +375,7 @@ export function Component() {
 								<span className={`g-mono ${i.behind ? 'text-[var(--g-warn-text)]' : ''}`}>{i.version ?? '—'}{i.behind ? ' ↑' : ''}</span>
 							</div>
 						)) : <p className="text-[12.5px] text-[var(--g-ink-3)]">Not installed in any realm you can see.</p>}
-						<button type="button" onClick={() => go_tab('installs')} className="mt-1.5 text-[12.5px] text-[var(--g-acc)] hover:underline">{o.installs.length ? 'Manage installs →' : '+ Install in a realm'}</button>
+						<button type="button" onClick={() => (o.installs.length ? go_tab('installs') : set_adding(true))} className="mt-1.5 text-[12.5px] text-[var(--g-acc)] hover:underline">{o.installs.length ? 'Manage installs →' : '+ Add to a realm'}</button>
 						{o.agents.length ? <div className="mt-2 flex justify-between gap-3 border-t border-[var(--g-line-2)] pt-2 text-[12.5px]"><span className="text-[var(--g-ink-3)]">Agents</span><span className="text-right text-[var(--g-ink-2)]">{o.agents.join(', ')}</span></div> : null}
 					</section>
 				</div>
@@ -397,7 +401,7 @@ export function Component() {
 						{run_sel !== 'none' && !ov ? <span className="text-[11.5px] text-[var(--g-ink-3)]">No runs to overlay.</span> : null}
 					</div>
 					<div className="absolute right-3 top-2.5 z-10 flex gap-1.5">
-						{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className="inline-flex h-7 items-center rounded-md border border-[#2c2f35] bg-[rgba(22,23,26,.85)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Edit in Builder</button> : null}
+						{team?.can_edit && is_latest ? <button type="button" onClick={open_builder} className="inline-flex h-7 items-center rounded-md border border-[#2c2f35] bg-[rgba(22,23,26,.85)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Edit in Builder</button> : null}
 					</div>
 					<div className="pt-11"><Workflow_graph phases={graph_phases} height={240} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p }, true)} statuses={ov ? ov.statuses : null} /></div>
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5"><Workflow_legend phases={graph_phases} />
@@ -425,7 +429,7 @@ export function Component() {
 					{roles.map(item)}
 					{!files.length ? <p className="px-2.5 py-3 text-[12px] text-[var(--g-ink-3)]">No files for this version.</p> : null}
 					<div className="mt-3 grid gap-1.5 border-t border-[var(--g-line)] px-1 pt-3">
-						{team?.can_edit && is_latest ? <button type="button" onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>Edit in Builder</button> : null}
+						{team?.can_edit && is_latest ? <button type="button" onClick={open_builder} className={ROW_ACTION_CLS}>Edit in Builder</button> : null}
 					</div>
 				</div>
 				<div className={`${CARD} min-w-0 overflow-hidden`}>
@@ -502,10 +506,7 @@ export function Component() {
 				<div className="relative flex flex-wrap items-center gap-2">
 					<span className="text-[13px] text-[var(--g-ink-2)]">Installed in <b className="text-[var(--g-ink)]">{ins.items.length}</b> of {ins.realms_total} realm{ins.realms_total === 1 ? '' : 's'} you can see</span>
 					{ins.realms_checked < ins.realms_total ? <span className="text-[11.5px] text-[var(--g-ink-3)]">(checked the first {ins.realms_checked})</span> : null}
-					{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_install_open(install_open === 'installs' ? null : 'installs')} className={`${PRIMARY} ml-auto`}>+ Install in realm</button> : null}
-					{install_open === 'installs' && team?.scope ? (
-						<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set(ins.items.map((i) => i.realm_id))} on_close={() => set_install_open(null)} on_done={(m) => { set_install_open(null); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
-					) : null}
+					{can_add ? <button type="button" onClick={() => set_adding(true)} className={`${PRIMARY} ml-auto`}>+ Add to a realm</button> : null}
 				</div>
 				<div className={`${CARD} overflow-hidden`}>
 					{ins.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">Not installed in any realm yet.</p> : (
@@ -665,12 +666,13 @@ export function Component() {
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
 			<div className="flex flex-col gap-3.5 px-7 py-6">
-				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>
+				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]">{team && !team.can_edit ? <Link to="/marketplace" className="hover:text-[var(--g-ink)]">Marketplace</Link> : <Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link>} › <span className="text-[var(--g-ink-2)]">{label}</span></nav>
 				{read.status === 'error' && !any_data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="team" />
 				) : (
 					<>
 						{header(tab === 'overview')}
+						{team?.forked_from ? <Lineage_strip origin={team.forked_from} /> : null}
 						{tabs}
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						{data?.partial ? <p className="text-[11.5px] text-[var(--g-ink-3)]">Some of this couldn’t be loaded — what’s shown may be incomplete.</p> : null}
@@ -679,6 +681,16 @@ export function Component() {
 				)}
 			</div>
 			{running && team?.scope ? <Run_in_realm_dialog scope={team.scope} slug={team.name} on_close={() => set_running(false)} /> : null}
+			{adding && team?.scope ? (
+				<Add_team_drawer team_id={team.id} label={label} scope={team.scope} name={team.name} version={team.latest_version}
+					orgs={(overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id)} states={org_states ?? []}
+					on_close={() => set_adding(false)} on_added={() => void read.reload()} on_run={() => { set_adding(false); set_running(true); }} />
+			) : null}
+			{forking && team ? (
+				<Fork_dialog team_id={team.id} label={label} name={team.name} version={team.version} versions={team.versions}
+					on_close={() => set_forking(false)}
+					on_forked={(r, open) => { set_forking(false); navigate(open ? `/builder?draft=${encodeURIComponent(r.id)}&from=${encodeURIComponent(team_href(r.scope, r.name))}` : team_href(r.scope, r.name)); }} />
+			) : null}
 		</Graphite_shell>
 	);
 }

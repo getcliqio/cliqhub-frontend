@@ -207,7 +207,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 						<span className="mt-1 block text-[12px] text-[var(--g-ink-3)]">Proven shapes: gates, pipelines, fan-out.</span>
 						<span className="mt-2 block text-[12.5px] font-semibold text-[#2dd4bf]">Browse templates →</span>
 					</button>
-					<Link to="/browse" className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-4 text-left hover:border-[var(--g-acc-line)]">
+					<Link to="/marketplace" className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-4 text-left hover:border-[var(--g-acc-line)]">
 						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(91,157,255,.14)] text-[#5b9dff]">⑂</span>
 						<b className="mt-3 block text-[14px]">Fork a team</b>
 						<span className="mt-1 block text-[12px] text-[var(--g-ink-3)]">Start from any team in the Marketplace, then make it yours.</span>

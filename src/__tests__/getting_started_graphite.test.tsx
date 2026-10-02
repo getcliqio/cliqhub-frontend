@@ -19,7 +19,7 @@ describe('Getting started', () => {
 		expect(screen.getByTestId('gs-step-daemon')).toHaveAttribute('data-state', 'done');
 		expect(screen.getByTestId('gs-step-team')).toHaveAttribute('data-state', 'current');
 		expect(screen.getByTestId('gs-step-run')).toHaveAttribute('data-state', 'todo');
-		expect(within(screen.getByTestId('gs-step-team')).getByRole('link', { name: /Open Marketplace/ })).toHaveAttribute('href', '/browse');
+		expect(within(screen.getByTestId('gs-step-team')).getByRole('link', { name: /Open Marketplace/ })).toHaveAttribute('href', '/marketplace');
 		expect(within(screen.getByTestId('gs-step-run')).queryByRole('link')).toBeNull();
 	});
 

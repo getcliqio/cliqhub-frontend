@@ -8,6 +8,7 @@ import {
 } from '@/lib/builder/session_restore';
 import { useAuth} from '@/lib/auth_context';
 import { useOrgFetch } from '@/lib/org_context';
+import { builder_team_from_saved } from '@/lib/team_builder';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { SparkPage } from './spark_page';
 import { CanvasView } from './canvas_view';
@@ -59,14 +60,12 @@ export function StateRestorer() {
 				.then((res) => res.json())
 				.then((data) => {
 					if (!data.ok) {
-						set_load_error(data.error?.message || 'Failed to load draft');
+						set_load_error(typeof data.error === 'string' ? data.error : data.error?.message || 'Couldn’t open this team.');
 						return;
 					}
-					const raw = data.data.team_json || data.data.raw_manifest;
-					if (!raw) return;
-					const team = normalize_builder_team(typeof raw === 'string' ? JSON.parse(raw) : raw);
-					if (!team) return;
-					dispatch({ type: 'SET_TEAM', team, validation: null });
+					const loaded = builder_team_from_saved(data.data);
+					if (!loaded) { set_load_error('This team has no workflow to edit yet.'); return; }
+					dispatch({ type: 'SET_TEAM', team: loaded.team, validation: null });
 					dispatch({ type: 'SET_DRAFT_ID', draft_id });
 				})
 				.catch(() => {

@@ -9,6 +9,7 @@ import {
 import { check_team, closest, find_cycle } from '@/lib/builder/checks';
 import { error_position, format_yaml, has_comments, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
 import { next_version, publish_body, suggest_bump, team_scope, team_slug } from '@/lib/builder/publish';
+import { builder_team_from_saved } from '@/lib/team_builder';
 
 const P = (name: string, over: Partial<GeneratedPhase> = {}): GeneratedPhase => ({ name, type: 'standard', agent: 'claude-code', depends_on: [], ...over });
 function team(over: Partial<GeneratedTeam> = {}): GeneratedTeam {
@@ -252,5 +253,28 @@ describe('publish', () => {
 		expect(pkg['team.yml']).toMatch(/phases:/);
 		expect(pkg.roles).toHaveLength(5);
 		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true })).toMatchObject({ version: '1.0.0', visibility: 'public' });
+	});
+});
+
+describe('builder_team_from_saved', () => {
+	const detail = {
+		id: 't1', name: 'feature-dev', scope: 'acme', description: 'Ticket to PR', latest_version: '1.4.2',
+		workflow: { phases: [{ name: 'design', type: 'standard', agent: 'claude-code', depends_on: [] }] },
+		roles: [{ name: 'design', content_md: '# design' }], draft: null,
+	};
+	it('opens the latest version, keeping the scope in the name', () => {
+		const r = builder_team_from_saved(detail)!;
+		expect(r.from_draft).toBe(false);
+		expect(r.team).toMatchObject({ name: '@acme/feature-dev', version: '1.4.2', description: 'Ticket to PR' });
+		expect(r.team.phases.map((p) => p.name)).toEqual(['design']);
+	});
+	it('prefers the unpublished changes, saved as builder JSON or as team.yml', () => {
+		const json = builder_team_from_saved({ ...detail, draft: { manifest: JSON.stringify({ name: 'feature-dev', description: 'x', phases: [{ name: 'a', depends_on: [] }, { name: 'b', depends_on: ['a'] }] }), description: 'Edited' } })!;
+		expect(json.from_draft).toBe(true);
+		expect(json.team).toMatchObject({ name: '@acme/feature-dev', description: 'Edited', version: '1.4.2' });
+		expect(json.team.phases.map((p) => p.name)).toEqual(['a', 'b']);
+		const yml = builder_team_from_saved({ ...detail, draft: { manifest: 'name: feature-dev\ndescription: from yaml\nphases:\n  - name: only\n    agent: claude-code\n' } })!;
+		expect(yml.from_draft).toBe(true);
+		expect(yml.team.phases.map((p) => p.name)).toEqual(['only']);
 	});
 });

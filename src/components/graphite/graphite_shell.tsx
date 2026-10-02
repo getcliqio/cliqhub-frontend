@@ -514,7 +514,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	// Build: teams you and your orgs author, and the public catalog.
 	const build: Nav_item[] = [
 		{ to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound },
-		{ to: '/browse', label: 'Marketplace', icon: Store },
+		{ to: '/marketplace', label: 'Marketplace', icon: Store },
 	];
 	const manage: Nav_item[] = [
 		{ to: view_href('/notifications', scope, multi_org), label: 'Notifications', icon: Bell },
