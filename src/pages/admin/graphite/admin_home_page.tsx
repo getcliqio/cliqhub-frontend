@@ -36,7 +36,7 @@ export function Component() {
 		<div className="flex flex-col gap-5">
 			<Admin_header
 				title="Hub health"
-				sub="Everything across every org. Changes here affect all customers — they’re audited."
+				sub="What needs a site admin’s attention across every org, with the latest admin changes. Everything you change here is recorded in the audit log."
 				right={<>{d ? <Core_badge core={d.core} /> : null}<button type="button" onClick={() => void read.reload()} aria-label="Refresh" className={G_BTN}><RefreshCw className="h-3.5 w-3.5" /></button></>}
 			/>
 			{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="admin home" /> : null}

@@ -54,7 +54,7 @@ export function Component() {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Teams" sub="Every team in the catalog. Listed teams show in the Marketplace." />
+			<Admin_header title="Teams" sub="Every published team. Choose which ones appear in the Marketplace, and remove teams that shouldn’t be there." />
 			{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 			<div className="flex flex-wrap items-center gap-2">
 				<Chips<Filter> value={filter} on_change={(k) => set({ filter: k === 'listed' ? null : k, offset: null })} options={[

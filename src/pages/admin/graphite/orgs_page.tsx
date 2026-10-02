@@ -190,7 +190,7 @@ export function Component() {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Organizations" sub="Every customer org on the hub." right={<button type="button" onClick={() => set_creating(true)} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New org</button>} />
+			<Admin_header title="Organizations" sub="Every organization on CliqHub. Open one to manage its members and owner, or create an org and invite its owner by email." right={<button type="button" onClick={() => set_creating(true)} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New org</button>} />
 			{creating ? <New_org on_close={() => set_creating(false)} on_created={() => void read.reload()} /> : null}
 			<div className="flex flex-wrap items-center gap-2">
 				<Chips<Status_filter> label="Status" value={status} on_change={(k) => set({ status: k === 'all' ? null : k, offset: null })} options={[

@@ -212,7 +212,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 					<>
 						<h1 className="flex items-center gap-2.5 text-[24px] font-semibold tracking-[-0.02em]"><Org_chip org={view_org} size={26} />{view_org.display_name || view_org.slug}</h1>
 						<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">
-							<b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> · you’re {article(view_org.role)} {view_org.role} ·{' '}
+							What’s running, what needs you and how {view_org.display_name || view_org.slug}’s <b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> are doing · you’re {article(view_org.role)} {view_org.role} ·{' '}
 							<Link to="/home" className="text-[var(--g-acc)] hover:underline">← All my work</Link>
 						</p>
 					</>
@@ -222,8 +222,9 @@ export function Overview_view({ data }: { data: Overview_data }) {
 							{greeting()}, {user?.display_name?.split(' ')[0] || user?.username}
 						</h1>
 						<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">
-							{show_org_tags ? <>Across <b className="text-[var(--g-ink)]">{plural(data.orgs.length, 'org')}</b> and </> : <>Across </>}
-							<b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> you can access.
+							What’s running, what needs you, and how things went.{' '}
+							<span>{show_org_tags ? <>Across <b className="text-[var(--g-ink)]">{plural(data.orgs.length, 'org')}</b> and </> : <>Across </>}
+							<b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> you can access.</span>
 						</p>
 					</>
 				)}

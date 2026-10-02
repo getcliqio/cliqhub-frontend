@@ -100,7 +100,7 @@ export function Component() {
 	const done = (msg: string) => { set_flash(msg); set_creating(false); p.set({ s: null }); void read.reload(); };
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Scopes" sub="Publishing namespaces — every team is @scope/name." right={<button type="button" onClick={() => set_creating(true)} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New scope</button>} />
+			<Admin_header title="Scopes" sub="The @names teams are published under (a team is @scope/name). Create org scopes and choose who may publish to them." right={<button type="button" onClick={() => set_creating(true)} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New scope</button>} />
 			{flash ? <Banner tone="ok">{flash}</Banner> : null}
 			{creating ? <New_scope orgs={orgs} on_close={() => set_creating(false)} on_done={done} /> : null}
 			<div className="flex flex-wrap items-center gap-2">

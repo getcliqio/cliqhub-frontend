@@ -455,7 +455,7 @@ export function Component() {
 					<>
 						<header className="flex flex-wrap items-center gap-3">
 							<Avatar name={d.org.display_name || d.org.slug} size={44} />
-							<div><h1 className="text-[22px] font-semibold tracking-tight">{d.org.display_name || d.org.slug}</h1><p className="text-[12.5px] text-[var(--g-ink-3)]">{my_role === 'site_admin' ? 'Viewing as CliqHub admin' : `You’re ${/^[aeiou]/i.test(my_role) ? 'an' : 'a'} ${my_role}`} · {member_count} member{member_count === 1 ? '' : 's'} · {d.org.scopes.length} scope{d.org.scopes.length === 1 ? '' : 's'}</p></div>
+							<div><h1 className="text-[22px] font-semibold tracking-tight">{d.org.display_name || d.org.slug}</h1><p className="text-[13px] text-[var(--g-ink-2)]">Who’s in this org and what they can do, the @scopes it publishes teams under, and who gets notified about its runs.</p><p className="text-[12.5px] text-[var(--g-ink-3)]">{my_role === 'site_admin' ? 'Viewing as CliqHub admin' : `You’re ${/^[aeiou]/i.test(my_role) ? 'an' : 'a'} ${my_role}`} · {member_count} member{member_count === 1 ? '' : 's'} · {d.org.scopes.length} scope{d.org.scopes.length === 1 ? '' : 's'}</p></div>
 							{d.org.status !== 'active' ? <Org_status_pill status={d.org.status} /> : null}
 							<Link to={`/realms?org=${encodeURIComponent(d.org.slug)}`} className={`${G_BTN} ml-auto`}>Realms →</Link>
 						</header>

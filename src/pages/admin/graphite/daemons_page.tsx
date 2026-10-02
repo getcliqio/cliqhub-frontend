@@ -40,7 +40,7 @@ export function Component() {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Daemons" sub="Every registered daemon, and whether it’s reachable." />
+			<Admin_header title="Daemons" sub="The machines that run teams, across every org. See which are online, which stopped checking in, and remove ones that are gone." />
 			{d && !d.hub_wide ? <Hub_scope_note what="daemons" /> : null}
 			<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
 				<Stat_tile label="Online" value={c.online ?? '—'} sub={c.all != null ? `of ${c.all} daemons` : undefined} tone="ok" />

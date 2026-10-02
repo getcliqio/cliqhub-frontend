@@ -172,7 +172,7 @@ export function Component() {
 			<div className="flex flex-col gap-4 px-7 py-6">
 				<div>
 					<h1 className="text-[22px] font-semibold tracking-tight">Teams</h1>
-					<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds and owns.` : 'Teams you and your orgs build and own.'} Build here, then install into any realm.</p>
+					<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} publishes, and drafts you’re working on.` : 'Teams you and your orgs publish, and drafts you’re working on.'} Open one to edit it in the Builder or add it to a realm; ready-made teams are in the Marketplace.</p>
 				</div>
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="teams" />

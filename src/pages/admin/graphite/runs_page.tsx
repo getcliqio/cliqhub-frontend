@@ -43,7 +43,7 @@ export function Component() {
 	const orgs = d?.org_options ?? overview.data?.orgs ?? [];
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Runs" sub="Every run on the hub." />
+			<Admin_header title="Runs" sub="Runs across every org and realm. Filter to failures or what’s running now, and open a run to see what happened." />
 			{d && !d.hub_wide ? <Hub_scope_note what="runs" /> : null}
 			<div className="flex flex-wrap items-center gap-2">
 				<Chips<Filter> value={filter} on_change={(k) => p.set({ filter: k === 'all' ? null : k })} options={[

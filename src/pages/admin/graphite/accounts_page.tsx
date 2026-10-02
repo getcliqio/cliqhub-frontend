@@ -272,7 +272,7 @@ export function Component() {
 
 	return (
 		<div className="flex flex-col gap-4">
-			<Admin_header title="Accounts" sub="Every account on the hub." right={<button type="button" onClick={() => { set_creating(true); set({ u: null }); }} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New account</button>} />
+			<Admin_header title="Accounts" sub="Everyone who can sign in to CliqHub. Suspend, reactivate or reset passwords, make site admins, or add an account." right={<button type="button" onClick={() => { set_creating(true); set({ u: null }); }} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New account</button>} />
 			{flash ? <Banner tone="ok">{flash}</Banner> : null}
 			<div className="flex flex-wrap items-center gap-2">
 				<Chips<Filter> value={filter} on_change={(k) => set({ filter: k === 'all' ? null : k, offset: null })} options={[
