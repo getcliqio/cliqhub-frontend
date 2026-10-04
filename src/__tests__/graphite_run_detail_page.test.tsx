@@ -88,6 +88,38 @@ describe('Graphite run detail', () => {
 		expect(other).toEqual([]);
 	});
 
+	it('always shows Artifacts: "No artifacts" when the run stored none', async () => {
+		route_fetch(run_detail());
+		render_page();
+		await ready();
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No artifacts for this run.');
+	});
+
+	it('lists stored artifacts and downloads through artifacts/get_by_id', async () => {
+		const open = vi.spyOn(window, 'open').mockReturnValue(null);
+		const spy = route_fetch(
+			run_detail({ artifacts: [{ artifact_id: 'a1', phase: 'report', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }),
+			{ '/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { download_url: 'https://r2.example/report.pdf?sig' } } }) },
+		);
+		render_page();
+		await ready();
+		const row = screen.getByTestId('artifact-row');
+		expect(row).toHaveTextContent('report.pdf');
+		expect(row).toHaveTextContent('report · 2.0 KB · Weekly');
+		fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }));
+		await waitFor(() => expect(open).toHaveBeenCalledWith('https://r2.example/report.pdf?sig', '_blank', 'noopener'));
+		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'a1' }]);
+	});
+
+	it('says when artifacts could not be loaded', async () => {
+		const d = run_detail({ partial: true });
+		d.sections.artifacts = { status: 'error', error: 'storage down' };
+		route_fetch(d);
+		render_page();
+		await ready();
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load artifacts: storage down.');
+	});
+
 	it('renders phases in workflow order with errors, the run error and details', async () => {
 		route_fetch(run_detail());
 		render_page();

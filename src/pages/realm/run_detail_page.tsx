@@ -2,7 +2,8 @@
  * Run detail (Graphite).
  *
  * Data: one `POST /v1/run_detail/get { run_id }` per poll (BFF composes the
- * run row, phases, labels, realm and this run's pending reviews). Polls every
+ * run row, phases, labels, realm, this run's pending reviews and its stored
+ * artifacts). Polls every
  * 4s while the run is live, 20s otherwise.
  *
  * Control actions stay on the existing Core routes:
@@ -35,6 +36,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
+import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
 import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
 import { fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_bar, type Telemetry_phase } from '@/lib/run_telemetry';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -549,6 +551,7 @@ export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_da
 							<p className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Logs are unavailable because this run’s realm couldn’t be loaded.</p>
 						)}
 					</div>
+					<G_run_artifacts artifacts={data.artifacts ?? []} status={data.sections.artifacts} />
 				</div>
 				{tab === 'timeline' && selected && telemetry
 					? <Span_details bar={selected} t={telemetry} realm_id={data.realm?.id ?? null} on_close={() => set_selected(null)} on_logs={(q) => { set_log_q(q); set_tab('logs'); }} />

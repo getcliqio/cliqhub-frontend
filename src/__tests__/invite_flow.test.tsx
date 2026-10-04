@@ -82,7 +82,7 @@ describe('Create org → accept (mocked BFF)', () => {
 		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'sapan@measureone.com' } });
 		fireEvent.click(await screen.findByRole('button', { name: '+ Invite sapan@measureone.com by email' }));
 		fireEvent.change(screen.getByLabelText('Owner name'), { target: { value: 'Sapan Shah' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Send owner invite' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
 		const done = await screen.findByTestId('org-created');
 		expect(within(done).getByText('Waiting for owner')).toBeInTheDocument();
 		const link = within(done).getByTestId('fallback-url').textContent ?? '';

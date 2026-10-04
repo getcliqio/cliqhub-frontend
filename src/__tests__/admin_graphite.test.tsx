@@ -283,11 +283,11 @@ describe('admin helpers', () => {
 describe('Admin › sortable tables', () => {
 	const org = (slug: string) => ({ id: `o-${slug}`, slug, display_name: slug.toUpperCase(), member_count: 1, scope_count: 0, created_at: '2026-01-01T00:00:00Z' });
 
-	it('orgs: a search sends `query` across every org (personal ones included, so a taken slug is findable); no sort headers while Core can\'t sort orgs', async () => {
+	it('orgs: a search sends `query`; no sort headers while Core can\'t sort orgs', async () => {
 		const calls = route_fetch({ '/v1/orgs/get': () => ({ orgs: [org('acme')], total: 1, limit: 25, offset: 0, sortable: [] }) });
 		at('/admin/orgs?q=acme', '/admin/orgs', <OrgsPage />);
 		await screen.findByTestId('org-acme');
-		expect(calls.find((c) => c.url === '/v1/orgs/get')!.body).toEqual({ limit: 25, offset: 0, exclude_personal: false, query: 'acme' });
+		expect(calls.find((c) => c.url === '/v1/orgs/get')!.body).toEqual({ limit: 25, offset: 0, query: 'acme' });
 		expect(within(screen.getByRole('table')).queryAllByRole('button')).toHaveLength(0);
 		expect(screen.getByRole('columnheader', { name: 'Organization' })).not.toHaveAttribute('aria-sort');
 	});
@@ -299,7 +299,7 @@ describe('Admin › sortable tables', () => {
 		expect(screen.getByRole('columnheader', { name: /Created/ })).toHaveAttribute('aria-sort', 'descending');
 		expect(screen.queryByRole('button', { name: 'Members' })).toBeNull();
 		fireEvent.click(screen.getByRole('button', { name: 'Organization' }));
-		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/orgs/get').at(-1)!.body).toEqual({ limit: 25, offset: 0, exclude_personal: true, sort_by: 'slug', sort_dir: 'asc' }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/orgs/get').at(-1)!.body).toEqual({ limit: 25, offset: 0, sort_by: 'slug', sort_dir: 'asc' }));
 		expect(screen.getByTestId('where')).toHaveTextContent('/admin/orgs?sort=slug&dir=asc');
 	});
 
@@ -361,21 +361,21 @@ describe('Admin › New org — name conflicts say who holds the name', () => {
 		fireEvent.change(screen.getByLabelText('Name'), { target: { value: slug } });
 		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'sapan@measureone.com' } });
 		fireEvent.click(await screen.findByRole('button', { name: '+ Invite sapan@measureone.com by email' }));
-		fireEvent.click(screen.getByRole('button', { name: 'Send owner invite' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
 		return screen.findByRole('alert');
 	}
 
 	it('shows the message and a "View scope" link to the scope holding the name', async () => {
-		reply_conflict('measureone is already a scope (user, owned by user measureone)', { kind: 'scope', slug: 'measureone', scope_type: 'user', owner_username: 'measureone' });
+		reply_conflict('The name measureone is already taken.', { kind: 'scope', slug: 'measureone', scope_type: 'user', owner_username: 'measureone' });
 		const alert = await create('measureone');
-		expect(alert).toHaveTextContent('measureone is already a scope (user, owned by user measureone)');
+		expect(alert).toHaveTextContent('The name measureone is already taken.');
 		expect(within(alert).getByRole('link', { name: /View scope/ })).toHaveAttribute('href', '/admin/scopes?q=measureone');
 	});
 
-	it('links a personal org to the orgs list with personal orgs shown', async () => {
-		reply_conflict('measureone is already an org — the personal org of user measureone', { kind: 'org', slug: 'measureone', personal: true, owner_username: 'measureone' });
+	it('links an org named after a user to the orgs list', async () => {
+		reply_conflict('The name measureone is already taken.', { kind: 'org', slug: 'measureone', personal: true, owner_username: 'measureone' });
 		const alert = await create('measureone');
-		expect(within(alert).getByRole('link', { name: /View personal org/ })).toHaveAttribute('href', '/admin/orgs?q=measureone&personal=1');
+		expect(within(alert).getByRole('link', { name: /View org/ })).toHaveAttribute('href', '/admin/orgs?q=measureone');
 	});
 
 	it('plain errors show just the message', async () => {
@@ -402,17 +402,37 @@ describe('Admin › New org — owner picker', () => {
 		fireEvent.click(await screen.findByRole('button', { name: /New org/ }));
 		fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'measureone' } });
 		fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'MeasureOne' } });
-		expect(screen.getByRole('button', { name: 'Create org' })).toBeDisabled();
+		expect(screen.getByRole('button', { name: 'Create org and invite owner' })).toBeDisabled();
 		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'kru' } });
 		fireEvent.click(await screen.findByRole('button', { name: /krupali/ }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/get')?.body).toEqual({ query: 'kru', limit: 8 }));
 		expect(screen.getByRole('textbox', { name: 'Owner' })).toHaveValue('Krupali Patel (@krupali)');
-		fireEvent.click(screen.getByRole('button', { name: 'Create org' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
 		const done = await screen.findByTestId('org-created');
 		expect(calls.find((c) => c.url === '/v1/orgs/new')?.body).toEqual({ slug: 'measureone', display_name: 'MeasureOne', owner: { user_id: 'u-kru' } });
 		expect(within(done).getByText('Waiting for owner')).toBeInTheDocument();
-		expect(within(done).getByTestId('sent-result')).toHaveTextContent('Invite sent to sapan@measureone.com.');
+		expect(within(done).getByTestId('sent-result')).toHaveTextContent('Owner invite sent to sapan@measureone.com (no account yet).');
 		expect(within(done).getByRole('link', { name: 'Open org' })).toHaveAttribute('href', '/admin/orgs/o-m1');
+	});
+
+	it('an email that already has an account offers only that account, and the owner gets the invite as an existing account', async () => {
+		const calls = route_fetch({
+			'/v1/orgs/get': () => ({ orgs: [], total: 0, sortable: [] }),
+			'/v1/users/get': () => ({ users: [{ id: 'u-sapan', username: 'sapan', display_name: 'Sapan Shah', email: 'Sapan@measureone.com' }], total: 1 }),
+			'/v1/orgs/new': () => ({ ...org_created(), org: { ...org_created().org, owner: { user_id: 'u-sapan', email: 'sapan@measureone.com', status: 'active' } } }),
+		});
+		at('/admin/orgs', '/admin/orgs', <OrgsPage />);
+		fireEvent.click(await screen.findByRole('button', { name: /New org/ }));
+		fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'measureone' } });
+		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'sapan@measureone.com' } });
+		const account = await screen.findByRole('button', { name: /has an account with this email/ });
+		expect(screen.queryByRole('button', { name: /Invite sapan@measureone.com by email/ })).toBeNull();
+		fireEvent.click(account);
+		expect(screen.getByText(/They get an email to accept ownership/)).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
+		const done = await screen.findByTestId('org-created');
+		expect(calls.find((c) => c.url === '/v1/orgs/new')?.body).toEqual({ slug: 'measureone', owner: { user_id: 'u-sapan' } });
+		expect(within(done).getByTestId('sent-result')).toHaveTextContent('Owner invite sent to sapan@measureone.com (existing account).');
 	});
 
 	it('invites someone new by email with an optional name; without email set up it shows the link to copy', async () => {
@@ -427,8 +447,9 @@ describe('Admin › New org — owner picker', () => {
 		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'sapan@measureone.com' } });
 		fireEvent.click(await screen.findByRole('button', { name: '+ Invite sapan@measureone.com by email' }));
 		expect(screen.getByLabelText('Owner email')).toHaveValue('sapan@measureone.com');
+		expect(screen.getByTestId('same-user-note')).toHaveTextContent('If this email already has an account, that same user gets the invite — no new account is created.');
 		fireEvent.change(screen.getByLabelText('Owner name'), { target: { value: 'Sapan Shah' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Send owner invite' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
 		const done = await screen.findByTestId('org-created');
 		expect(calls.find((c) => c.url === '/v1/orgs/new')?.body).toEqual({ slug: 'measureone', owner: { email: 'sapan@measureone.com', display_name: 'Sapan Shah' } });
 		expect(within(done).getByTestId('link-fallback')).toHaveTextContent('Email isn’t set up, so nothing was sent.');
@@ -459,7 +480,7 @@ describe('Admin › Reactivate a deleted name', () => {
 		fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'measureone' } });
 		fireEvent.change(screen.getByRole('combobox', { name: 'Owner' }), { target: { value: 'sapan@measureone.com' } });
 		fireEvent.click(await screen.findByRole('button', { name: '+ Invite sapan@measureone.com by email' }));
-		fireEvent.click(screen.getByRole('button', { name: 'Send owner invite' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create org and invite owner' }));
 		const prompt = await screen.findByRole('alertdialog', { name: 'Reactivate?' });
 		expect(prompt).toHaveTextContent('measureone belongs to a deleted organization');
 		fireEvent.click(within(prompt).getByRole('button', { name: 'Reactivate' }));

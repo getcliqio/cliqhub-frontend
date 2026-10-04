@@ -111,6 +111,8 @@ describe('Realm teams page', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Install a team' }));
 		const dlg = screen.getByRole('dialog', { name: 'Install a team' });
 		expect(await within(dlg).findByText('@cliq/hello-world')).toBeInTheDocument();
+		// Published teams only (drafts can't be installed).
+		expect(calls.find((c) => c.url === '/v1/teams/get')?.body).toEqual({ status: 'published', limit: 20, offset: 0 });
 		// Already in the realm → no add button.
 		expect(within(within(dlg).getByText(/@cliq\/feature-dev-js/).closest('li')!).getByText('In this realm')).toBeInTheDocument();
 		fireEvent.click(within(within(dlg).getByText(/@cliq\/hello-world/).closest('li')!).getByRole('button', { name: 'Add to realm' }));

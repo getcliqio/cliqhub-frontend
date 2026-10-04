@@ -305,7 +305,7 @@ export function as_namespace_holder(d: Record<string, unknown> | null | undefine
 export function namespace_holder_link(h: Namespace_holder): { href: string; label: string } {
 	const q = encodeURIComponent(h.slug);
 	if (h.kind === 'scope') return { href: `/admin/scopes?q=${q}`, label: 'View scope' };
-	if (h.kind === 'org') return { href: `/admin/orgs?q=${q}${h.personal ? '&personal=1' : ''}`, label: h.personal ? 'View personal org' : 'View org' };
+	if (h.kind === 'org') return { href: `/admin/orgs?q=${q}`, label: 'View org' };
 	return { href: `/admin/accounts?q=${q}`, label: 'View account' };
 }
 

@@ -93,12 +93,25 @@ export interface Run_row {
 	state_lost_at?: number | null;
 }
 
+/** A file a run stored; download with `artifacts/get_by_id` (fresh link). */
+export interface Run_artifact {
+	artifact_id: string;
+	phase: string;
+	name: string;
+	description: string | null;
+	mime_type: string;
+	size_bytes: number;
+	created_at: number | null;
+}
+
 export interface Run_detail_data {
 	run: Run_row;
 	phases: Run_detail_phase[];
 	realm: Control_realm | null;
 	reviews: Array<{ id: string; title: string; phase: string | null; requested_at: number | null; message: string | null }>;
-	sections: Record<'phases' | 'labels' | 'realm' | 'reviews', Section_status>;
+	/** Files the run stored (`artifacts/get`, composed by the BFF). */
+	artifacts: Run_artifact[];
+	sections: Record<'phases' | 'labels' | 'realm' | 'reviews' | 'artifacts', Section_status>;
 	partial: boolean;
 }
 

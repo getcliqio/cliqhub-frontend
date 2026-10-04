@@ -23,50 +23,68 @@ type Status_filter = 'all' | 'active' | 'waiting_for_owner';
 interface Found_user { id: string; username: string | null; display_name: string; email: string }
 type Owner = { user_id: string; label: string } | { email: string; display_name: string };
 
-/** Searches existing accounts (`users/get` with `query`) as the admin types. */
-function use_user_search(term: string, enabled: boolean): Found_user[] {
+/**
+ * Searches existing accounts (`users/get` with `query`) as the admin types.
+ * `settled` is true once the results belong to the current term.
+ */
+function use_user_search(term: string, enabled: boolean): { results: Found_user[]; settled: boolean } {
 	const auth_fetch = useAuthFetch();
-	const [results, set_results] = useState<Found_user[]>([]);
+	const [state, set_state] = useState<{ term: string; results: Found_user[] }>({ term: '', results: [] });
 	const seq = useRef(0);
+	const q = term.trim().replace(/^@+/, '');
 	useEffect(() => {
-		const q = term.trim().replace(/^@+/, '');
-		if (!enabled || q.length < 2) { set_results([]); return; }
+		if (!enabled || q.length < 2) { set_state({ term: q, results: [] }); return; }
 		const my = ++seq.current;
 		const t = setTimeout(async () => {
 			try {
 				const res = await auth_fetch('/v1/users/get', { method: 'POST', body: JSON.stringify({ query: q, limit: 8 }) });
 				const data = await res.json().catch(() => null);
-				if (my === seq.current) set_results(data?.ok ? (data.data?.users ?? []) : []);
-			} catch { if (my === seq.current) set_results([]); }
+				if (my === seq.current) set_state({ term: q, results: data?.ok ? (data.data?.users ?? []) : [] });
+			} catch { if (my === seq.current) set_state({ term: q, results: [] }); }
 		}, 250);
 		return () => clearTimeout(t);
-	}, [term, enabled, auth_fetch]);
-	return results;
+	}, [q, enabled, auth_fetch]);
+	return { results: state.term === q ? state.results : [], settled: state.term === q };
 }
 
-/** Owner box: pick an existing account, or switch to "invite by email" with an optional name. */
+/** What happens next, under the owner box. */
+const OWNER_HINT_ACCOUNT = 'They get an email to accept ownership. The org shows as Waiting for owner until they do.';
+const OWNER_HINT_EMAIL = 'They get an email to create their account and accept ownership.';
+/** Inviting by email never makes a second account for an address that has one. */
+const SAME_USER_NOTE = 'If this email already has an account, that same user gets the invite — no new account is created.';
+
+/**
+ * Owner box: pick an existing account, or switch to "invite by email" with an optional name.
+ * An email that matches an account found by the search offers only that account.
+ */
 function Owner_picker({ owner, on_change }: { owner: Owner | null; on_change: (o: Owner | null) => void }) {
 	const [q, set_q] = useState('');
 	const by_email = owner != null && 'email' in owner;
-	const results = use_user_search(q, owner == null);
+	const { results, settled } = use_user_search(q, owner == null);
 	if (by_email) {
 		return (
 			<div className="flex w-full flex-wrap items-end gap-3" role="group" aria-label="Owner · invite someone new">
 				<label className="text-[12.5px] text-[var(--g-ink-2)]">Owner email<input aria-label="Owner email" type="email" value={owner.email} onChange={(e) => on_change({ ...owner, email: e.target.value })} className={`${G_INPUT} mt-1 block w-[240px]`} /></label>
-				<label className="text-[12.5px] text-[var(--g-ink-2)]">Name (optional)<input aria-label="Owner name" value={owner.display_name} onChange={(e) => on_change({ ...owner, display_name: e.target.value })} className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
+				<label className="text-[12.5px] text-[var(--g-ink-2)]">Name (if new)<input aria-label="Owner name" value={owner.display_name} onChange={(e) => on_change({ ...owner, display_name: e.target.value })} className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
 				<button type="button" onClick={() => on_change(null)} className={G_BTN}>Search accounts instead</button>
+				<p className="w-full text-[11.5px] text-[var(--g-ink-3)]">{OWNER_HINT_EMAIL} <span data-testid="same-user-note">{SAME_USER_NOTE}</span></p>
 			</div>
 		);
 	}
 	if (owner) {
 		return (
-			<div className="flex items-end gap-2">
-				<label className="text-[12.5px] text-[var(--g-ink-2)]">Owner<input aria-label="Owner" readOnly value={owner.label} className={`${G_INPUT} mt-1 block w-[240px]`} /></label>
-				<button type="button" onClick={() => on_change(null)} className={G_BTN}>Change</button>
+			<div className="flex flex-col gap-1">
+				<div className="flex items-end gap-2">
+					<label className="text-[12.5px] text-[var(--g-ink-2)]">Owner<input aria-label="Owner" readOnly value={owner.label} className={`${G_INPUT} mt-1 block w-[240px]`} /></label>
+					<button type="button" onClick={() => on_change(null)} className={G_BTN}>Change</button>
+				</div>
+				<p className="max-w-[360px] text-[11.5px] text-[var(--g-ink-3)]">{OWNER_HINT_ACCOUNT}</p>
 			</div>
 		);
 	}
 	const email = looks_like_email(q) ? q.trim() : '';
+	// The typed address already has an account: pick that account, never a second invite path.
+	const has_account = email !== '' && results.some((u) => (u.email ?? '').toLowerCase() === email.toLowerCase());
 	return (
 		<div className="relative">
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Owner<input aria-label="Owner" role="combobox" aria-expanded={results.length > 0 || Boolean(q.trim())} aria-controls="owner-options" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Username or email" className={`${G_INPUT} mt-1 block w-[240px]`} /></label>
@@ -75,15 +93,16 @@ function Owner_picker({ owner, on_change }: { owner: Owner | null; on_change: (o
 					{results.map((u) => (
 						<li key={u.id} role="option" aria-selected={false}>
 							<button type="button" onClick={() => on_change({ user_id: u.id, label: u.username ? (u.display_name ? `${u.display_name} (@${u.username})` : `@${u.username}`) : u.email })} className="flex w-full flex-col px-3 py-2 text-left text-[13px] hover:bg-[var(--g-soft)]">
-								<b>{u.username ?? u.email}</b><span className="text-[12px] text-[var(--g-ink-3)]">{u.username ? u.email : 'Invited'}</span>
+								<b>{u.username ?? u.email}</b><span className="text-[12px] text-[var(--g-ink-3)]">{u.username ? u.email : 'Invited, no account yet'}{has_account && (u.email ?? '').toLowerCase() === email.toLowerCase() ? ' · has an account with this email' : ''}</span>
 							</button>
 						</li>
 					))}
-					<li role="option" aria-selected={false}>
-						<button type="button" onClick={() => on_change({ email, display_name: '' })} className="w-full border-t border-[var(--g-line)] px-3 py-2 text-left text-[13px] font-semibold text-[var(--g-acc)] hover:bg-[var(--g-soft)]">
+					{!settled ? <li className="px-3 py-2 text-[12.5px] text-[var(--g-ink-3)]">Searching accounts…</li> : null}
+					{!settled || has_account ? null : <li role="option" aria-selected={false}>
+						<button type="button" title={SAME_USER_NOTE} onClick={() => on_change({ email, display_name: '' })} className="w-full border-t border-[var(--g-line)] px-3 py-2 text-left text-[13px] font-semibold text-[var(--g-acc)] hover:bg-[var(--g-soft)]">
 							+ {email ? `Invite ${email} by email` : 'Invite someone new by email'}
 						</button>
-					</li>
+					</li>}
 				</ul>
 			) : null}
 		</div>
@@ -100,7 +119,6 @@ function New_org({ on_close, on_created }: { on_close: () => void; on_created: (
 	const [holder, set_holder] = useState<Namespace_holder | null>(null);
 	const [deleted, set_deleted] = useState<{ details: Deleted_details | null } | null>(null);
 	const [done, set_done] = useState<Org_new_data | null>(null);
-	const by_email = owner != null && 'email' in owner;
 	const owner_ok = owner != null && ('user_id' in owner || looks_like_email(owner.email));
 
 	async function create(reactivate: boolean) {
@@ -130,7 +148,7 @@ function New_org({ on_close, on_created }: { on_close: () => void; on_created: (
 		return (
 			<section aria-label="New organization" className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4" data-testid="org-created">
 				<div className="flex items-center gap-2"><b className="text-[14px]">{done.org.display_name || done.org.slug}</b><Org_status_pill status={done.org.status} /></div>
-				<Sent_or_link email_sent={inv.email_sent} url={inv.invite_url} sent={<>Invite sent to <b>{done.org.owner.email}</b>. </>}>
+				<Sent_or_link email_sent={inv.email_sent} url={inv.invite_url} sent={<>Owner invite sent to <b>{done.org.owner.email}</b>{done.org.owner.status === 'invited' ? ' (no account yet)' : ' (existing account)'}. </>}>
 					<span className="text-[var(--g-ink-2)]">{done.org.reactivated ? 'The org is back with its history. ' : ''}It shows as Waiting for owner until they accept · expires {day_month(inv.expires_at)}.</span>
 				</Sent_or_link>
 				<div className="flex gap-2">
@@ -146,7 +164,7 @@ function New_org({ on_close, on_created }: { on_close: () => void; on_created: (
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Name" value={f.slug} onChange={(e) => set_f({ ...f, slug: e.target.value })} placeholder="acme" className={`${G_INPUT} mt-1 block w-[180px]`} /></label>
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Display name<input aria-label="Display name" value={f.display_name} onChange={(e) => set_f({ ...f, display_name: e.target.value })} placeholder="Acme Inc." className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
 			<Owner_picker owner={owner} on_change={set_owner} />
-			<button type="submit" disabled={busy || !f.slug.trim() || !owner_ok} className={G_PRIMARY}>{by_email ? 'Send owner invite' : 'Create org'}</button>
+			<button type="submit" disabled={busy || !f.slug.trim() || !owner_ok} className={G_PRIMARY}>Create org and invite owner</button>
 			<button type="button" aria-label="Close" onClick={on_close} className="ml-auto self-start text-[var(--g-ink-3)]"><X className="h-4 w-4" /></button>
 			{deleted ? <Deleted_notice name={deleted.details?.kind === 'user' && owner && 'email' in owner ? owner.email.trim() : f.slug.trim()} details={deleted.details} busy={busy} on_reactivate={() => void create(true)} on_cancel={() => set_deleted(null)} /> : null}
 			{err ? (
@@ -165,7 +183,6 @@ export function Component() {
 	const [sp, set_sp] = useSearchParams();
 	const q = sp.get('q') ?? '';
 	const offset = Number(sp.get('offset') ?? 0) || 0;
-	const personal = sp.get('personal') === '1';
 	const include_deleted = sp.get('deleted') === '1';
 	const status = (['active', 'waiting_for_owner'].includes(sp.get('status') ?? '') ? sp.get('status') : 'all') as Status_filter;
 	const site_admin = user?.role === 'admin';
@@ -173,9 +190,8 @@ export function Component() {
 	const [creating, set_creating] = useState(false);
 	// Core can't sort orgs yet: the BFF answers `sortable: []` until it can, so these headers stay plain.
 	const sort = use_table_sort({ keys: ['slug', 'display_name', 'member_count', 'scope_count', 'created_at'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { created_at: 'desc', member_count: 'desc', scope_count: 'desc' } });
-	// A search looks at every org, personal ones included: a slug that is taken must be findable.
 	const read = use_bff_read<{ orgs: Admin_org_row[]; total: number; sortable: string[] }>('/v1/orgs/get', {
-		limit: LIMIT, offset, exclude_personal: !personal && !q, ...sort.body,
+		limit: LIMIT, offset, ...sort.body,
 		...(q ? { query: q } : {}),
 		...(status !== 'all' ? { status } : {}),
 		...(include_deleted && site_admin ? { include_deleted: true } : {}),
@@ -198,7 +214,6 @@ export function Component() {
 					{ key: 'active', label: 'Active' },
 					{ key: 'waiting_for_owner', label: 'Waiting for owner', tone: 'warn' },
 				]} />
-				<button type="button" aria-pressed={personal} onClick={() => set({ personal: personal ? null : '1', offset: null })} className={G_PILL(personal)}>Include personal orgs</button>
 				{site_admin ? <button type="button" aria-pressed={include_deleted} onClick={() => set({ deleted: include_deleted ? null : '1', offset: null })} className={G_PILL(include_deleted)}>Include deleted</button> : null}
 				<form className="ml-auto" onSubmit={(e) => { e.preventDefault(); set({ q: draft.trim() || null, offset: null }); }}>
 					<input aria-label="Search organizations" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Slug or name" className={`${G_INPUT} w-[240px]`} />

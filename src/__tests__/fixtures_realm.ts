@@ -40,7 +40,8 @@ export function run_detail(over: Partial<Run_detail_data> = {}, run_over: Partia
 		],
 		realm: REALM,
 		reviews: [],
-		sections: { phases: ok, labels: ok, realm: ok, reviews: ok },
+		artifacts: [],
+		sections: { phases: ok, labels: ok, realm: ok, reviews: ok, artifacts: ok },
 		partial: false,
 		...over,
 	};

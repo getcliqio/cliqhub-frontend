@@ -3,7 +3,8 @@
  * (BFF: realm gate, Core's realm coverage list, chip counts, latest versions).
  * Writes are single Core routes: `/v1/realms/add_team` (add, update/re-sync —
  * Core installs on the realm's online daemons) and `/v1/realms/remove_team`.
- * The catalog search in "Install a team" is the existing `/v1/teams/get`.
+ * The catalog search in "Install a team" is the existing `/v1/teams/get`, published teams only
+ * (`@scope/name` or any part of the name, description or scope).
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -92,7 +93,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 		const my = ++seq.current;
 		set_loading(true);
 		try {
-			const res = await auth_fetch('/v1/teams/get', { method: 'POST', body: JSON.stringify({ ...(query ? { query } : {}), limit: 20, offset }) });
+			const res = await auth_fetch('/v1/teams/get', { method: 'POST', body: JSON.stringify({ ...(query ? { query } : {}), status: 'published', limit: 20, offset }) });
 			const payload = await res.json().catch(() => null);
 			if (my !== seq.current) return;
 			const d = payload?.data ?? payload ?? {};
@@ -128,7 +129,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 				<p className="text-[12.5px] text-[var(--g-ink-3)]">Your teams, your orgs’ teams and Marketplace. Adding a team puts it on this realm’s team list and installs it on the realm’s online daemons.</p>
 				<div className="flex items-center gap-2 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5">
 					<Search aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
-					<input autoFocus aria-label="Search teams to install" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search teams…" className="h-9 min-w-0 flex-1 bg-transparent text-[13px] text-[var(--g-ink)] outline-none" />
+					<input autoFocus aria-label="Search teams to install" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search by name or @scope/name…" className="h-9 min-w-0 flex-1 bg-transparent text-[13px] text-[var(--g-ink)] outline-none" />
 				</div>
 				{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 				<ul className="flex flex-col divide-y divide-[var(--g-line-2)] rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Teams">
