@@ -58,10 +58,11 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 	const [, tick] = useState(0);
 	const team_ref = useRef(team); team_ref.current = team;
 	const busy = useRef(false);
+	const halted = useRef(false);
 
 	const save = useCallback(async () => {
 		const t = team_ref.current;
-		if (!t || busy.current) return;
+		if (!t || busy.current || halted.current) return;
 		if (!user) { set_state({ kind: 'signed_out' }); return; }
 		if (!draft_id && team_slug(t) === 'untitled-team') { set_state({ kind: 'unnamed' }); return; }
 		busy.current = true;
@@ -93,9 +94,45 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 		return () => window.clearTimeout(h);
 	}, [team, dirty, draft_id, auto_create, save]);
 
+	/** Stop autosaving (Cancel) and wait for a save already in flight to land. */
+	const halt = useCallback(async () => {
+		halted.current = true;
+		while (busy.current) await new Promise((r) => window.setTimeout(r, 50));
+	}, []);
+	const resume = useCallback(() => { halted.current = false; }, []);
+
 	// keep "saved 12s ago" fresh
 	useEffect(() => { const h = window.setInterval(() => tick((x) => x + 1), 15_000); return () => window.clearInterval(h); }, []);
-	return { state, save };
+	return { state, save, halt, resume };
+}
+
+/**
+ * Cancel: undo what this session wrote, so leaving looks like it never happened.
+ *   new team / fork whose draft autosaved here → delete that draft (`teams/delete` by id)
+ *   draft that was opened, then changed        → write the opened version back (`teams/update`)
+ *   nothing saved                              → no request
+ * Only teams that began in this session (`is_new`) are ever deleted.
+ */
+export async function discard_session(
+	auth_fetch: (url: string, init?: RequestInit) => Promise<Response>,
+	{ is_new, opened_draft_id, draft_id, baseline, changed }: { is_new: boolean; opened_draft_id: string | null; draft_id: string | null; baseline: GeneratedTeam | null; changed: boolean },
+): Promise<string | null> {
+	let req: { url: string; body: Record<string, unknown> } | null = null;
+	if (is_new && draft_id && draft_id !== opened_draft_id) req = { url: '/v1/teams/delete', body: { team_id: draft_id } };
+	else if (draft_id && draft_id === opened_draft_id && baseline && changed) req = { url: '/v1/teams/update', body: { team_id: draft_id, description: baseline.description || '', team_json: JSON.stringify(baseline) } };
+	if (!req) return null;
+	try {
+		const res = await auth_fetch(req.url, { method: 'POST', body: JSON.stringify(req.body) });
+		const p = await res.json().catch(() => null);
+		return res.ok && p?.ok ? null : api_message(p, 'Couldn’t discard the changes.');
+	} catch {
+		return 'Network error — changes not discarded.';
+	}
+}
+
+/** Where Cancel goes: the page that opened the builder (`?from=`), else Build › Teams. */
+export function cancel_target(from: string | null): string {
+	return from && from.startsWith('/') && !from.startsWith('//') && !from.startsWith('/builder') ? from : '/teams';
 }
 
 /** Core validate (debounced). Local checks cover the same rules instantly; this is the final word. */
@@ -176,11 +213,13 @@ export function Gb_app() {
 	const [ai_req, set_ai_req] = useState<{ id: number; text: string } | null>(null);
 	const [focus_inputs, set_focus_inputs] = useState(0);
 	const [publishing, set_publishing] = useState(false);
-	const [baseline, set_baseline] = useState<{ set: boolean; team: GeneratedTeam | null }>({ set: false, team: null });
+	const [baseline, set_baseline] = useState<{ set: boolean; team: GeneratedTeam | null; draft_id: string | null; is_new: boolean }>({ set: false, team: null, draft_id: null, is_new: false });
 	const [auto_create, set_auto_create] = useState(search.get('view') !== '1');
+	const auth_fetch = useAuthFetch();
+	const [cancel, set_cancel] = useState<{ step: 'confirm' | 'busy' } | { step: 'error'; message: string } | null>(null);
 
-	// First team to appear (draft / edit / fork restore) is the baseline for Changes.
-	useEffect(() => { if (team && !baseline.set) set_baseline({ set: true, team }); }, [team, baseline.set]);
+	// First team to appear (draft / edit / fork restore) is the baseline for Changes and for Cancel.
+	useEffect(() => { if (team && !baseline.set) set_baseline({ set: true, team, draft_id: state.draft_id, is_new: search.get('fork') === '1' }); }, [team, baseline.set, state.draft_id, search]);
 
 	const local = useMemo(() => (team ? check_team(team) : []), [team]);
 	const core = use_core_validate(team);
@@ -230,7 +269,7 @@ export function Gb_app() {
 	}, [change, dispatch, publishing]);
 
 	function start(t: GeneratedTeam) {
-		set_baseline({ set: true, team: null });
+		set_baseline({ set: true, team: null, draft_id: null, is_new: true });
 		set_auto_create(true);
 		dispatch({ type: 'SET_TEAM', team: t, validation: null });
 		dispatch({ type: 'SET_DIRTY', dirty: true });
@@ -238,10 +277,25 @@ export function Gb_app() {
 	function start_over() {
 		clear_builder_session_restores();
 		dispatch({ type: 'RESET' });
-		set_baseline({ set: false, team: null });
+		set_baseline({ set: false, team: null, draft_id: null, is_new: false });
 		set_preview(null); set_center('canvas');
 		navigate('/builder', { replace: true });
 	}
+
+	// By content: a draft can be restored twice, giving an equal team in a new object.
+	const changed = useMemo(() => Boolean(team) && JSON.stringify(team) !== JSON.stringify(baseline.team), [team, baseline.team]);
+	// Fixed when the session starts (a fork's ?fork=1 is dropped once its draft saves).
+	const is_new = baseline.is_new;
+	async function leave() {
+		set_cancel({ step: 'busy' });
+		await save.halt();
+		const err = await discard_session(auth_fetch, { is_new, opened_draft_id: baseline.draft_id, draft_id: state.draft_id, baseline: baseline.team, changed });
+		if (err) { save.resume(); set_cancel({ step: 'error', message: err }); return; }
+		clear_builder_session_restores();
+		dispatch({ type: 'RESET' });
+		navigate(cancel_target(search.get('from')), { replace: true });
+	}
+	const cancel_question = is_new ? 'Discard this new team?' : 'Discard your changes?';
 
 	const errors = problems.filter((p) => p.level === 'error');
 	const warnings = problems.filter((p) => p.level === 'warning');
@@ -256,6 +310,15 @@ export function Gb_app() {
 			</div>
 			<button type="button" onClick={() => download(`${team_slug(team)}.team.yml`, team_to_yaml(team))} className={GHOST}>↓ Export</button>
 			<button type="button" onClick={start_over} className={GHOST} title="Start a new team">New</button>
+			{cancel ? (
+				<span className="inline-flex items-center gap-1.5" role="group" aria-label="Cancel editing" data-testid="cancel-confirm">
+					<span className={`text-[12px] ${cancel.step === 'error' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ink-2)]'}`} role={cancel.step === 'error' ? 'alert' : undefined}>{cancel.step === 'error' ? cancel.message : cancel_question}</span>
+					<button type="button" disabled={cancel.step === 'busy'} onClick={() => void leave()} className="inline-flex h-8 items-center rounded-md bg-[var(--g-bad)] px-2.5 text-[12.5px] font-semibold text-[#160606] disabled:opacity-50">{cancel.step === 'busy' ? 'Discarding…' : cancel.step === 'error' ? 'Try again' : 'Discard'}</button>
+					<button type="button" disabled={cancel.step === 'busy'} onClick={() => set_cancel(null)} className={GHOST}>Keep editing</button>
+				</span>
+			) : (
+				<button type="button" onClick={() => (changed ? set_cancel({ step: 'confirm' }) : void leave())} className={GHOST} title="Leave without keeping your changes">Cancel</button>
+			)}
 			<button type="button" onClick={() => set_publishing(true)} disabled={!team.phases.length} className="inline-flex h-8 items-center rounded-md bg-[var(--g-acc)] px-3.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] disabled:opacity-40">Publish…</button>
 		</div>
 	) : null;
@@ -351,7 +414,7 @@ export function Gb_app() {
 					</div>
 				)}
 				{publishing && team ? (
-					<Gb_publish team={team} baseline={baseline.team} problems={problems} on_close={() => set_publishing(false)} on_published={() => set_baseline({ set: true, team })} />
+					<Gb_publish team={team} baseline={baseline.team} problems={problems} on_close={() => set_publishing(false)} on_published={() => set_baseline({ set: true, team, draft_id: state.draft_id, is_new: false })} />
 				) : null}
 			</div>
 		</Graphite_shell>

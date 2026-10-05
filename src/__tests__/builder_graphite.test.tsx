@@ -15,6 +15,8 @@ import { Component as BuilderPage } from '@/pages/builder/builder_graphite_page'
 import { import_text, template_team, with_starter_roles } from '@/components/gbuilder/gb_start';
 import { preview_actions, to_preview } from '@/components/gbuilder/gb_ai_panel';
 import { version_clash } from '@/components/gbuilder/gb_publish';
+import { cancel_target } from '@/components/gbuilder/gb_app';
+import { BUILDER_SESSION_KEYS } from '@/lib/builder/session_restore';
 
 type Call = { url: string; body: Record<string, unknown> };
 type Handler = (body: Record<string, unknown>, calls: Call[]) => { status?: number; body: unknown } | undefined;
@@ -443,5 +445,110 @@ describe('Graphite builder — publish', () => {
 		const btn = await within(dlg).findByText('Publish 1.0.0');
 		expect((btn as HTMLButtonElement).disabled).toBe(true);
 		expect(within(dlg).getByText('Fix the errors above to publish.')).toBeTruthy();
+	});
+});
+
+describe('Graphite builder — cancel', () => {
+	const writes = (calls: Call[]) => calls.filter((c) => ['/v1/teams/create', '/v1/teams/update', '/v1/teams/delete'].includes(c.url));
+
+	it('opened draft: Cancel → Discard writes the opened version back, then leaves', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = await open_draft();
+		fireEvent.click(within(screen.getByTestId('outline')).getByText('build'));
+		fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'opus' } });
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(within(screen.getByTestId('cancel-confirm')).getByText('Discard your changes?')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
+		const last = calls.filter((c) => c.url === '/v1/teams/update').at(-1)!;
+		expect(last.body.team_id).toBe('d1');
+		expect(JSON.parse(String(last.body.team_json)).phases[1].model).toBeUndefined();
+		expect(calls.some((c) => c.url === '/v1/teams/delete')).toBe(false);
+	});
+
+	it('new team that autosaved: Discard deletes that draft by id', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = route_fetch();
+		render_at();
+		fireEvent.click((await screen.findAllByTestId('template'))[2]);
+		await screen.findByTestId('outline');
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('draft=draft-9'));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(screen.getByText('Discard this new team?')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
+		expect(calls.find((c) => c.url === '/v1/teams/delete')?.body).toEqual({ team_id: 'draft-9' });
+	});
+
+	it('published team (view mode): Discard sends nothing and goes back where it came from', async () => {
+		sessionStorage.setItem(BUILDER_SESSION_KEYS.view, JSON.stringify(TEAM));
+		const calls = route_fetch();
+		render_at('/builder?view=1&from=%2Fteams%2Fmeasureone%2Ffeature-dev');
+		await screen.findByTestId('outline');
+		fireEvent.click(screen.getByTestId('tile-script'));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
+		expect(writes(calls)).toEqual([]);
+		expect(sessionStorage.getItem(BUILDER_SESSION_KEYS.view)).toBeNull();
+	});
+
+	it('fork: its draft is deleted on Discard even after autosave drops ?fork=1', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		sessionStorage.setItem(BUILDER_SESSION_KEYS.fork, JSON.stringify({ ...TEAM, name: 'feature-dev-fork' }));
+		const calls = route_fetch();
+		render_at('/builder?fork=1&from=%2Fbrowse');
+		await screen.findByTestId('outline');
+		fireEvent.click(screen.getByTestId('tile-script'));
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).not.toContain('fork=1'));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		expect(screen.getByText('Discard this new team?')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/browse'));
+		expect(calls.find((c) => c.url === '/v1/teams/delete')?.body).toEqual({ team_id: 'draft-9' });
+	});
+
+	it('no changes: Cancel leaves at once, without asking or saving', async () => {
+		const calls = await open_draft();
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
+		expect(writes(calls)).toEqual([]);
+	});
+
+	it('Keep editing closes the prompt and keeps the edits', async () => {
+		await open_draft();
+		fireEvent.click(screen.getByTestId('tile-script'));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+		expect(screen.queryByTestId('cancel-confirm')).toBeNull();
+		expect(outline()).toHaveLength(4);
+		expect(screen.getByTestId('loc').textContent).toContain('/builder');
+	});
+
+	it('a failed discard shows why and stays in the builder', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = route_fetch({ '/v1/teams/delete': () => ({ status: 500, body: { ok: false, error: { message: 'Core is down' } } }) });
+		render_at();
+		fireEvent.click((await screen.findAllByTestId('template'))[2]);
+		await screen.findByTestId('outline');
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		expect((await screen.findByRole('alert')).textContent).toBe('Core is down');
+		expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+		expect(screen.getByTestId('loc').textContent).toContain('/builder');
+	});
+
+	it('cancel_target only follows in-app paths', () => {
+		expect(cancel_target('/teams/x/y')).toBe('/teams/x/y');
+		expect(cancel_target(null)).toBe('/teams');
+		expect(cancel_target('https://evil.example')).toBe('/teams');
+		expect(cancel_target('//evil.example')).toBe('/teams');
+		expect(cancel_target('/builder?draft=1')).toBe('/teams');
 	});
 });
