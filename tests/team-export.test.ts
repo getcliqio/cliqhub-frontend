@@ -161,7 +161,9 @@ describe('build_team_yml — gate phase serialization', () => {
 
 		expect(yml).toContain('type: gate');
 		expect(yml).toContain('review:');
-		expect(yml).toContain('reviewer: senior-devs');
+		// The HUG gate reads reviewer groups (`reviewer:` is rejected by cliqd).
+		expect(yml).toContain('reviewers:');
+		expect(yml).toContain('channels: [senior-devs]');
 		expect(yml).toContain('artifacts:');
 		expect(yml).toContain('- src/');
 		expect(yml).toContain('- docs/design.md');
@@ -182,7 +184,8 @@ describe('build_team_yml — gate phase serialization', () => {
 
 		expect(yml).toContain('type: gate');
 		expect(yml).toContain('review:');
-		expect(yml).toContain('reviewer: architects');
+		expect(yml).toContain('- policy: any');
+		expect(yml).toContain('channels: [architects]');
 		expect(yml).not.toContain('artifacts:');
 		expect(yml).not.toContain('timeout:');
 		expect(yml).not.toContain('remind_every:');
@@ -200,9 +203,8 @@ describe('build_team_yml — gate phase serialization', () => {
 		}));
 
 		expect(yml).toContain('review:');
-		expect(yml).toContain('reviewer:');
-		expect(yml).toContain('- senior-devs');
-		expect(yml).toContain('- architects');
+		expect(yml).not.toMatch(/^\s+reviewer:/m);
+		expect(yml).toContain('channels: [senior-devs, architects]');
 	});
 
 	it('omits reviewer when not present on gate phase', () => {

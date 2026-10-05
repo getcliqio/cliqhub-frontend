@@ -80,8 +80,20 @@ function map_review(raw: unknown): GeneratedPhase['review'] {
 	if (!raw || typeof raw !== 'object') return undefined;
 	const row = raw as Record<string, unknown>;
 	const review: NonNullable<GeneratedPhase['review']> = {};
-	const reviewer = as_string(row.reviewer);
-	if (reviewer) review.reviewer = reviewer;
+	// `reviewers: [{ policy, channels: [...] }]` (what the HUG gate reads); a bare
+	// `reviewer:` from older builder exports is still read.
+	const names: string[] = [];
+	if (Array.isArray(row.reviewers)) {
+		for (const g of row.reviewers) {
+			if (typeof g === 'string' && g.trim()) names.push(g.trim());
+			else if (g && typeof g === 'object') names.push(...as_string_list((g as Record<string, unknown>).channels));
+		}
+	}
+	const legacy = as_string(row.reviewer);
+	if (legacy) names.push(legacy);
+	const unique = [...new Set(names)];
+	// The builder edits one reviewer field; several people read as "a, b".
+	if (unique.length > 0) review.reviewer = unique.join(', ');
 	const artifacts = as_string_list(row.artifacts);
 	if (artifacts.length > 0) review.artifacts = artifacts;
 	const timeout = as_string(row.timeout);

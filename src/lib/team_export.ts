@@ -96,13 +96,15 @@ function serialize_phase(lines: string[], p: ExportPhase, indent: string): void 
 		lines.push(`${indent}  review:`);
 		const rev = p.review;
 		if (rev.reviewer) {
-			const reviewers = Array.isArray(rev.reviewer) ? rev.reviewer : [rev.reviewer];
-			if (reviewers.length === 1) {
-				lines.push(`${indent}    reviewer: ${reviewers[0]}`);
-			}
-			if (reviewers.length > 1) {
-				lines.push(`${indent}    reviewer:`);
-				for (const r of reviewers) lines.push(`${indent}      - ${r}`);
+			// The HUG gate reads reviewer groups: any one of these people may decide.
+			const reviewers = (Array.isArray(rev.reviewer) ? rev.reviewer : [rev.reviewer])
+				.flatMap((r) => r.split(','))
+				.map((r) => r.trim())
+				.filter(Boolean);
+			if (reviewers.length > 0) {
+				lines.push(`${indent}    reviewers:`);
+				lines.push(`${indent}      - policy: any`);
+				lines.push(`${indent}        channels: [${reviewers.join(', ')}]`);
 			}
 		}
 		if (rev.artifacts?.length) {

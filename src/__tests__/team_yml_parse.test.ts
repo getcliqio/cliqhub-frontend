@@ -72,3 +72,29 @@ phases:
 		expect(team.roles.map((r) => r.name)).toEqual(['b']);
 	});
 });
+
+describe('HUG gate review block (builder ↔ daemon)', () => {
+	it('exports reviewer groups + artifacts the daemon accepts, and reads them back', async () => {
+		const { build_team_yml } = await import('@/lib/team_export');
+		const yml = build_team_yml({
+			name: 'demo', description: 'd', roles: [],
+			phases: [
+				{ name: 'build', type: 'standard', agent: 'cursor', depends_on: [] },
+				{ name: 'approve', type: 'gate', agent: 'hug', depends_on: ['build'], review: { reviewer: ['elan', 'ops'], artifacts: ['.cliq/design/*.md'], timeout: '60' } },
+			],
+		} as never);
+		expect(yml).toContain('      reviewers:\n        - policy: any\n          channels: [elan, ops]');
+		expect(yml).not.toMatch(/^\s+reviewer:/m);
+		expect(yml).toContain('      artifacts:\n        - .cliq/design/*.md');
+
+		const { team } = parse_team_yml_text(yml, base_team);
+		expect(team?.phases[1]?.review).toMatchObject({ reviewer: 'elan, ops', artifacts: ['.cliq/design/*.md'] });
+	});
+
+	it('still reads a legacy `reviewer:` and a single-channel group', () => {
+		const legacy = parse_team_yml_text('name: x\nphases:\n  - name: g\n    type: gate\n    agent: hug\n    review:\n      reviewer: elan\n', base_team);
+		expect(legacy.team?.phases[0]?.review?.reviewer).toBe('elan');
+		const group = parse_team_yml_text('name: x\nphases:\n  - name: g\n    type: gate\n    agent: hug\n    review:\n      reviewers:\n        - policy: any\n          channels: [elan]\n', base_team);
+		expect(group.team?.phases[0]?.review?.reviewer).toBe('elan');
+	});
+});
