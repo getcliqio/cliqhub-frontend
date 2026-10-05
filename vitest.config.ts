@@ -8,6 +8,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    // Room for the 5s async waits in setup.ts on a slow CI runner.
+    testTimeout: 15000,
     exclude: ['services/**', 'vendor/**', 'node_modules/**'],
     coverage: {
       provider: 'v8',

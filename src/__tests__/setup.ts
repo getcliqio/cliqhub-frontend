@@ -6,6 +6,11 @@ import { act } from 'react';
 vi.mock('react-dom/test-utils', () => ({ act }));
 
 import '@testing-library/jest-dom/vitest';
+import { configure } from '@testing-library/react';
+
+// CI runners are slower than a laptop: findBy*/waitFor get 5s (default 1s),
+// so a busy runner doesn't fail a test whose UI is merely late.
+configure({ asyncUtilTimeout: 5000 });
 
 // Node 24+ ships a native `localStorage` global that is non-functional
 // unless `--localstorage-file=PATH` is passed. In the jsdom test env it
