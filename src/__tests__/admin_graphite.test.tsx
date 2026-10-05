@@ -40,6 +40,14 @@ function route_fetch(handlers: Record<string, (b: Record<string, unknown>) => un
 	return calls;
 }
 
+/** Open a type-ahead filter (button `label`), optionally type, and pick the option named `option`. */
+async function pick(label: string, option: RegExp | string, type?: string, scope: HTMLElement = document.body) {
+	fireEvent.click(within(scope).getByRole('button', { name: label }));
+	if (type) fireEvent.change(screen.getByLabelText(`Search ${label.toLowerCase()}`), { target: { value: type } });
+	fireEvent.click(await screen.findByRole('option', { name: option }));
+}
+const list_calls = (calls: Call[]) => calls.filter((c) => c.url === '/v1/admin_list/get');
+
 function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}{l.search}</div>; }
 function at(path: string, pattern: string, el: React.ReactNode) {
 	return render(
@@ -148,12 +156,13 @@ describe('Admin › Organization', () => {
 		...over,
 	});
 
-	it('flags an ownerless org and fixes it with one role change', async () => {
-		const calls = route_fetch({ '/v1/orgs/get_by_id': () => org(), '/v1/users/update_role': () => ({ updated: true }) });
+	it('flags an ownerless org and fixes it by making a member an owner', async () => {
+		const calls = route_fetch({ '/v1/orgs/get_by_id': () => org(), '/v1/orgs/update': () => ({ updated: true }) });
 		at('/admin/orgs/o1', '/admin/orgs/:id', <OrgPage />);
 		const banner = await screen.findByTestId('ownerless');
 		fireEvent.click(within(banner).getByRole('button', { name: 'Make Ana Ruiz owner' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_role')?.body).toEqual({ org_id: 'o1', user_id: 'u-ana', role_id: 'r-owner' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/update')?.body).toEqual({ org_id: 'o1', owner_id: 'u-ana' }));
+		expect(calls.find((c) => c.url === '/v1/users/update_role')).toBeUndefined();
 	});
 
 	it('changes a member’s role inline; Realms tab asks Core for all realms', async () => {
@@ -208,11 +217,20 @@ describe('Admin › Daemons / Teams / Audit', () => {
 });
 
 describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
-	it('realms: rows open the realm; org picker narrows', async () => {
-		const calls = route_fetch({ '/v1/admin_list/get': () => list('realms', [{ id: 'r1', slug: 'prod-us', name: 'Prod US', org_slug: 'm1', created_by_username: 'sapan', created_at: Date.now() - 864e5 }], { org_options: [{ id: 'o1', slug: 'm1', display_name: 'MeasureOne' }] }) });
+	it('realms: rows open the realm; org type-ahead searches orgs/get and narrows', async () => {
+		const calls = route_fetch({
+			'/v1/admin_list/get': () => list('realms', [{ id: 'r1', slug: 'prod-us', name: 'Prod US', org_slug: 'm1', created_by_username: 'sapan', created_at: Date.now() - 864e5 }]),
+			'/v1/orgs/get': (b) => ({ orgs: String(b.query ?? '').startsWith('mea') || !b.query ? [{ id: 'o1', slug: 'm1', display_name: 'MeasureOne' }] : [], total: 1 }),
+			'/v1/orgs/get_by_id': () => ({ id: 'o1', slug: 'm1', display_name: 'MeasureOne' }),
+		});
 		at('/admin/realms', '/admin/realms', <RealmsPage />);
-		fireEvent.change(await screen.findByLabelText('Organization'), { target: { value: 'o1' } });
-		await waitFor(() => expect(calls.at(-1)?.body).toMatchObject({ kind: 'realms', org_id: 'o1' }));
+		await screen.findByTestId('realm-prod-us');
+		// Nothing is loaded for the picker until it is opened.
+		expect(calls.some((c) => c.url === '/v1/orgs/get')).toBe(false);
+		await pick('Organization', /MeasureOne/, 'mea');
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get' && c.body.query === 'mea')?.body).toMatchObject({ limit: 10 }));
+		await waitFor(() => expect(list_calls(calls).at(-1)?.body).toMatchObject({ kind: 'realms', org_id: 'o1' }));
+		expect(screen.getByRole('button', { name: 'Organization' })).toHaveTextContent('MeasureOne');
 		fireEvent.click(screen.getByTestId('realm-prod-us'));
 		expect(screen.getByTestId('where')).toHaveTextContent('/o/m1/realms/prod-us');
 	});
@@ -224,6 +242,27 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 		expect(row).toHaveTextContent('ledger');
 		expect(row).toHaveTextContent('mac-studio');
 		expect(row).toHaveTextContent('2 running');
+	});
+
+	it('workspaces: org and realm pickers narrow the list; rows show org, realm and every daemon', async () => {
+		const calls = route_fetch({
+			'/v1/admin_list/get': () => list('workspaces', [{ id: 'w1', name: 'ledger', path: '/src/ledger', daemon_id: null, daemon_name: 'mac', daemons: [{ id: 'd1', name: 'mac' }, { id: 'd2', name: 'linux-box' }], realms: [{ id: 'r1', slug: 'prod', org_slug: 'm1' }], orgs: [{ id: 'o1', slug: 'm1', display_name: 'M1' }], teams: [], active_runs: 0, latest_run: null, updated_at: 1 }]),
+			'/v1/orgs/get': () => ({ orgs: [{ id: 'o1', slug: 'm1', display_name: 'M1' }], total: 1 }),
+			'/v1/orgs/get_by_id': () => ({ id: 'o1', slug: 'm1', display_name: 'M1' }),
+			'/v1/realms/get': () => ({ items: [{ id: 'r1', slug: 'prod', name: 'Prod', org_slug: 'm1' }], total: 1 }),
+			'/v1/realms/get_by_id': () => ({ id: 'r1', slug: 'prod', org_slug: 'm1' }),
+		});
+		at('/admin/workspaces', '/admin/workspaces', <WorkspacesPage />);
+		const row = await screen.findByTestId('ws-w1');
+		expect(row).toHaveTextContent('m1');
+		expect(row).toHaveTextContent('m1.prod');
+		expect(row).toHaveTextContent('mac, linux-box');
+		await pick('Organization', /M1/);
+		await waitFor(() => expect(list_calls(calls).at(-1)?.body).toMatchObject({ kind: 'workspaces', org_id: 'o1' }));
+		await pick('Realm', /prod/);
+		// Realm search stays inside the picked org.
+		expect(calls.find((c) => c.url === '/v1/realms/get')?.body).toMatchObject({ all: true, org_id: 'o1', limit: 10 });
+		await waitFor(() => expect(list_calls(calls).at(-1)?.body).toMatchObject({ kind: 'workspaces', org_id: 'o1', realm_id: 'r1' }));
 	});
 
 	it('runs: state chips + range go to the BFF; a row opens the run in its realm', async () => {
@@ -253,11 +292,11 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 			{ id: 's1', slug: 'acme', display_name: 'Acme', org_id: orgs[0].id, org_slug: 'acme', owner_username: 'ana', visibility: 'private', scope_type: 'org', team_count: 0, created_at: '2026-01-01T00:00:00Z' },
 			{ id: 's2', slug: 'sapan', display_name: 'sapan', org_id: null, org_slug: null, owner_username: 'sapan', visibility: 'public', scope_type: 'user', team_count: 3, created_at: '2026-01-01T00:00:00Z' },
 		];
-		const calls = route_fetch({ '/v1/admin_list/get': () => list('scopes', rows, { org_options: orgs }), '/v1/orgs/new_scope': () => ({}), '/v1/orgs/update_scope': () => ({}) });
+		const calls = route_fetch({ '/v1/admin_list/get': () => list('scopes', rows), '/v1/orgs/get': () => ({ orgs, total: 1 }), '/v1/orgs/get_by_id': () => orgs[0], '/v1/orgs/new_scope': () => ({}), '/v1/orgs/update_scope': () => ({}) });
 		at('/admin/scopes', '/admin/scopes', <ScopesPage />);
 		fireEvent.click(await screen.findByRole('button', { name: /New scope/ }));
 		const form = screen.getByRole('form', { name: 'New scope' });
-		fireEvent.change(within(form).getByLabelText('Organization'), { target: { value: orgs[0].id } });
+		await pick('Organization', /Acme/, undefined, form);
 		fireEvent.change(within(form).getByLabelText('Slug'), { target: { value: 'acme-data' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Create scope' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/new_scope')?.body).toEqual({ org_id: orgs[0].id, slug: 'acme-data', visibility: 'private' }));

@@ -7,16 +7,15 @@ import { useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { month_year, type Admin_list_data, type Admin_scope_row } from '@/lib/admin';
-import { Admin_header, Banner, Empty_row, Org_select, Pager, Pill, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Admin_header, Banner, Empty_row, Pager, Pill, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Org_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
 const LIMIT = 25;
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
-type Org_opt = { id: string; slug: string; display_name: string };
-
-function New_scope({ orgs, on_close, on_done }: { orgs: Org_opt[]; on_close: () => void; on_done: (msg: string) => void }) {
+function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg: string) => void }) {
 	const post = use_post();
 	const [f, set_f] = useState({ org_id: '', slug: '', display_name: '', visibility: 'private' });
 	const [busy, set_busy] = useState(false);
@@ -31,7 +30,7 @@ function New_scope({ orgs, on_close, on_done }: { orgs: Org_opt[]; on_close: () 
 	}
 	return (
 		<form onSubmit={(e) => void submit(e)} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
-			<label className="text-[12.5px] text-[var(--g-ink-2)]">Org<div className="mt-1"><Org_select value={f.org_id} options={orgs} on_change={(v) => set_f({ ...f, org_id: v })} placeholder="Pick an org…" /></div></label>
+			<label className="text-[12.5px] text-[var(--g-ink-2)]">Org<div className="mt-1"><Org_filter value={f.org_id} on_change={(v) => set_f({ ...f, org_id: v })} all_label="Pick an org…" /></div></label>
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Slug<input aria-label="Slug" value={f.slug} onChange={(e) => set_f({ ...f, slug: e.target.value })} placeholder="acme-data" className={`${G_INPUT} mt-1 block w-[170px]`} /></label>
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Name" value={f.display_name} onChange={(e) => set_f({ ...f, display_name: e.target.value })} className={`${G_INPUT} mt-1 block w-[180px]`} /></label>
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Visibility" value={f.visibility} onChange={(e) => set_f({ ...f, visibility: e.target.value })} className={`${G_INPUT} mt-1 block w-[120px]`}><option value="private">private</option><option value="public">public</option></select></label>
@@ -95,16 +94,15 @@ export function Component() {
 	const read = use_bff_read<Admin_list_data<Admin_scope_row>>('/v1/admin_list/get', { kind: 'scopes', ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load scopes.' });
 	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
-	const orgs = d?.org_options ?? [];
 	const selected = d?.items.find((s) => s.id === sel) ?? null;
 	const done = (msg: string) => { set_flash(msg); set_creating(false); p.set({ s: null }); void read.reload(); };
 	return (
 		<div className="flex flex-col gap-4">
 			<Admin_header title="Scopes" sub="Publishing namespaces — every team is @scope/name." right={<button type="button" onClick={() => set_creating(true)} className={G_PRIMARY}><Plus className="h-3.5 w-3.5" /> New scope</button>} />
 			{flash ? <Banner tone="ok">{flash}</Banner> : null}
-			{creating ? <New_scope orgs={orgs} on_close={() => set_creating(false)} on_done={done} /> : null}
+			{creating ? <New_scope on_close={() => set_creating(false)} on_done={done} /> : null}
 			<div className="flex flex-wrap items-center gap-2">
-				<Org_select value={org_id} options={orgs} on_change={(v) => p.set({ org: v || null })} />
+				<Org_filter value={org_id} on_change={(v) => p.set({ org: v || null })} />
 				<form className="ml-auto" onSubmit={(e) => { e.preventDefault(); p.set({ q: draft.trim() || null }); }}>
 					<input aria-label="Search scopes" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Slug or name" className={`${G_INPUT} w-[240px]`} />
 				</form>

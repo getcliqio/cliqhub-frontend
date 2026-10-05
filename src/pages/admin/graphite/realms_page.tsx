@@ -5,9 +5,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { use_bff_read } from '@/lib/use_bff_read';
-import { use_overview } from '@/lib/overview';
 import { ago, realm_href, type Admin_list_data, type Admin_realm_row } from '@/lib/admin';
-import { Admin_header, Empty_row, Hub_scope_note, Org_select, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Admin_header, Empty_row, Hub_scope_note, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
+import { Org_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -16,7 +16,6 @@ const LIMIT = 25;
 
 export function Component() {
 	const navigate = useNavigate();
-	const overview = use_overview();
 	const p = use_list_params();
 	const q = p.get('q');
 	const org_id = p.get('org');
@@ -25,13 +24,12 @@ export function Component() {
 	const read = use_bff_read<Admin_list_data<Admin_realm_row>>('/v1/admin_list/get', { kind: 'realms', ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load realms.' });
 	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
-	const orgs = d?.org_options ?? overview.data?.orgs ?? [];
 	return (
 		<div className="flex flex-col gap-4">
 			<Admin_header title="Realms" sub={d ? `${d.total.toLocaleString('en-US')} realm${d.total === 1 ? '' : 's'}${org_id ? ' in this org' : ''}.` : 'Every realm on the hub.'} />
 			{d && !d.hub_wide ? <Hub_scope_note what="realms" /> : null}
 			<div className="flex flex-wrap items-center gap-2">
-				<Org_select value={org_id} options={orgs} on_change={(v) => p.set({ org: v || null })} />
+				<Org_filter value={org_id} on_change={(v) => p.set({ org: v || null })} />
 				<form className="ml-auto" onSubmit={(e) => { e.preventDefault(); p.set({ q: draft.trim() || null }); }}>
 					<input aria-label="Search realms" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Slug or name" className={`${G_INPUT} w-[240px]`} />
 				</form>

@@ -113,12 +113,8 @@ export function use_list_params() {
 	return { get: (k: string) => sp.get(k) ?? '', offset: Number(sp.get('offset') ?? 0) || 0, set };
 }
 
-/** Org picker fed by the BFF's `org_options` (hub-wide) or the admin's own orgs. */
-export function Org_select({ value, options, on_change, placeholder = 'Org: all' }: { value: string; options: Array<{ id: string; slug: string; display_name: string }>; on_change: (id: string) => void; placeholder?: string }) {
-	return (
-		<select aria-label="Organization" value={value} onChange={(e) => on_change(e.target.value)} className="min-w-0 w-[200px] rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-1.5 text-[13px] text-[var(--g-ink)]">
-			<option value="">{placeholder}</option>
-			{options.map((o) => <option key={o.id} value={o.id}>{o.display_name || o.slug}</option>)}
-		</select>
-	);
+/** Comma list with "+N" past `max`; a dash when empty. */
+export function Few({ items, max = 2, mono = true }: { items: string[]; max?: number; mono?: boolean }) {
+	if (!items.length) return <span className="text-[var(--g-ink-3)]">—</span>;
+	return <span className={mono ? 'g-mono text-[12px]' : ''} title={items.join(', ')}>{items.slice(0, max).join(', ')}{items.length > max ? ` +${items.length - max}` : ''}</span>;
 }

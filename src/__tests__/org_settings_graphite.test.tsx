@@ -86,6 +86,14 @@ describe('Organization page', () => {
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_role')?.body).toEqual({ org_id: 'o1', user_id: 'u2', role_id: 'ro-admin' }));
 	});
 
+	it('members: picking Owner makes the member an owner through orgs/update', async () => {
+		const calls = route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }), '/v1/orgs/update': () => ({ ok: true, data: { updated: true } }) });
+		open_org();
+		fireEvent.change(await screen.findByLabelText('Role for maya'), { target: { value: 'ro-owner' } });
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/update')?.body).toEqual({ org_id: 'o1', owner_id: 'u2' }));
+		expect(calls.find((c) => c.url === '/v1/users/update_role')).toBeUndefined();
+	});
+
 	const created = (b: Record<string, unknown>, over: Record<string, unknown> = {}) => ({ ok: true, data: { invite_id: 'i9', status: 'pending', email: b.email, role: b.role, expires_at: '2026-10-16T10:20:00Z', resent: false, email_sent: true, invite_url: null, ...over } });
 
 	it('Invite (no Add member): any email gets an invite with the chosen role', async () => {

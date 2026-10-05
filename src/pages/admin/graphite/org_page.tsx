@@ -114,7 +114,7 @@ export function Component() {
 			{owners.length === 0 && owner_role && org.members.length ? (
 				<div role="alert" className="flex flex-wrap items-center gap-3 rounded-[10px] border border-[rgba(255,178,36,.4)] bg-[var(--g-warn-soft)] px-4 py-3" data-testid="ownerless">
 					<div className="min-w-0 flex-1"><b className="text-[13.5px]">This org has no owner</b><p className="text-[12.5px] text-[var(--g-ink-2)]">Nobody can manage owner-only settings or delete the org.</p></div>
-					{candidate ? <button type="button" disabled={busy} onClick={() => void run('/v1/users/update_role', { user_id: candidate.user_id, role_id: owner_role.id }, `${login_name(candidate)} is now an owner`)} className={G_PRIMARY}>Make {person_name(candidate)} owner</button> : null}
+					{candidate ? <button type="button" disabled={busy} onClick={() => void run('/v1/orgs/update', { owner_id: candidate.user_id }, `${login_name(candidate)} is now an owner`)} className={G_PRIMARY}>Make {person_name(candidate)} owner</button> : null}
 				</div>
 			) : null}
 
@@ -132,7 +132,9 @@ export function Component() {
 										<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(m)} /><div className="min-w-0"><Link to={`/admin/accounts?u=${m.user_id}`} className="font-semibold hover:underline">{person_name(m)}</Link><div className="truncate text-[12px] text-[var(--g-ink-3)]">{m.email ?? handle(m.username)}</div></div></div></td>
 										<td className="px-4">
 											{org.roles.length && live ? (
-												<select aria-label={`Role for ${login_name(m)}`} value={r?.id ?? ''} disabled={busy} onChange={(e) => void run('/v1/users/update_role', { user_id: m.user_id, role_id: e.target.value }, `${login_name(m)} is now ${org.roles.find((x) => x.id === e.target.value)?.name ?? 'updated'}`)} className={`${G_INPUT} w-[160px]`}>
+												<select aria-label={`Role for ${login_name(m)}`} value={r?.id ?? ''} disabled={busy} onChange={(e) => void (e.target.value === owner_role?.id
+													? run('/v1/orgs/update', { owner_id: m.user_id }, `${login_name(m)} is now an owner`)
+													: run('/v1/users/update_role', { user_id: m.user_id, role_id: e.target.value }, `${login_name(m)} is now ${org.roles.find((x) => x.id === e.target.value)?.name ?? 'updated'}`))} className={`${G_INPUT} w-[160px]`}>
 													{!r ? <option value="">{m.role}</option> : null}
 													{org.roles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
 												</select>

@@ -88,7 +88,10 @@ export interface Admin_team_row {
 	id: string; name: string; scope: string | null; description: string | null;
 	visibility: string; listed: boolean; install_count: number; version_count: number | null;
 	author_username: string | null; updated_at: string | null; listed_without_version: boolean;
+	/** Org that owns the team's scope (absent on an older BFF). */
+	org_id?: string | null; org_slug?: string | null;
 }
+export interface Admin_org_option { id: string; slug: string; display_name: string }
 
 export interface Admin_list_data<T> {
 	kind: 'accounts' | 'daemons' | 'teams' | 'audit' | 'realms' | 'workspaces' | 'runs' | 'logs' | 'scopes';
@@ -102,8 +105,6 @@ export interface Admin_list_data<T> {
 	needs_org: boolean;
 	/** Filters this Core can't apply yet (Core API < 3). */
 	unsupported: string[];
-	/** Daemons, hub-wide: every org for the picker. */
-	org_options?: Array<{ id: string; slug: string; display_name: string }>;
 	/** Columns the BFF can sort this list by today (only what Core applies). */
 	sortable?: string[];
 }
@@ -112,6 +113,10 @@ export interface Admin_realm_ref { id: string; slug: string; org_slug: string | 
 export interface Admin_realm_row { id: string; slug: string; name: string; org_slug: string | null; created_by_username: string | null; created_at: number | null }
 export interface Admin_workspace_row {
 	id: string; name: string | null; path: string; daemon_id: string | null; daemon_name: string | null;
+	/** Where it runs: its own daemon plus every run's daemon, realm and org (absent on an older BFF). */
+	daemons?: Array<{ id: string; name: string | null }>;
+	realms?: Admin_realm_ref[];
+	orgs?: Admin_org_option[];
 	teams: string[]; active_runs: number; latest_run: { run_id: string; state: string; started_at: number | null } | null; updated_at: number | null;
 }
 export interface Admin_run_row {

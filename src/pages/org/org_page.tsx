@@ -4,7 +4,7 @@
  * Read: `POST /v1/org_page/get` (org with member statuses + pending invites + permission catalogue).
  * The header shows a Waiting-for-owner banner (who, when the invite expires) until the owner accepts.
  * Writes (existing Core routes):
- *   members   invitations/create (invite, send again) · invitations/revoke · users/update_role · orgs/remove_member
+ *   members   invitations/create (invite, send again) · invitations/revoke · users/update_role · orgs/update (make owner) · orgs/remove_member
  *   roles     orgs/create_role · update_role · delete_role
  *   scopes    orgs/new_scope · delete_scope · assign_scope_member · unassign_scope_member
  *   jira      integrations/jira/get_workspaces · rotate_secret · disconnect_workspace
@@ -126,7 +126,9 @@ function Members({ data, can_manage, can_invite_owner, reload }: { data: Org_pag
 									<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(m)} /><div className="min-w-0"><b className="font-semibold">{person_name(m)}</b>{me ? <span className="ml-1.5 text-[11.5px] text-[var(--g-ink-3)]">(you)</span> : null}<div className="truncate text-[12px] text-[var(--g-ink-3)]">{m.email ?? handle(m.username)}</div></div></div></td>
 									<td className="px-4">
 										{can_manage && roles.length && !me && live ? (
-											<select aria-label={`Role for ${login_name(m)}`} value={r?.id ?? ''} disabled={busy} onChange={(e) => void run('/v1/users/update_role', { org_id: org.id, user_id: m.user_id, role_id: e.target.value }, `${login_name(m)} is now ${roles.find((x) => x.id === e.target.value)?.name ?? 'updated'}.`)} className={`${G_INPUT} w-[160px]`}>
+											<select aria-label={`Role for ${login_name(m)}`} value={r?.id ?? ''} disabled={busy} onChange={(e) => void (roles.find((x) => x.id === e.target.value)?.slug === 'owner'
+												? run('/v1/orgs/update', { org_id: org.id, owner_id: m.user_id }, `${login_name(m)} is now an owner.`)
+												: run('/v1/users/update_role', { org_id: org.id, user_id: m.user_id, role_id: e.target.value }, `${login_name(m)} is now ${roles.find((x) => x.id === e.target.value)?.name ?? 'updated'}.`))} className={`${G_INPUT} w-[160px]`}>
 												{!r ? <option value="">{m.role}</option> : null}
 												{roles.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
 											</select>
