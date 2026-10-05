@@ -1,8 +1,8 @@
 /**
  * Realm › Settings (Graphite). Read: one `POST /v1/realm_settings/get`
  * (BFF: realm, members, pending invites, access tokens). Every write is one
- * existing route: realms/update, realms/add_member (also changes a role),
- * realms/remove_member, invitations/create, invitations/revoke, auth/generate_token,
+ * existing route: realms/update, realms/add_member (role changes only),
+ * realms/remove_member, invitations/create (adding anyone), invitations/revoke, auth/generate_token,
  * auth/revoke_token, realms/delete. Agents and Notifications live in Manage.
  */
 import { useEffect, useRef, useState } from 'react';
@@ -83,11 +83,11 @@ function General({ data, admin, post, reload }: { data: Realm_settings_data; adm
 
 /* ------------------------------------------------------------------ */
 
-function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post; on_added: () => Promise<void> }) {
+function Add_member({ realm_id, on_added }: { realm_id: string; on_added: () => Promise<void> }) {
 	const auth_fetch = useAuthFetch();
 	const [q, set_q] = useState('');
 	const [results, set_results] = useState<Array<{ id: string; username: string | null; display_name: string; email: string }>>([]);
-	const [picked, set_picked] = useState<{ id: string; label: string } | null>(null);
+	const [picked, set_picked] = useState<{ id: string; label: string; email: string } | null>(null);
 	const [role, set_role] = useState('operator');
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const seq = useRef(0);
@@ -104,19 +104,16 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 		}, 250);
 		return () => clearTimeout(t);
 	}, [q, picked, realm_id, auth_fetch]);
+	// Everyone joins through an invite: they get the email, and accepting adds
+	// them to the realm and its org (realms/add_member only changes roles).
+	const email = q.trim();
+	const can_invite = !picked && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+	const invite = use_invite({ target_type: 'realm', realm_id }, async () => { set_picked(null); set_q(''); await on_added(); });
 	async function add() {
 		if (!picked) return;
 		set_msg(null);
-		const res = await post('/v1/realms/add_member', { realm_id, member_type: 'user', member_id: picked.id, role });
-		if (!res.ok) { set_msg({ tone: 'bad', text: res.error }); return; }
-		set_msg({ tone: 'ok', text: `${picked.label} added as ${role}.` });
-		set_picked(null); set_q('');
-		await on_added();
+		await invite.send(picked.email, role);
 	}
-	// No account yet: invite by email (they join the realm when they accept).
-	const email = q.trim();
-	const can_invite = !picked && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-	const invite = use_invite({ target_type: 'realm', realm_id }, async () => { set_q(''); await on_added(); });
 	return (
 		<div className={`${CARD} flex flex-col gap-2 p-3`} aria-label="Add member" role="group">
 			<div className="flex flex-wrap items-center gap-2">
@@ -125,7 +122,7 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 					{results.length && !picked ? (
 						<ul role="listbox" aria-label="People" className="absolute left-0 right-0 top-10 z-40 max-h-[220px] overflow-y-auto rounded-lg border border-[#33363c] bg-[#16171a] py-1 shadow-[0_16px_40px_rgba(0,0,0,.55)]">
 							{results.map((u) => (
-								<li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); set_picked({ id: u.id, label: person_name(u) }); set_results([]); }} className="cursor-pointer px-3 py-1.5 text-[13px] hover:bg-[var(--g-soft)]">
+								<li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); set_picked({ id: u.id, label: person_name(u), email: u.email }); set_results([]); }} className="cursor-pointer px-3 py-1.5 text-[13px] hover:bg-[var(--g-soft)]">
 									{person_name(u)} <span className="text-[var(--g-ink-3)]">{handle(u.username)} · {u.email}</span>
 								</li>
 							))}
@@ -135,7 +132,7 @@ function Add_member({ realm_id, post, on_added }: { realm_id: string; post: Post
 				<select aria-label="Role for new member" value={role} onChange={(e) => set_role(e.target.value)} className={`${INPUT} w-[140px]`}>
 					{REALM_ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
 				</select>
-				<button type="button" disabled={!picked} onClick={() => void add()} className={PRIMARY}>Add member</button>
+				<button type="button" disabled={!picked || invite.busy} onClick={() => void add()} className={PRIMARY} title="They join the realm when they accept the invite">Invite</button>
 				{can_invite ? <button type="button" disabled={invite.busy} onClick={() => { set_msg(null); void invite.send(email, role); }} className="rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-ink)] hover:bg-[var(--g-soft)] disabled:opacity-50" title="They join the realm when they accept">Invite by email</button> : null}
 			</div>
 			<Msg msg={msg} />
@@ -161,7 +158,7 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 	return (
 		<div className="flex flex-col gap-4">
 			<div><h2 className="text-[16px] font-semibold">Members</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">People and service accounts in {data.realm.slug}. Org owners and admins can always manage this realm.</p></div>
-			{admin ? <Add_member realm_id={data.realm.id} post={post} on_added={reload} /> : <Read_only_note />}
+			{admin ? <Add_member realm_id={data.realm.id} on_added={reload} /> : <Read_only_note />}
 			<Msg msg={msg} />
 			{data.sections.members.status === 'error' ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{data.sections.members.error}</p> : null}
 			<div className={`${CARD} overflow-hidden`}>

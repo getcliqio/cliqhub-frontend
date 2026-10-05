@@ -78,15 +78,16 @@ describe('Realm settings page', () => {
 		expect(within(nav).getByRole('link', { name: /Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone');
 	});
 
-	it('add member searches people and adds with a role', async () => {
+	it('picking an existing person sends them a realm invite (never a direct add)', async () => {
 		const calls = route_fetch();
 		render_page();
 		await screen.findByTestId('member-u2');
 		fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'pri' } });
 		fireEvent.mouseDown(await screen.findByRole('option', { name: /Priya Nair/ }));
 		fireEvent.change(screen.getByLabelText('Role for new member'), { target: { value: 'admin' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Add member' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_member', body: { realm_id: 'r-prod', member_type: 'user', member_id: 'u9', role: 'admin' } }));
+		fireEvent.click(screen.getByRole('button', { name: 'Invite' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/create', body: { target_type: 'realm', realm_id: 'r-prod', email: 'p@x.com', role: 'admin' } }));
+		expect(calls.some((c) => c.url === '/v1/realms/add_member' && c.body.member_id === 'u9')).toBe(false);
 	});
 
 	it('no account yet: invite by email with the chosen role', async () => {

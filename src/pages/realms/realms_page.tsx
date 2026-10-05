@@ -3,7 +3,7 @@
  * List: from the overview read already on every Graphite page (realms per org
  * with daemon health, live runs and what needs you) — no extra read.
  * New realm (owners/admins): 3 steps, each action one Core call —
- *   1 realms/create · 2 realms/add_team|remove_team, realms/add_member, invitations/create ·
+ *   1 realms/create · 2 realms/add_team|remove_team, invitations/create (people) ·
  *   3 auth/generate_token {type:'realm'} (shown once).
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -141,14 +141,11 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 		if (!r.ok) { set_err(r.error); return; }
 		set_added((s) => { const n = new Set(s); if (on) n.delete(t.label); else n.add(t.label); return n; });
 	}
+	// Picking a person invites them (email + accept → realm and org); realms/add_member only changes roles.
 	async function add_person(u: { id: string; username: string | null; display_name: string; email: string }) {
 		if (!realm) return;
-		set_err(null); set_busy(true);
-		const r = await post('/v1/realms/add_member', { realm_id: realm.id, member_type: 'user', member_id: u.id, role });
-		set_busy(false);
-		if (!r.ok) { set_err(r.error); return; }
-		set_people((p) => [...p, `${u.username ? `@${u.username}` : u.email} · ${role}`]);
-		set_who(''); set_found([]);
+		set_err(null); set_found([]);
+		await invite.send(u.email, role);
 	}
 	async function mint() {
 		if (!realm) return;
