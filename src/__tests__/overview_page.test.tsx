@@ -120,6 +120,21 @@ describe('Overview page', () => {
 		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link')[0].textContent).toMatch(/^ME/);
 	});
 
+	it('realms are labelled by name (slug as secondary) in the sidebar and the switcher', async () => {
+		const data = multi_org_overview();
+		data.orgs[0].realms[1] = { ...data.orgs[0].realms[1], slug: 'measureone', name: 'measureone-sdlc' };
+		respond(data);
+		render_page();
+		const side = await screen.findByTestId('sidebar-realms');
+		const link = within(side).getByRole('link', { name: /measureone-sdlc/ });
+		expect(link.getAttribute('href')).toBe('/o/measureone/realms/measureone/inbox');
+		fireEvent.click(screen.getByTestId('view-switcher'));
+		fireEvent.change(screen.getByPlaceholderText('Find an org or realm…'), { target: { value: 'sdlc' } });
+		const opt = await screen.findByRole('option', { name: /measureone-sdlc/ });
+		expect(opt).toHaveTextContent('measureone-sdlc');
+		expect(opt).toHaveTextContent('measureone');
+	});
+
 	it('single org, org view: realms panel sorted waiting-on-you first', async () => {
 		respond(single_org_overview());
 		render_page('/home?org=measureone');

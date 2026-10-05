@@ -34,6 +34,11 @@ export interface Overview_realm {
 	needs_you: number;
 }
 
+/** What people call a realm: its name (e.g. "measureone-sdlc"); the slug only when it has none. */
+export function realm_label(r: Pick<Overview_realm, 'slug' | 'name'>): string {
+	return r.name?.trim() || r.slug;
+}
+
 export interface Overview_org {
 	id: string;
 	slug: string;

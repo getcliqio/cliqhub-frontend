@@ -36,7 +36,7 @@ import { use_bff_read } from '@/lib/use_bff_read';
 import type { Getting_started_data } from '@/lib/getting_started';
 import { Cliq_mark } from '@/components/cliq_mark';
 import { ImpersonationRibbon } from '@/components/impersonation_ribbon';
-import type { Overview_data, Overview_org, Overview_realm } from '@/lib/overview';
+import { realm_label, type Overview_data, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
 import { sidebar_realms, sort_realms, use_view_scope, view_href, type View_scope } from '@/lib/view_scope';
 import { mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
@@ -248,7 +248,8 @@ export function Org_realm_switcher({ data, scope, on_close }: Switcher_props) {
 							return (
 								<button key={r.id} type="button" role="option" aria-selected={i === active} aria-current={current ? 'true' : undefined} onMouseEnter={() => set_active(i)} onClick={(ev) => open(e, ev.metaKey || ev.ctrlKey)} className={row_cls(i, current)}>
 									<Realm_dot realm={r} />
-									<b className="font-semibold">{highlight(r.slug, q)}</b>
+									<b className="font-semibold">{highlight(realm_label(r), q)}</b>
+									{realm_label(r) !== r.slug ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{highlight(r.slug, q)}</span> : null}
 									<span className="truncate text-[11.5px] text-[var(--g-ink-3)]">
 										{r.daemons.total === 0 ? 'no daemons' : `${r.daemons.online}/${r.daemons.total} daemons`}{r.active_runs ? ` · ${r.active_runs} running` : ''}
 									</span>
@@ -318,7 +319,7 @@ function Scope_label({ scope }: { scope: View_scope }) {
 				</span>
 				<b className="block truncate text-[13px] font-semibold">
 					{scope.kind === 'realm'
-						? `${org?.display_name || scope.realm.org_slug} › ${scope.realm.slug}`
+						? `${org?.display_name || scope.realm.org_slug} › ${realm_label(scope.realm)}`
 						: org?.display_name || org?.slug}
 				</b>
 			</span>
@@ -455,7 +456,7 @@ function Crumbs({ scope, multi_org, fallback, title }: { scope: View_scope; mult
 	const realm_org = scope.kind === 'realm' ? scope.realm.org_slug : fallback?.org ?? null;
 	if (multi_org && org) items.push({ to: `/home?org=${encodeURIComponent(org.slug)}`, node: <><Org_chip org={org} size={14} />{org.display_name || org.slug}</> });
 	else if (multi_org && !org && fallback) items.push({ to: `/home?org=${encodeURIComponent(fallback.org)}`, node: fallback.org });
-	if (realm_slug && realm_org) items.push({ to: `${realm_path(realm_org, realm_slug)}/inbox`, node: realm_slug });
+	if (realm_slug && realm_org) items.push({ to: `${realm_path(realm_org, realm_slug)}/inbox`, node: scope.kind === 'realm' ? realm_label(scope.realm) : realm_slug });
 	return (
 		<nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-[13px]">
 			{items.map((c, i) => (
@@ -594,7 +595,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 								>
 									<Realm_dot realm={r} />
 									{show_badges && org ? <Org_chip org={org} size={16} /> : null}
-									<span className="truncate">{r.slug}</span>
+									<span className="truncate" title={realm_label(r) !== r.slug ? r.slug : undefined}>{realm_label(r)}</span>
 									<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
 								</Link>
 							);
@@ -717,5 +718,5 @@ function Account_menu({ on_close, gs_done, on_sign_out }: { on_close: () => void
 function scope_text(scope: View_scope): string {
 	if (scope.kind === 'all') return 'All my work';
 	if (scope.kind === 'org') return scope.org.display_name || scope.org.slug;
-	return `${scope.org?.display_name || scope.realm.org_slug} › ${scope.realm.slug}`;
+	return `${scope.org?.display_name || scope.realm.org_slug} › ${realm_label(scope.realm)}`;
 }
