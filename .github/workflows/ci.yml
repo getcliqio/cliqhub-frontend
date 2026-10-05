@@ -12,3 +12,61 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test --if-present
+
+  # The SPA has no Railway service of its own: cliqhub-bff's Dockerfile clones
+  # this repo at ARG FRONTEND_SHA and serves the build. A green push to main
+  # bumps that pin on cliqhub-bff main, and Railway redeploys the BFF.
+  ship:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Newer pushes supersede older ones; only the latest main needs shipping.
+    concurrency: { group: ship-spa, cancel-in-progress: true }
+    env:
+      GH_TOKEN: ${{ secrets.GH_PAT }}
+      HEAD_SUBJECT: ${{ github.event.head_commit.message }}
+    steps:
+      - name: Bump FRONTEND_SHA on cliqhub-bff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error title=GH_PAT missing::Repo secret GH_PAT is not set on getcliqio/cliqhub-frontend."
+            echo "::error::Shipping the SPA needs a PAT with write access to getcliqio/cliqhub-bff. Fix: gh secret set GH_PAT --repo getcliqio/cliqhub-frontend"
+            exit 1
+          fi
+          sha="${GITHUB_SHA}"
+
+          # Ship only the current head of main: an older run must not pin an older SPA.
+          head="$(gh api repos/getcliqio/cliqhub-frontend/commits/main --jq .sha)"
+          if [ "$head" != "$sha" ]; then
+            echo "::notice title=Skipped::main moved on to ${head:0:7}; its own run ships it"
+            exit 0
+          fi
+
+          tmp="$(mktemp -d)"
+          if ! git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/getcliqio/cliqhub-bff.git" "$tmp/bff" 2>&1; then
+            echo "::error title=Clone failed::Could not clone getcliqio/cliqhub-bff with GH_PAT. Confirm the PAT owner has write access."
+            exit 1
+          fi
+          cd "$tmp/bff"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            if grep -q "^ARG FRONTEND_SHA=${sha}$" Dockerfile; then
+              echo "::notice title=Already shipped::cliqhub-bff already pins ${sha:0:7}"
+              exit 0
+            fi
+            sed -i "s/^ARG FRONTEND_SHA=.*/ARG FRONTEND_SHA=${sha}/" Dockerfile
+            grep -q "^ARG FRONTEND_SHA=${sha}$" Dockerfile || { echo "::error::ARG FRONTEND_SHA not found in cliqhub-bff/Dockerfile"; exit 1; }
+            git commit -qam "chore(bff): ship SPA ${sha:0:7}" -m "frontend: ${HEAD_SUBJECT%%$'\n'*}" -m "Bumped by cliqhub-frontend CI (${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+            if git push -q origin HEAD:main; then
+              echo "::notice title=Shipped::cliqhub-bff now builds the SPA at ${sha:0:7}; Railway redeploys the BFF"
+              exit 0
+            fi
+            # Someone pushed cliqhub-bff meanwhile: start again from its new main.
+            git fetch -q --depth 1 origin main && git reset -q --hard origin/main
+          done
+          echo "::error::Could not push the FRONTEND_SHA bump to cliqhub-bff after 3 attempts"
+          exit 1
