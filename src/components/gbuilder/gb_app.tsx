@@ -300,7 +300,12 @@ export function Gb_app() {
 	}
 
 	// By content: a draft can be restored twice, giving an equal team in a new object.
-	const changed = useMemo(() => Boolean(team) && JSON.stringify(team) !== JSON.stringify(baseline.team), [team, baseline.team]);
+	// Until the effect above captures the baseline, the team just loaded IS the baseline —
+	// a click in that window (a fast user, a busy machine) must not read as "changed".
+	const changed = useMemo(
+		() => baseline.set && Boolean(team) && JSON.stringify(team) !== JSON.stringify(baseline.team),
+		[team, baseline.set, baseline.team],
+	);
 	// Fixed when the session starts (a fork's ?fork=1 is dropped once its draft saves).
 	const is_new = baseline.is_new;
 	async function leave() {
