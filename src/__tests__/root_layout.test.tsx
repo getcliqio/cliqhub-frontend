@@ -3,14 +3,15 @@ import { render, screen } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { RootLayout } from '@/layouts/root_layout';
 
-function render_layout(path = '/browse') {
+function render_layout(path = '/somewhere') {
   const router = createMemoryRouter([
     {
       path: '/',
       element: <RootLayout />,
       children: [
         { index: true, element: <div>landing-content</div> },
-        { path: 'browse', element: <div>test-content</div> },
+        { path: 'somewhere', element: <div>test-content</div> },
+        { path: 'browse', element: <div>browse-content</div> },
         { path: 'invite/:token', element: <div>invite-content</div> },
       ],
     },
@@ -42,6 +43,12 @@ describe('RootLayout', () => {
     unmount();
     render_layout('/invite/abc');
     expect(screen.getByText('invite-content')).toBeInTheDocument();
+    expect(screen.queryByText('Get Cliq')).toBeNull();
+  });
+
+  it('the Marketplace brings its own (Graphite) chrome — no second header', () => {
+    render_layout('/browse');
+    expect(screen.getByText('browse-content')).toBeInTheDocument();
     expect(screen.queryByText('Get Cliq')).toBeNull();
   });
 });

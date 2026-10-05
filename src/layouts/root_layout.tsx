@@ -19,14 +19,16 @@ function is_auth_gate_path(pathname: string): boolean {
 		|| pathname.startsWith('/invite/')
 		|| pathname.startsWith('/realm-invite/')
 		|| pathname.startsWith('/reset/')
-		|| pathname === '/forgot-password';
+		|| pathname === '/forgot-password'
+		|| pathname === '/browse'
+		|| pathname.startsWith('/browse/');
 }
 
 function RootChrome() {
 	const { user, loading } = useAuth();
 	const { pathname } = useLocation();
 
-	// Landing, sign-in, sign-up, invites and password links own their Graphite chrome.
+	// Landing, sign-in, sign-up, invites, password links and the Marketplace own their Graphite chrome.
 	if (is_auth_gate_path(pathname)) {
 		return <Outlet />;
 	}

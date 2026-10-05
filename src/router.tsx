@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate, useParams, useSearchParams } from 'react-router';
 import { lazy_route } from '@/lib/lazy_route';
 import { RootLayout } from '@/layouts/root_layout';
-import { BrowseLayout } from '@/layouts/browse_layout';
+import { Marketplace_layout } from '@/layouts/marketplace_layout';
 import { GraphiteLayout } from '@/layouts/graphite_layout';
 import { GraphiteAdminLayout } from '@/layouts/graphite_admin_layout';
 import { Realm_runtime_redirect } from '@/pages/account/realm_runtime_redirect';
@@ -97,9 +97,9 @@ export const router = createBrowserRouter([
         lazy: lazy_route(() => import('@/pages/forgot_password_page')),
       },
 
-      // Public catalog browse (standalone layout with filter sidebar)
+      // Marketplace (Graphite): app shell when signed in, public frame when not
       {
-        element: <BrowseLayout />,
+        element: <Marketplace_layout />,
         children: [
           {
             path: 'browse',
