@@ -86,6 +86,17 @@ export interface BuilderState {
 	history: HistoryEntry[];
 	/** Incremented on undo to signal position restore */
 	undo_tick: number;
+	/**
+	 * The saved team the builder was opened on (`?draft=`): whether it is
+	 * published, and its unversioned working copy at that moment (null = none).
+	 * Cancel puts that copy back, or discards the copy when there was none.
+	 */
+	source: Builder_source | null;
+}
+
+export interface Builder_source {
+	published: boolean;
+	copy: { team_json: string; description: string | null; saved_at: string | null } | null;
 }
 
 export const INITIAL_STATE: BuilderState = {
@@ -102,6 +113,7 @@ export const INITIAL_STATE: BuilderState = {
 	positions: new Map(),
 	history: [],
 	undo_tick: 0,
+	source: null,
 };
 
 export type SingleAction =
@@ -112,6 +124,7 @@ export type SingleAction =
 	| { type: 'UPDATE_TEAM'; team: GeneratedTeam }
 	| { type: 'SET_VALIDATION'; validation: ValidationResult }
 	| { type: 'SET_DRAFT_ID'; draft_id: string | null }
+	| { type: 'SET_SOURCE'; source: Builder_source | null }
 	| { type: 'SELECT_ROLE'; name: string | null }
 	| { type: 'SELECT_PHASE'; name: string | null }
 	| { type: 'UPDATE_ROLE'; name: string; content: string }
@@ -190,6 +203,8 @@ function apply_action(state: BuilderState, action: SingleAction): BuilderState {
 			return { ...state, validation: action.validation };
 		case 'SET_DRAFT_ID':
 			return { ...state, draft_id: action.draft_id, dirty: false };
+		case 'SET_SOURCE':
+			return { ...state, source: action.source };
 	case 'SELECT_ROLE': {
 		const discard = discard_pending(state);
 		return { ...discard, selected_role: action.name, selected_phase: null, selected_agent: null };

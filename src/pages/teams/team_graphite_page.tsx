@@ -8,7 +8,7 @@
  * teams/unpublish, teams/delete_version, teams/delete).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { ArrowRight, Copy, Download, Play, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { relative_time, use_overview } from '@/lib/overview';
@@ -210,6 +210,8 @@ export function Component() {
 	const [running, set_running] = useState(false);
 	const [install_open, set_install_open] = useState<string | null>(null);
 	const [busy, set_busy] = useState<string | null>(null);
+	const [edit_choice, set_edit_choice] = useState(false);
+	const { pathname } = useLocation();
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm, set_confirm] = useState<string | null>(null);
 	const [new_name, set_new_name] = useState(name);
@@ -251,7 +253,16 @@ export function Component() {
 	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id).flatMap((o) => o.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
 	const realm_by_id = useMemo(() => new Map((overview.data?.orgs ?? []).flatMap((o) => o.realms).map((r) => [r.id, r])), [overview.data]);
 
+	/** Edit opens the team itself (`?draft=<id>`): autosave goes to its working copy, never a version. */
+	function edit_href(fresh: boolean): string {
+		return `/builder?draft=${encodeURIComponent(team?.id ?? '')}${fresh ? '&fresh=1' : ''}&from=${encodeURIComponent(pathname)}`;
+	}
 	async function open_builder(fork: boolean) {
+		if (!fork && team) {
+			if (team.draft_saved_at) set_edit_choice((v) => !v);
+			else navigate(edit_href(false));
+			return;
+		}
 		set_busy(fork ? 'fork' : 'builder');
 		try {
 			const res = await auth_fetch('/v1/teams/get_by_id', { method: 'POST', body: JSON.stringify({ name, scope: team_scope, ...(version ? { version } : {}) }) });
@@ -284,6 +295,7 @@ export function Component() {
 					<h1 className={`${full ? 'text-[22px]' : 'text-[18px]'} font-semibold tracking-tight`}>{team?.name ?? name}</h1>
 					<span className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 py-px text-[11px] text-[var(--g-ink-2)]">{label}</span>
 					{team ? <Status_badge status={team.status} /> : null}
+					{team?.draft_saved_at ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 					{team && team.versions.length ? (
 						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value, from: null, to: null })} className={`${INPUT} h-7 w-[150px]`}>
 							{team.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.is_latest ? ' · latest' : ''}</option>)}
@@ -298,6 +310,17 @@ export function Component() {
 				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>{busy === 'builder' ? 'Opening…' : 'Open in Builder'}</button> : null}
 				{team ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(true)} className={ROW_ACTION_CLS}>{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
 				{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
+				{edit_choice && team?.draft_saved_at ? (
+					<div role="dialog" aria-label="Open in Builder" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[#33363c] bg-[#16171a] p-3.5 text-left shadow-[0_20px_60px_rgba(0,0,0,.6)]">
+						<p className="text-[13px] font-semibold">You have unpublished changes</p>
+						<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Saved {relative_time(Date.parse(team.draft_saved_at))}. Pick up where you left off, or start again from {team.latest_version ? `v${team.latest_version}` : 'the published team'}.</p>
+						<div className="mt-3 flex flex-col gap-1.5">
+							<button type="button" onClick={() => navigate(edit_href(false))} className={`${PRIMARY} justify-center`}>Resume my changes</button>
+							<button type="button" onClick={() => navigate(edit_href(true))} className={`${ROW_ACTION_CLS} justify-center`}>Start from {team.latest_version ? `v${team.latest_version}` : 'published'}</button>
+						</div>
+						<p className="mt-2 text-[11px] text-[var(--g-ink-3)]">Starting again replaces the unpublished changes once you edit; Cancel in the Builder puts them back.</p>
+					</div>
+				) : null}
 				{install_open === 'header' && team?.scope ? (
 					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((data?.overview?.installs ?? data?.installs?.items ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(null)} on_done={(m) => { set_install_open(null); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
 				) : null}

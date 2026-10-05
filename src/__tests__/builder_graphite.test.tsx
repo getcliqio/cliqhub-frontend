@@ -143,14 +143,20 @@ describe('Graphite builder — start screen', () => {
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));
 		const create = calls.find((c) => c.url === '/v1/teams/create')!;
 		expect(create.body).toMatchObject({ name: 'linear-pipeline', scope: 'measureone' });
-		expect(JSON.parse(String(create.body.team_json)).phases.length).toBeGreaterThan(1);
+		// created without a manifest (no version), then saved as the working copy
+		expect(create.body).not.toHaveProperty('team_json');
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
+		const first = calls.find((c) => c.url === '/v1/teams/update')!;
+		expect(first.body).toMatchObject({ team_id: 'draft-9', save_as: 'draft' });
+		expect(JSON.parse(String(first.body.team_json)).phases.length).toBeGreaterThan(1);
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('draft=draft-9'));
 		expect(screen.getByText(/draft · saved/)).toBeTruthy();
 		// next edit updates the same draft
 		fireEvent.click(screen.getByTestId('tile-script'));
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
-		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
-		expect(calls.find((c) => c.url === '/v1/teams/update')!.body.team_id).toBe('draft-9');
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/teams/update').length).toBe(2));
+		expect(calls.filter((c) => c.url === '/v1/teams/update')[1].body).toMatchObject({ team_id: 'draft-9', save_as: 'draft' });
+		expect(calls.filter((c) => c.url === '/v1/teams/create')).toHaveLength(1);
 	});
 
 	it('import by paste: errors show the line; valid YAML opens the canvas', async () => {
@@ -207,6 +213,7 @@ describe('Graphite builder — workspace', () => {
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
 		const up = calls.find((c) => c.url === '/v1/teams/update')!;
 		expect(up.body.team_id).toBe('d1');
+		expect(up.body.save_as).toBe('draft');
 		expect(JSON.parse(String(up.body.team_json)).phases[1].model).toBe('opus');
 		expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(false);
 	});
@@ -451,7 +458,7 @@ describe('Graphite builder — publish', () => {
 describe('Graphite builder — cancel', () => {
 	const writes = (calls: Call[]) => calls.filter((c) => ['/v1/teams/create', '/v1/teams/update', '/v1/teams/delete'].includes(c.url));
 
-	it('opened draft: Cancel → Discard writes the opened version back, then leaves', async () => {
+	it('saved team with no working copy at open: Discard drops the copy this session made', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const calls = await open_draft();
 		fireEvent.click(within(screen.getByTestId('outline')).getByText('build'));
@@ -462,10 +469,17 @@ describe('Graphite builder — cancel', () => {
 		expect(within(screen.getByTestId('cancel-confirm')).getByText('Discard your changes?')).toBeTruthy();
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
-		const last = calls.filter((c) => c.url === '/v1/teams/update').at(-1)!;
-		expect(last.body.team_id).toBe('d1');
-		expect(JSON.parse(String(last.body.team_json)).phases[1].model).toBeUndefined();
+		expect(calls.filter((c) => c.url === '/v1/teams/update').at(-1)!.body).toEqual({ team_id: 'd1', save_as: 'discard' });
 		expect(calls.some((c) => c.url === '/v1/teams/delete')).toBe(false);
+	});
+
+	it('edits that never reached the server: Discard sends nothing', async () => {
+		const calls = await open_draft();
+		fireEvent.click(screen.getByTestId('tile-script'));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
+		expect(writes(calls)).toEqual([]);
 	});
 
 	it('new team that autosaved: Discard deletes that draft by id', async () => {
@@ -550,5 +564,50 @@ describe('Graphite builder — cancel', () => {
 		expect(cancel_target('https://evil.example')).toBe('/teams');
 		expect(cancel_target('//evil.example')).toBe('/teams');
 		expect(cancel_target('/builder?draft=1')).toBe('/teams');
+	});
+});
+
+describe('Graphite builder — working copy', () => {
+	const COPY = { ...TEAM, phases: [...TEAM.phases, { name: 'ship', type: 'standard' as const, agent: 'claude-code', depends_on: ['check'] }] };
+	const detail = (extra: Record<string, unknown>) => () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', team_json: JSON.stringify(TEAM), ...extra } } });
+
+	it('opens the working copy when there is one, and says "unpublished changes" on a published team', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = route_fetch({ '/v1/teams/get_by_id': detail({ draft: { manifest: JSON.stringify(COPY), description: null, saved_at: '2026-10-05T09:00:00.000Z' } }) });
+		render_at('/builder?draft=d1');
+		await screen.findByTestId('outline');
+		expect(outline()).toEqual(['design', 'build', 'check', 'ship']);
+		fireEvent.click(screen.getByTestId('tile-script'));
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(screen.getByText(/unpublished changes · saved/)).toBeTruthy());
+		expect(calls.find((c) => c.url === '/v1/teams/update')!.body).toMatchObject({ team_id: 'd1', save_as: 'draft' });
+	});
+
+	it('?fresh=1 starts from the published version; Cancel puts the old working copy back', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const copy = { manifest: JSON.stringify(COPY), description: 'wip', saved_at: '2026-10-05T09:00:00.000Z' };
+		const calls = route_fetch({ '/v1/teams/get_by_id': detail({ draft: copy }) });
+		render_at('/builder?draft=d1&fresh=1&from=%2Fteams%2Fmeasureone%2Ffeature-dev');
+		await screen.findByTestId('outline');
+		expect(outline()).toEqual(['design', 'build', 'check']);
+		fireEvent.click(screen.getByTestId('tile-script'));
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
+		expect(calls.filter((c) => c.url === '/v1/teams/update').at(-1)!.body).toEqual({ team_id: 'd1', description: 'wip', team_json: copy.manifest, save_as: 'draft' });
+	});
+
+	it('a published team whose manifest is YAML opens from its version detail (roles kept)', async () => {
+		route_fetch({ '/v1/teams/get_by_id': detail({
+			team_json: 'name: feature-dev\nphases: []', draft: null,
+			workflow: { phases: TEAM.phases },
+			roles: [{ name: 'design', content_md: '# design\nWrite the design.' }],
+			agents: {},
+		}) });
+		render_at('/builder?draft=d1');
+		await screen.findByTestId('outline');
+		expect(outline()).toEqual(['design', 'build', 'check']);
 	});
 });

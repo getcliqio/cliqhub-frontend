@@ -14,7 +14,7 @@ import { useNavigate, useSearchParams } from 'react-router';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { api_message } from '@/lib/use_bff_read';
 import { use_overview } from '@/lib/overview';
-import { useBuilder, useBuilderDispatch, type GeneratedTeam, type SingleAction } from '@/lib/builder/store';
+import { useBuilder, useBuilderDispatch, type Builder_source, type GeneratedTeam, type SingleAction } from '@/lib/builder/store';
 import { clear_builder_session_restores } from '@/lib/builder/session_restore';
 import { KINDS, PALETTE, kind_of, type Kind_id } from '@/lib/builder/kinds';
 import { add_after, add_root, diff_teams, duplicate_phase, remove_bridged } from '@/lib/builder/graph_ops';
@@ -48,7 +48,11 @@ function ago(ms: number): string {
 	return s < 5 ? 'just now' : s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
 }
 
-/** Autosave: create the draft once (new teams), then update it. */
+/**
+ * Autosave into the team's one working copy (`teams/update` with
+ * `save_as: 'draft'` — never mints a version). A new team is created first
+ * without a manifest, so it has no versions until it is published.
+ */
 function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: string | null, auto_create: boolean) {
 	const auth_fetch = useAuthFetch();
 	const dispatch = useBuilderDispatch();
@@ -59,6 +63,8 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 	const team_ref = useRef(team); team_ref.current = team;
 	const busy = useRef(false);
 	const halted = useRef(false);
+	/** Something reached the server this session (Cancel then has to undo it). */
+	const saved_any = useRef(false);
 
 	const save = useCallback(async () => {
 		const t = team_ref.current;
@@ -68,17 +74,23 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 		busy.current = true;
 		set_state({ kind: 'saving' });
 		try {
-			const body = draft_id
-				? { team_id: draft_id, description: t.description || '', team_json: JSON.stringify(t) }
-				: { name: team_slug(t), scope: team_scope(t, scopes[0]?.slug ?? user.username ?? ''), description: t.description || '', team_json: JSON.stringify(t) };
-			const res = await auth_fetch(draft_id ? '/v1/teams/update' : '/v1/teams/create', { method: 'POST', body: JSON.stringify(body) });
+			let id = draft_id;
+			if (!id) {
+				const res = await auth_fetch('/v1/teams/create', { method: 'POST', body: JSON.stringify({ name: team_slug(t), scope: team_scope(t, scopes[0]?.slug ?? user.username ?? ''), description: t.description || '' }) });
+				const p = await res.json().catch(() => null);
+				if (!res.ok || !p?.ok || !p.data?.id) { set_state({ kind: 'error', message: api_message(p, 'Couldn’t save the draft.') }); return; }
+				id = String(p.data.id);
+				saved_any.current = true;
+				dispatch({ type: 'SET_DRAFT_ID', draft_id: id });
+				set_search((s) => { const n = new URLSearchParams(s); n.set('draft', id!); n.delete('view'); n.delete('fork'); return n; }, { replace: true });
+			}
+			const res = await auth_fetch('/v1/teams/update', { method: 'POST', body: JSON.stringify({ team_id: id, description: t.description || '', team_json: JSON.stringify(t), save_as: 'draft' }) });
 			const p = await res.json().catch(() => null);
-			if (!res.ok || !p?.ok) { set_state({ kind: 'error', message: api_message(p, 'Couldn’t save the draft.') }); return; }
-			const id = String(p.data?.id ?? draft_id ?? '');
+			if (!res.ok || !p?.ok) { set_state({ kind: 'error', message: api_message(p, 'Couldn’t save the draft.') }); dispatch({ type: 'SET_DIRTY', dirty: true }); return; }
+			saved_any.current = true;
 			const changed_meanwhile = team_ref.current !== t;
-			dispatch({ type: 'SET_DRAFT_ID', draft_id: id || null });
+			dispatch({ type: 'SET_DRAFT_ID', draft_id: id });
 			if (changed_meanwhile) dispatch({ type: 'SET_DIRTY', dirty: true });
-			if (!draft_id && id) set_search((s) => { const n = new URLSearchParams(s); n.set('draft', id); n.delete('view'); n.delete('fork'); return n; }, { replace: true });
 			set_state({ kind: 'saved', at: Date.now() });
 		} catch {
 			set_state({ kind: 'error', message: 'Network error — not saved.' });
@@ -103,23 +115,28 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 
 	// keep "saved 12s ago" fresh
 	useEffect(() => { const h = window.setInterval(() => tick((x) => x + 1), 15_000); return () => window.clearInterval(h); }, []);
-	return { state, save, halt, resume };
+	return { state, save, halt, resume, saved_any };
 }
 
 /**
  * Cancel: undo what this session wrote, so leaving looks like it never happened.
- *   new team / fork whose draft autosaved here → delete that draft (`teams/delete` by id)
- *   draft that was opened, then changed        → write the opened version back (`teams/update`)
- *   nothing saved                              → no request
- * Only teams that began in this session (`is_new`) are ever deleted.
+ *   new team / fork created here          → delete it (`teams/delete` by id)
+ *   saved team, copy existed when opened  → put that copy back (`save_as: 'draft'`)
+ *   saved team, no copy when opened       → drop the copy this session made (`save_as: 'discard'`)
+ *   nothing reached the server            → no request
+ * Only teams that began in this session (`is_new`) are ever deleted; versions are never touched.
  */
 export async function discard_session(
 	auth_fetch: (url: string, init?: RequestInit) => Promise<Response>,
-	{ is_new, opened_draft_id, draft_id, baseline, changed }: { is_new: boolean; opened_draft_id: string | null; draft_id: string | null; baseline: GeneratedTeam | null; changed: boolean },
+	{ is_new, opened_draft_id, draft_id, saved_any, copy }: { is_new: boolean; opened_draft_id: string | null; draft_id: string | null; saved_any: boolean; copy: Builder_source['copy'] },
 ): Promise<string | null> {
 	let req: { url: string; body: Record<string, unknown> } | null = null;
 	if (is_new && draft_id && draft_id !== opened_draft_id) req = { url: '/v1/teams/delete', body: { team_id: draft_id } };
-	else if (draft_id && draft_id === opened_draft_id && baseline && changed) req = { url: '/v1/teams/update', body: { team_id: draft_id, description: baseline.description || '', team_json: JSON.stringify(baseline) } };
+	else if (draft_id && draft_id === opened_draft_id && saved_any) {
+		req = copy
+			? { url: '/v1/teams/update', body: { team_id: draft_id, description: copy.description ?? '', team_json: copy.team_json, save_as: 'draft' } }
+			: { url: '/v1/teams/update', body: { team_id: draft_id, save_as: 'discard' } };
+	}
 	if (!req) return null;
 	try {
 		const res = await auth_fetch(req.url, { method: 'POST', body: JSON.stringify(req.body) });
@@ -182,10 +199,10 @@ function Changes_view({ baseline, team, on_revert }: { baseline: GeneratedTeam |
 	);
 }
 
-function Save_badge({ s, on_save }: { s: Save_state; on_save: () => void }) {
+function Save_badge({ s, on_save, published }: { s: Save_state; on_save: () => void; published: boolean }) {
 	const base = 'g-mono whitespace-nowrap rounded px-1.5 py-0.5 text-[11px]';
 	if (s.kind === 'saving') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">saving…</span>;
-	if (s.kind === 'saved') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">draft · saved {ago(s.at)}</span>;
+	if (s.kind === 'saved') return <span className={`${base} bg-[var(--g-soft)] text-[var(--g-ink-3)]`} role="status">{published ? 'unpublished changes' : 'draft'} · saved {ago(s.at)}</span>;
 	if (s.kind === 'error') return <button type="button" onClick={on_save} title={s.message} className={`${base} bg-[var(--g-bad-soft)] text-[var(--g-bad)]`}>not saved · retry</button>;
 	if (s.kind === 'unnamed') return <span className={`${base} bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]`}>name it to save</span>;
 	if (s.kind === 'signed_out') return <span className={`${base} bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]`}>sign in to save</span>;
@@ -289,7 +306,7 @@ export function Gb_app() {
 	async function leave() {
 		set_cancel({ step: 'busy' });
 		await save.halt();
-		const err = await discard_session(auth_fetch, { is_new, opened_draft_id: baseline.draft_id, draft_id: state.draft_id, baseline: baseline.team, changed });
+		const err = await discard_session(auth_fetch, { is_new, opened_draft_id: baseline.draft_id, draft_id: state.draft_id, saved_any: save.saved_any.current, copy: state.source?.copy ?? null });
 		if (err) { save.resume(); set_cancel({ step: 'error', message: err }); return; }
 		clear_builder_session_restores();
 		dispatch({ type: 'RESET' });
@@ -304,7 +321,7 @@ export function Gb_app() {
 
 	const actions = team ? (
 		<div className="flex items-center gap-2">
-			<Save_badge s={save.state} on_save={() => { set_auto_create(true); void save.save(); }} />
+			<Save_badge s={save.state} published={Boolean(state.source?.published)} on_save={() => { set_auto_create(true); void save.save(); }} />
 			<div className="flex rounded-lg border border-[var(--g-line)] p-0.5" role="tablist" aria-label="View">
 				{(['canvas', 'yaml', 'changes'] as Center[]).map((c) => <button key={c} type="button" role="tab" aria-selected={center === c} onClick={() => set_center(c)} className={TAB(center === c)}>{c === 'yaml' ? 'YAML' : c[0].toUpperCase() + c.slice(1)}</button>)}
 			</div>
@@ -414,7 +431,7 @@ export function Gb_app() {
 					</div>
 				)}
 				{publishing && team ? (
-					<Gb_publish team={team} baseline={baseline.team} problems={problems} on_close={() => set_publishing(false)} on_published={() => set_baseline({ set: true, team, draft_id: state.draft_id, is_new: false })} />
+					<Gb_publish team={team} baseline={baseline.team} problems={problems} on_close={() => set_publishing(false)} on_published={() => { set_baseline({ set: true, team, draft_id: state.draft_id, is_new: false }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
 				) : null}
 			</div>
 		</Graphite_shell>

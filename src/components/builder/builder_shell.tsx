@@ -8,6 +8,7 @@ import {
 } from '@/lib/builder/session_restore';
 import { useAuth} from '@/lib/auth_context';
 import { useOrgFetch } from '@/lib/org_context';
+import { builder_team_from_detail } from '@/lib/team_builder';
 import { ApiErrorBanner } from '@/components/ui/api_error';
 import { SparkPage } from './spark_page';
 import { CanvasView } from './canvas_view';
@@ -50,6 +51,9 @@ export function StateRestorer() {
 			/* keep spark unless session present */
 		}
 
+		// ?draft=<team id>: a saved team. Its unversioned working copy wins unless
+		// ?fresh=1 (start again from the latest version); either way the copy is
+		// remembered so Cancel can put it back.
 		const draft_id = searchParams.get('draft');
 		if (draft_id && user) {
 			authFetch('/v1/teams/get_by_id', {
@@ -62,12 +66,17 @@ export function StateRestorer() {
 						set_load_error(data.error?.message || 'Failed to load draft');
 						return;
 					}
-					const raw = data.data.team_json || data.data.raw_manifest;
-					if (!raw) return;
-					const team = normalize_builder_team(typeof raw === 'string' ? JSON.parse(raw) : raw);
+					const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; team_json?: string | null; status?: string; visibility?: string; draft?: { manifest: string; description: string | null; saved_at: string | null } | null };
+					const copy = d.draft?.manifest ? { team_json: d.draft.manifest, description: d.draft.description ?? null, saved_at: d.draft.saved_at ?? null } : null;
+					const as_json = (text: string | null | undefined) => { if (!text) return null; try { return normalize_builder_team(JSON.parse(text)); } catch { return null; } };
+					// Working copy (builder JSON) → older drafts' builder JSON → the published version itself.
+					const team = (searchParams.get('fresh') !== '1' ? as_json(copy?.team_json) : null)
+						?? as_json(d.team_json)
+						?? builder_team_from_detail(d, { label: d.scope ? `@${d.scope}/${d.name}` : String(d.name ?? ''), version: d.latest_version ?? null });
 					if (!team) return;
 					dispatch({ type: 'SET_TEAM', team, validation: null });
 					dispatch({ type: 'SET_DRAFT_ID', draft_id });
+					dispatch({ type: 'SET_SOURCE', source: { published: d.status === 'published' && d.visibility !== 'draft', copy } });
 				})
 				.catch(() => {
 					set_load_error('Network error — could not load draft');

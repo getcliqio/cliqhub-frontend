@@ -291,6 +291,25 @@ describe('Team page', () => {
 		await waitFor(() => expect(calls.some(([u, init]) => u === '/v1/teams/get_by_id' && JSON.parse(String(init.body)).name === 'feature-dev-js')).toBe(true));
 	});
 
+	it('Open in Builder opens the team itself (?draft=<id>) — no session hand-off, no extra read', async () => {
+		const calls = route_fetch();
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: 'Open in Builder' }));
+		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/builder?draft=tid&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
+		expect(calls.some((c) => c.url === '/v1/teams/get_by_id')).toBe(false);
+		expect(screen.queryByTestId('unpublished-pill')).toBeNull();
+	});
+
+	it('unpublished changes: a pill, and Open in Builder offers Resume or Start from the latest version', async () => {
+		route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 2 * 3600_000).toISOString() } }));
+		render_at('/teams/measureone/feature-dev-js');
+		expect(await screen.findByTestId('unpublished-pill')).toHaveTextContent('Unpublished changes');
+		fireEvent.click(screen.getByRole('button', { name: 'Open in Builder' }));
+		const dlg = screen.getByRole('dialog', { name: 'Open in Builder' });
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Start from v1.4.2' }));
+		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/builder?draft=tid&fresh=1&from='));
+	});
+
 	it('404 shows the blocking error', async () => {
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
 			const u = String(url);

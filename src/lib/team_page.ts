@@ -82,6 +82,8 @@ export interface Team_header {
 	can_edit: boolean;
 	can_delete: boolean;
 	can_toggle_listing: boolean;
+	/** When this editor's team has an unpublished working copy (ISO); null when there is none. */
+	draft_saved_at?: string | null;
 }
 
 export interface Team_run_row {
