@@ -14,6 +14,12 @@
 
 export interface Review_artifact {
 	id: string | number;
+	/** A run record (text, shown inline) or a stored file (downloaded with `artifacts/get_by_id`). */
+	source?: 'record' | 'file';
+	/** Stored file id (files only). */
+	artifact_id?: string;
+	/** Stored file size (files only). */
+	size_bytes?: number;
 	phase: string | null;
 	kind: string;
 	name: string;

@@ -4,7 +4,7 @@
  * canonical realm redirect, polling cadence.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { run_detail, overview_for_realm, REALM } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
@@ -105,10 +105,38 @@ describe('Graphite run detail', () => {
 		await ready();
 		const row = screen.getByTestId('artifact-row');
 		expect(row).toHaveTextContent('report.pdf');
-		expect(row).toHaveTextContent('report · 2.0 KB · Weekly');
+		expect(row).toHaveTextContent('File · 2.0 KB · Weekly');
+		expect(screen.getByTestId('artifact-phase-report')).toContainElement(row);
 		fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }));
 		await waitFor(() => expect(open).toHaveBeenCalledWith('https://r2.example/report.pdf?sig', '_blank', 'noopener'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'a1' }]);
+	});
+
+	it('groups everything by phase: files download, records read inline (full text loaded when long)', async () => {
+		const long = 'L'.repeat(2000);
+		const spy = route_fetch(
+			run_detail({ artifacts: [
+				{ artifact_id: 'rec:1', source: 'record', kind: 'output', content_preview: 'design done', phase: 'design', name: 'phase_output', description: null, mime_type: 'text/plain', size_bytes: 11, created_at: 1 },
+				{ artifact_id: 'rec:2', source: 'record', kind: 'chat_transcript', content_preview: long, phase: 'build', name: 'transcript', description: null, mime_type: 'text/plain', size_bytes: 9000, created_at: 2 },
+				{ artifact_id: 'a1', source: 'file', kind: 'file', content_preview: null, phase: 'build', name: 'app.zip', description: null, mime_type: 'application/zip', size_bytes: 4096, created_at: 3 },
+			] }),
+			{ '/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { content: 'the whole transcript' } } }) },
+		);
+		render_page();
+		await ready();
+		const design = screen.getByTestId('artifact-phase-design');
+		const build = screen.getByTestId('artifact-phase-build');
+		expect(design).toHaveTextContent('Phase output');
+		expect(within(build).getAllByTestId('artifact-row')).toHaveLength(2);
+		expect(within(build).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
+
+		fireEvent.click(within(design).getByRole('button', { name: 'Read phase_output' }));
+		expect(within(design).getByTestId('artifact-text')).toHaveTextContent('design done');
+		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([]);
+
+		fireEvent.click(within(build).getByRole('button', { name: 'Read transcript' }));
+		await waitFor(() => expect(within(build).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
+		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
 	});
 
 	it('says when artifacts could not be loaded', async () => {

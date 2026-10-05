@@ -74,14 +74,30 @@ export function Artifact_body({ a, source }: { a: Review_artifact; source: boole
 /** File list + viewer. Rendered/Source toggle for markdown/JSON/CSV; copy, download, full screen. */
 export function Artifact_viewer({ artifacts }: { artifacts: Review_artifact[] }) {
 	const sorted = useMemo(() => [...artifacts].sort((x, y) => (x.sequence ?? 0) - (y.sequence ?? 0)), [artifacts]);
+	const auth_fetch = useAuthFetch();
+	const [file_err, set_file_err] = useState<string | null>(null);
+	/** A stored file downloads through a fresh link (stored links expire). */
+	async function download_file(f: Review_artifact) {
+		set_file_err(null);
+		try {
+			const res = await auth_fetch('/v1/artifacts/get_by_id', { method: 'POST', body: JSON.stringify({ artifact_id: f.artifact_id }) });
+			const payload = await res.json().catch(() => null);
+			const url = payload?.ok ? payload.data?.download_url : null;
+			if (typeof url === 'string' && url) window.open(url, '_blank', 'noopener');
+			else set_file_err('Couldn’t get a download link. Try again.');
+		} catch {
+			set_file_err('Couldn’t get a download link. Try again.');
+		}
+	}
 	const [sel, set_sel] = useState(0);
 	const [source, set_source] = useState(false);
 	const [full, set_full] = useState(false);
 	const [copied, set_copied] = useState(false);
 	const a = sorted[Math.min(sel, sorted.length - 1)];
 	if (!a) return null;
+	const is_file = a.source === 'file';
 	const bucket = artifact_bucket(a.mime_type, a.name);
-	const can_toggle = bucket === 'markdown' || bucket === 'json' || bucket === 'csv';
+	const can_toggle = !is_file && (bucket === 'markdown' || bucket === 'json' || bucket === 'csv');
 	const text = a.content ?? a.content_preview ?? '';
 	async function copy() {
 		try { await navigator.clipboard.writeText(bucket === 'json' ? pretty_json(text) ?? text : text); set_copied(true); setTimeout(() => set_copied(false), 1500); } catch { /* clipboard unavailable */ }
@@ -97,7 +113,7 @@ export function Artifact_viewer({ artifacts }: { artifacts: Review_artifact[] })
 								<div className="flex items-center gap-1.5 text-[11px] text-[var(--g-ink-3)]">
 									{x.kind ? <span style={{ color: KIND_TONE[x.kind] }}>{x.kind}</span> : null}
 									<span>{artifact_bucket(x.mime_type, x.name)}</span>
-									{x.content ? <span>· {format_bytes(x.content.length)}</span> : null}
+									{x.source === 'file' && x.size_bytes ? <span>· {format_bytes(x.size_bytes)}</span> : x.content ? <span>· {format_bytes(x.content.length)}</span> : null}
 								</div>
 							</button>
 						</li>
@@ -115,12 +131,17 @@ export function Artifact_viewer({ artifacts }: { artifacts: Review_artifact[] })
 								<button type="button" aria-pressed={source} onClick={() => set_source(true)} className={`px-2.5 py-1 ${source ? 'bg-[var(--g-soft)] text-[var(--g-ink)]' : 'text-[var(--g-ink-3)]'}`}>Source</button>
 							</span>
 						) : null}
-						{bucket !== 'image' && bucket !== 'pdf' ? <button type="button" onClick={() => void copy()} className={G_BTN}>{copied ? 'Copied' : 'Copy'}</button> : null}
-						<button type="button" onClick={() => download_artifact(a)} className={G_BTN}>Download</button>
+						{!is_file && bucket !== 'image' && bucket !== 'pdf' ? <button type="button" onClick={() => void copy()} className={G_BTN}>{copied ? 'Copied' : 'Copy'}</button> : null}
+						<button type="button" onClick={() => (is_file ? void download_file(a) : download_artifact(a))} className={G_BTN}>Download</button>
 						<button type="button" onClick={() => set_full((v) => !v)} aria-label={full ? 'Exit full screen' : 'Full screen'} className={G_BTN}>{full ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}</button>
 					</span>
 				</div>
-				<div className={`overflow-auto px-4 py-3 ${full ? 'flex-1' : 'max-h-[560px]'}`}><Artifact_body a={a} source={source} /></div>
+				<div className={`overflow-auto px-4 py-3 ${full ? 'flex-1' : 'max-h-[560px]'}`}>
+					{is_file
+						? <p className="text-[12.5px] text-[var(--g-ink-2)]" data-testid="artifact-file">A file the <span className="g-mono">{a.phase}</span> phase stored{a.size_bytes ? ` (${format_bytes(a.size_bytes)})` : ''}. Download it to open it.</p>
+						: <Artifact_body a={a} source={source} />}
+					{file_err ? <p role="alert" className="mt-2 text-[12px] text-[var(--g-bad)]">{file_err}</p> : null}
+				</div>
 			</div>
 		</div>
 	);

@@ -77,6 +77,21 @@ describe('Review page', () => {
 		expect(within(viewer).getByRole('cell', { name: '1,200' })).toBeInTheDocument();
 	});
 
+	it('a file an earlier phase stored is listed and downloads through artifacts/get_by_id', async () => {
+		const win = vi.spyOn(window, 'open').mockReturnValue(null);
+		const r = review();
+		r.artifacts = [...r.artifacts, { id: 'file:a9', source: 'file', artifact_id: 'a9', size_bytes: 4096, phase: 'build', kind: 'file', name: 'app.zip', mime_type: 'application/zip', content: '', content_preview: '', sequence: 1_000_000 }];
+		const calls = route_fetch(r, { '/v1/artifacts/get_by_id': () => ({ download_url: 'https://r2.example/app.zip?sig' }) });
+		open();
+		const viewer = await screen.findByTestId('artifact-viewer');
+		fireEvent.click(within(viewer).getByRole('button', { name: /app\.zip/ }));
+		expect(within(viewer).getByTestId('artifact-file')).toHaveTextContent('A file the build phase stored (4.0 KB)');
+		expect(within(viewer).queryByRole('button', { name: 'Copy' })).toBeNull();
+		fireEvent.click(within(viewer).getByRole('button', { name: 'Download' }));
+		await waitFor(() => expect(win).toHaveBeenCalledWith('https://r2.example/app.zip?sig', '_blank', 'noopener'));
+		expect(calls.filter((c) => c.url === '/v1/artifacts/get_by_id').map((c) => c.body)).toEqual([{ artifact_id: 'a9' }]);
+	});
+
 	it('verdict: approve / reject / route send the notification id and comment; then back to the inbox', async () => {
 		const calls = route_fetch(review(), { '/v1/reviews/verdict': () => ({}) });
 		open();

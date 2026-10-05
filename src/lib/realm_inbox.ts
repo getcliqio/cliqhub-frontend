@@ -93,9 +93,17 @@ export interface Run_row {
 	state_lost_at?: number | null;
 }
 
-/** A file a run stored; download with `artifacts/get_by_id` (fresh link). */
+/**
+ * Something a run's phase produced: a stored file (download with
+ * `artifacts/get_by_id` for a fresh link) or a run record (text — its
+ * preview here, the whole text from `artifacts/get_by_id`).
+ */
 export interface Run_artifact {
 	artifact_id: string;
+	source?: 'file' | 'record';
+	/** 'file', or the record kind: output, chat_transcript, review, design, handoff, … */
+	kind?: string;
+	content_preview?: string | null;
 	phase: string;
 	name: string;
 	description: string | null;
