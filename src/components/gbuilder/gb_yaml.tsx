@@ -19,11 +19,11 @@ import { format_yaml, parse_yaml, phase_at_line, phase_ranges, problem_line, tea
 const graphite_theme = EditorView.theme({
 	'&': { height: '100%', fontSize: '12.5px', backgroundColor: '#0d0e10', color: '#c3c2be' },
 	'.cm-scroller': { overflow: 'auto', fontFamily: 'var(--g-mono)', lineHeight: '1.8' },
-	'.cm-content': { caretColor: '#d4ff3f', padding: '10px 0' },
+	'.cm-content': { caretColor: 'var(--g-acc)', padding: '10px 0' },
 	'.cm-gutters': { backgroundColor: '#0d0e10', color: '#4a4d55', border: 'none' },
 	'.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#8a8c93' },
 	'.cm-activeLine': { backgroundColor: 'rgba(255,255,255,.025)' },
-	'.cm-cursor': { borderLeftColor: '#d4ff3f' },
+	'.cm-cursor': { borderLeftColor: 'var(--g-acc)' },
 	'&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'rgba(155,140,255,.25)' },
 	'.cm-foldGutter .cm-gutterElement': { color: '#3a3d44' },
 	'.gb-sel-line': { backgroundColor: 'rgba(155,140,255,.08)', boxShadow: 'inset 2px 0 0 #9b8cff' },
@@ -210,7 +210,7 @@ export function Gb_yaml({ team, selected, problems, on_team, on_select, on_role 
 				<button type="button" onClick={() => { void navigator.clipboard?.writeText(view.current?.state.doc.toString() ?? ''); set_note({ text: 'Copied' }); }} className="rounded-lg border border-[#2c2f35] bg-[rgba(22,23,26,.9)] px-2.5 py-1 text-[12px] text-[var(--g-ink-2)]">Copy</button>
 			</div>
 			{note ? (
-				<div role="status" className="flex items-center gap-2 border-b border-[var(--g-line)] bg-[rgba(212,255,63,.05)] px-3 py-1.5 text-[12px] text-[var(--g-ink-2)]">
+				<div role="status" className="flex items-center gap-2 border-b border-[var(--g-line)] bg-[var(--g-acc-soft)] px-3 py-1.5 text-[12px] text-[var(--g-ink-2)]">
 					<span>{note.text}</span>
 					{note.undo !== undefined ? <button type="button" onClick={() => { const v = view.current; if (v && note.undo !== undefined) { replace_doc(v, note.undo); parse_now(v); } set_note(null); }} className="font-semibold text-[var(--g-acc)]">Undo</button> : null}
 					<button type="button" aria-label="Dismiss" onClick={() => set_note(null)} className="ml-auto text-[var(--g-ink-3)]">✕</button>

@@ -31,12 +31,14 @@
 	--g-ink-2: #c3c2be;
 	--g-ink-3: #8a8c93;
 
-	/* Accent (lime) */
-	--g-acc: #d4ff3f;
-	--g-acc-hover: #c6f52a;
-	--g-acc-soft: rgba(212, 255, 63, 0.1);
-	--g-acc-line: rgba(212, 255, 63, 0.35);
-	--g-on-acc: #0c0d0f;
+	/* Accent (purple, from the CliqHub mark's #6366f1 → #a855f7 gradient) */
+	--g-acc: #8b5cf6;
+	--g-acc-hover: #9d74f8;
+	--g-acc-soft: rgba(139, 92, 246, 0.12);
+	--g-acc-line: rgba(139, 92, 246, 0.45);
+	--g-on-acc: #ffffff;
+	/* Dark text on bright status fills (warn / ok badges) */
+	--g-on-color: #0c0d0f;
 
 	/* Status */
 	--g-ok: #3ecf8e;

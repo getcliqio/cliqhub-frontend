@@ -144,12 +144,12 @@ describe('Realm inbox page', () => {
 		expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings');
 		expect(await screen.findByTestId('realm-health')).toHaveTextContent('5/6 daemons');
 		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-		expect(within(crumb).getByRole('link', { name: /All my work/ })).toHaveAttribute('href', '/home');
+		// One org at a time: the breadcrumb starts at the org (no "All my work").
+		expect(within(crumb).queryByRole('link', { name: /All my work/ })).toBeNull();
 		expect(within(crumb).getByRole('link', { name: 'prod-us' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
 		expect(within(crumb).getByText('Inbox')).toHaveAttribute('aria-current', 'page');
-		// Same for one org or many: the breadcrumb names the org, × steps up to it.
 		expect(within(crumb).getByRole('link', { name: /MeasureOne/ })).toHaveAttribute('href', '/home?org=measureone');
-		expect(screen.getByTestId('view-step-up')).toHaveAttribute('href', '/home?org=measureone');
+		expect(screen.queryByTestId('view-step-up')).toBeNull();
 	});
 });
 

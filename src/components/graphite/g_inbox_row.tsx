@@ -45,7 +45,7 @@ export function Inbox_row({ item, is_new, compact = false, show_realm_org = true
 	const action = inbox_action(item);
 	const title = item.title || item.event;
 	return (
-		<div className={`grid grid-cols-[8px_auto_minmax(0,1fr)_auto] items-start gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${is_new ? 'bg-[rgba(212,255,63,.025)]' : ''}`} data-testid={`inbox-item-${item.id}`} data-new={is_new || undefined}>
+		<div className={`grid grid-cols-[8px_auto_minmax(0,1fr)_auto] items-start gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${is_new ? 'bg-[rgba(139,92,246,.04)]' : ''}`} data-testid={`inbox-item-${item.id}`} data-new={is_new || undefined}>
 			<span className={`mt-3 h-[7px] w-[7px] rounded-full ${is_new ? 'bg-[var(--g-acc)]' : ''}`} aria-label={is_new ? 'New' : undefined} role={is_new ? 'img' : undefined} />
 			<Inbox_icon kind={kind} size={compact ? 26 : 30} />
 			<div className="min-w-0">

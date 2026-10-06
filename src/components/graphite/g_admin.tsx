@@ -4,7 +4,7 @@
  */
 import type { ReactNode } from 'react';
 import { useSearchParams } from 'react-router';
-import { avatar_color, initials } from '@/lib/admin';
+import { avatar_outline, initials } from '@/lib/admin';
 import { G_PILL } from '@/components/graphite/g_agents';
 
 export function Admin_header({ title, sub, right }: { title: string; sub?: ReactNode; right?: ReactNode }) {
@@ -50,7 +50,7 @@ export function Chips<K extends string>({ value, options, on_change, label = 'Fi
 
 export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
 	return (
-		<span aria-hidden className="grid shrink-0 place-items-center rounded-full font-bold text-[#0c0d0f]" style={{ width: size, height: size, background: avatar_color(name), fontSize: Math.round(size * 0.36) }}>
+		<span aria-hidden className="grid shrink-0 place-items-center rounded-full font-semibold" style={{ width: size, height: size, ...avatar_outline(name, size), fontSize: Math.round(size * 0.36) }}>
 			{initials(name)}
 		</span>
 	);

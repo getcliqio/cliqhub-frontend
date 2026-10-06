@@ -585,7 +585,7 @@ export function Component() {
 					{vs.items.map((v) => (
 						<div key={v.version} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3" data-testid={`version-${v.version}`}>
 							<div className="relative before:absolute before:bottom-0 before:left-2 before:top-0 before:w-px before:bg-[var(--g-line)]">
-								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_rgba(212,255,63,.12)]' : 'border-[#4a4d55] bg-[var(--g-panel)]'}`} />
+								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_var(--g-acc-soft)]' : 'border-[#4a4d55] bg-[var(--g-panel)]'}`} />
 							</div>
 							<div className="border-b border-[var(--g-line-2)] py-3">
 								<div className="flex flex-wrap items-center gap-2.5">

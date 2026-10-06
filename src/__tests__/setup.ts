@@ -31,3 +31,35 @@ for (const key of ['localStorage', 'sessionStorage'] as const) {
         set: (v: Storage) => { store = v; },
     });
 }
+
+// Some Node / jsdom combinations leave `localStorage` undefined: give the
+// tests a simple in-memory Storage so code that remembers things works.
+class Memory_storage implements Storage {
+    private m = new Map<string, string>();
+    get length() { return this.m.size; }
+    clear() { this.m.clear(); }
+    getItem(k: string) { return this.m.has(k) ? this.m.get(k)! : null; }
+    key(i: number) { return [...this.m.keys()][i] ?? null; }
+    removeItem(k: string) { this.m.delete(k); }
+    setItem(k: string, v: string) { this.m.set(k, String(v)); }
+}
+if (typeof window !== 'undefined') {
+    for (const key of ['localStorage', 'sessionStorage'] as const) {
+        let ok = false;
+        try { ok = Boolean(window[key]); } catch { ok = false; }
+        if (ok) continue;
+        const store = new Memory_storage();
+        Object.defineProperty(window, key, { configurable: true, get: () => store });
+        Object.defineProperty(globalThis, key, { configurable: true, get: () => store });
+    }
+}
+
+// You work in one org at a time: tests start in the fixtures' first org
+// (measureone), as if the user had picked it before. Tests about choosing
+// an org clear this themselves.
+import { beforeEach } from 'vitest';
+beforeEach(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.clear();
+    window.localStorage.setItem('cliqhub.last_org', 'measureone');
+});

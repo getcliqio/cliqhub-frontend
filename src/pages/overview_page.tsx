@@ -212,8 +212,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 					<>
 						<h1 className="flex items-center gap-2.5 text-[24px] font-semibold tracking-[-0.02em]"><Org_chip org={view_org} size={26} />{view_org.display_name || view_org.slug}</h1>
 						<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">
-							<b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> · you’re {article(view_org.role)} {view_org.role} ·{' '}
-							<Link to="/home" className="text-[var(--g-acc)] hover:underline">← All my work</Link>
+							<b className="text-[var(--g-ink)]">{plural(view.totals.realms, 'realm')}</b> · you’re {article(view_org.role)} {view_org.role}
 						</p>
 					</>
 				) : (

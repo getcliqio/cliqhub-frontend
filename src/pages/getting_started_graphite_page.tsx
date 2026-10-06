@@ -127,11 +127,11 @@ export function Getting_started_view({ data }: { data: Getting_started_data }) {
 							key={s.key}
 							data-testid={`gs-step-${s.key}`}
 							data-state={s.done ? 'done' : is_now ? 'current' : 'todo'}
-							className={`flex items-start gap-3.5 border-b border-[var(--g-line-2)] px-4 py-4 last:border-b-0 ${is_now ? 'bg-[rgba(212,255,63,.04)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`}
+							className={`flex items-start gap-3.5 border-b border-[var(--g-line-2)] px-4 py-4 last:border-b-0 ${is_now ? 'bg-[var(--g-acc-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`}
 						>
 							<span
 								aria-hidden
-								className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full text-[12px] font-bold ${s.done ? 'bg-[var(--g-ok)] text-[var(--g-on-acc)]' : is_now ? 'border-2 border-[var(--g-acc)] text-[var(--g-acc)]' : 'border border-[var(--g-line)] text-[var(--g-ink-3)]'}`}
+								className={`grid h-[26px] w-[26px] shrink-0 place-items-center rounded-full text-[12px] font-bold ${s.done ? 'bg-[var(--g-ok)] text-[var(--g-on-color)]' : is_now ? 'border-2 border-[var(--g-acc)] text-[var(--g-acc)]' : 'border border-[var(--g-line)] text-[var(--g-ink-3)]'}`}
 							>
 								{s.done ? <Check className="h-3.5 w-3.5" /> : i + 1}
 							</span>

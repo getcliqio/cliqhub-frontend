@@ -40,6 +40,8 @@ interface AuthState {
   /** Account the UI / Core runs as. */
   act_as_user_id: string | null;
   acting_as: ClientActingAs | null;
+  /** The user's default realm (set at signup / login); its org is the fallback org. */
+  default_realm_id: string | null;
   loading: boolean;
 }
 
@@ -66,6 +68,7 @@ const empty_auth_state = (): AuthState => ({
   user_id: null,
   act_as_user_id: null,
   acting_as: null,
+  default_realm_id: null,
   loading: false,
 });
 
@@ -119,6 +122,7 @@ function apply_session(data: {
   acting_as?: ClientActingAs | null;
   user_id?: string;
   act_as_user_id?: string;
+  default_realm_id?: string | null;
 }): AuthState {
   const acting_as = data.acting_as ?? null;
   const act_as_user_id = data.act_as_user_id ?? data.user.id;
@@ -129,6 +133,7 @@ function apply_session(data: {
     user_id,
     act_as_user_id,
     acting_as,
+    default_realm_id: data.default_realm_id ?? null,
     loading: false,
   };
 }

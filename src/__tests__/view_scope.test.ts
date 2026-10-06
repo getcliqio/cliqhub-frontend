@@ -5,7 +5,7 @@ import { multi_org_overview, single_org_overview, realm, ORG_A } from './fixture
 const none = { org_param: null, realm_org: null, realm_slug: null };
 
 describe('resolve_view', () => {
-	it('all orgs by default for multi-org users', () => {
+	it('several orgs and nothing chosen → no org yet (the shell asks)', () => {
 		expect(resolve_view(multi_org_overview(), none).kind).toBe('all');
 	});
 	it('org from ?org= when the user is a member', () => {
@@ -21,17 +21,28 @@ describe('resolve_view', () => {
 		expect(v.realm?.slug).toBe('staging');
 		expect(v.org?.slug).toBe('measureone');
 	});
-	it('single-org users get the same views: all by default, their org via ?org=', () => {
-		expect(resolve_view(single_org_overview(), none).kind).toBe('all');
-		const v = resolve_view(single_org_overview(), { ...none, org_param: 'measureone' });
+	it('fallbacks: URL, then the remembered org, then the default realm\'s org', () => {
+		const d = multi_org_overview();
+		expect(resolve_view(d, { ...none, last_org: 'acme-labs' }).org?.slug).toBe('acme-labs');
+		expect(resolve_view(d, { ...none, org_param: 'measureone', last_org: 'acme-labs' }).org?.slug).toBe('measureone');
+		expect(resolve_view(d, { ...none, default_realm_id: 'r-sand' }).org?.slug).toBe('acme-labs');
+		expect(resolve_view(d, { ...none, last_org: 'measureone', default_realm_id: 'r-sand' }).org?.slug).toBe('measureone');
+		// A remembered org the user has left is ignored.
+		expect(resolve_view(d, { ...none, last_org: 'gone', default_realm_id: 'r-sand' }).org?.slug).toBe('acme-labs');
+	});
+	it('a single-org user is always in their org', () => {
+		const v = resolve_view(single_org_overview(), none);
 		expect(v.kind === 'org' && v.org.slug).toBe('measureone');
 	});
-	it('no data yet → all', () => {
+	it('no data yet → no org', () => {
 		expect(resolve_view(null, none).kind).toBe('all');
 	});
 });
 
 describe('sidebar_realms', () => {
+	it('lists no realms until an org is chosen', () => {
+		expect(sidebar_realms(multi_org_overview(), { kind: 'all', org: null, realm: null })).toEqual({ shown: [], total: 0 });
+	});
 	it('caps at the limit and keeps the current realm visible', () => {
 		const d = single_org_overview();
 		d.orgs[0] = { ...d.orgs[0], realms: Array.from({ length: 15 }, (_, i) => realm({ id: `r${i}`, slug: `r-${i}`, org_id: ORG_A, org_slug: 'measureone', last_activity_at: i })) };

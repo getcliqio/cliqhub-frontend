@@ -11,11 +11,12 @@ import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope } from '@/lib/view_scope';
-import { LEGEND_KINDS, phase_kind, team_href, type Team_list_data, type Team_list_row } from '@/lib/team_page';
+import { phase_kind, team_href, type Team_list_data, type Team_list_row } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { avatar_outline } from '@/lib/admin';
 
 export const TEAM_LIST_PAGE_SIZE = 25;
 
@@ -30,12 +31,11 @@ const TABS: Array<{ id: Status; label: string }> = [
 	{ id: 'draft', label: 'Drafts' },
 ];
 
-function hue(s: string): number { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 export function Team_avatar({ name, size = 36 }: { name: string; size?: number }) {
 	const parts = name.split(/[\s-]+/).filter(Boolean);
 	const ini = (parts.length > 1 ? parts[0][0] + parts[1][0] : name.slice(0, 2)).toUpperCase();
 	return (
-		<span aria-hidden className="grid shrink-0 place-items-center rounded-lg font-extrabold text-white" style={{ width: size, height: size, fontSize: size * 0.33, background: `linear-gradient(135deg, hsl(${hue(name)} 62% 50%), hsl(${(hue(name) + 40) % 360} 62% 45%))` }}>{ini}</span>
+		<span aria-hidden className="grid shrink-0 place-items-center rounded-lg font-semibold" style={{ width: size, height: size, fontSize: size * 0.33, ...avatar_outline(name, size) }}>{ini}</span>
 	);
 }
 
@@ -45,13 +45,17 @@ export function Status_badge({ status }: { status: 'draft' | 'published' }) {
 		: <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-ok-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-ok)]"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Published</span>;
 }
 
-function Phase_squares({ types }: { types: string[] | null }) {
+/** One outlined square per phase, in order; hover names the phase and its type. */
+function Phase_squares({ types, names }: { types: string[] | null; names?: string[] | null }) {
 	if (!types) return <span className="text-[var(--g-ink-3)]">—</span>;
 	if (!types.length) return <span className="text-[11.5px] text-[var(--g-ink-3)]">no phases</span>;
+	const label = (t: string, i: number) => `${names?.[i] ? `${names[i]} · ` : ''}${phase_kind(t).label}`;
 	return (
-		<span className="inline-flex gap-[3px]" aria-label={`${types.length} phases: ${types.map((t) => phase_kind(t).label).join(', ')}`} title={types.map((t) => phase_kind(t).label).join(' → ')}>
-			{types.slice(0, 14).map((t, i) => <i key={i} className="block h-2.5 w-2.5 rounded-[2px]" style={{ background: phase_kind(t).color }} />)}
-			{types.length > 14 ? <span className="text-[11px] text-[var(--g-ink-3)]">+{types.length - 14}</span> : null}
+		<span className="inline-flex items-center gap-[3px]" aria-label={`${types.length} phases: ${types.map(label).join(', ')}`}>
+			{types.slice(0, 14).map((t, i) => (
+				<i key={i} title={label(t, i)} className="block h-2.5 w-2.5 rounded-[2px] border-[1.5px]" style={{ borderColor: phase_kind(t).color }} />
+			))}
+			{types.length > 14 ? <span className="text-[11px] text-[var(--g-ink-3)]" title={types.slice(14).map((t, k) => label(t, k + 14)).join(', ')}>+{types.length - 14}</span> : null}
 		</span>
 	);
 }
@@ -224,7 +228,7 @@ export function Component() {
 															</div>
 														</div>
 													</td>
-													<td className="px-4 py-2.5"><Phase_squares types={t.phase_kinds ?? t.phase_types} /></td>
+													<td className="px-4 py-2.5"><Phase_squares types={t.phase_kinds ?? t.phase_types} names={t.phase_names} /></td>
 													<td className="px-4 py-2.5"><Status_badge status={t.status} /></td>
 													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}</td>
 													<td className="max-w-[260px] px-4 py-2.5">
@@ -273,9 +277,7 @@ export function Component() {
 							) : null}
 						</div>
 						<div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
-							<span>Phases:</span>
-							{LEGEND_KINDS.map((k) => <span key={k} className="inline-flex items-center gap-1.5"><i className="block h-2.5 w-2.5 rounded-[2px]" style={{ background: phase_kind(k).color }} />{phase_kind(k).label}</span>)}
-							<span className="ml-auto">Looking for other people’s teams? <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace →</Link></span>
+							<span>Looking for other people’s teams? <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace →</Link></span>
 						</div>
 					</>
 				)}

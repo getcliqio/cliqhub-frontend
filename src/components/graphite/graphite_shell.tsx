@@ -25,20 +25,20 @@ import {
 	UserRound,
 	KeyRound,
 	MoreHorizontal,
-	X,
 	ChevronRight,
 	type LucideIcon,
 	Bot,
 	Building2,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
+import { avatar_outline } from '@/lib/admin';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Getting_started_data } from '@/lib/getting_started';
 import { Cliq_mark } from '@/components/cliq_mark';
 import { ImpersonationRibbon } from '@/components/impersonation_ribbon';
 import { realm_label, type Overview_data, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
-import { sidebar_realms, sort_realms, use_view_scope, view_href, type View_scope } from '@/lib/view_scope';
+import { sidebar_realms, use_view_scope, view_href, write_last_org, type View_scope } from '@/lib/view_scope';
 import { mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import '@/styles/graphite.css';
@@ -52,19 +52,13 @@ function initials(label: string): string {
 	return clean.slice(0, 2).toUpperCase() || '··';
 }
 
-/** Stable hue per org slug so the same org always gets the same chip colour. */
-export function org_hue(slug: string): number {
-	let h = 0;
-	for (let i = 0; i < slug.length; i++) h = (h * 31 + slug.charCodeAt(i)) % 360;
-	return h;
-}
-
+/** Org chip: outline avatar keyed on the slug, so an org always gets the same colour. */
 export function Org_chip({ org, size = 20 }: { org: Pick<Overview_org, 'slug' | 'display_name'>; size?: number }) {
 	return (
 		<span
 			aria-hidden
-			className="grid shrink-0 place-items-center rounded-[5px] font-bold text-white"
-			style={{ width: size, height: size, fontSize: size * 0.45, background: `hsl(${org_hue(org.slug)} 62% 52%)` }}
+			className="grid shrink-0 place-items-center rounded-[5px] font-semibold"
+			style={{ width: size, height: size, fontSize: size * 0.45, ...avatar_outline(org.slug, size) }}
 		>
 			{initials(org.display_name || org.slug)}
 		</span>
@@ -74,7 +68,7 @@ export function Org_chip({ org, size = 20 }: { org: Pick<Overview_org, 'slug' | 
 export function Count_badge({ value, tone = 'warn', label }: { value: number; tone?: 'warn' | 'muted'; label?: string }) {
 	if (!value) return null;
 	const cls = tone === 'warn'
-		? 'bg-[var(--g-warn)] text-[var(--g-on-acc)]'
+		? 'bg-[var(--g-warn)] text-[var(--g-on-color)]'
 		: 'border border-[var(--g-line)] bg-[var(--g-soft)] text-[var(--g-ink-3)]';
 	return (
 		<span className={`ml-auto inline-flex min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold leading-5 ${cls}`} aria-label={label}>
@@ -94,27 +88,29 @@ export function Realm_dot({ realm }: { realm: Overview_realm }) {
 /* Switcher                                                           */
 /* ------------------------------------------------------------------ */
 
-/** Max realms listed per org while browsing/searching the switcher. */
-export const SWITCHER_PER_ORG = 8;
-
-type Switcher_entry =
-	| { kind: 'all' }
-	| { kind: 'org'; org: Overview_org }
-	| { kind: 'realm'; org: Overview_org; realm: Overview_realm };
-
 interface Switcher_props {
 	data: Overview_data | null;
 	scope: View_scope;
 	on_close: () => void;
 }
 
+/** Sections that keep their place when you switch org (`/teams` stays `/teams`). */
+const ORG_SECTIONS = ['/home', '/inbox', '/teams', '/agents', '/notifications', '/realms'];
+
+/** Where switching to `slug` goes: the same section in the new org, else its overview. */
+export function org_switch_href(pathname: string, slug: string): string {
+	const section = ORG_SECTIONS.find((p) => pathname === p || pathname.startsWith(`${p}/`));
+	return `${section && pathname === section ? section : '/home'}?org=${encodeURIComponent(slug)}`;
+}
+
 /**
- * The one control that sets the view. Picking a view (all / an org)
- * re-scopes the whole app; picking a realm opens that realm.
- * Keyboard: ↑↓ move · Enter open · ⌘/Ctrl+Enter on a realm views its org.
+ * The org switcher: you work in one organization at a time, so it lists
+ * organizations only (realms are in the sidebar for the chosen org).
+ * Keyboard: ↑↓ move · Enter switch · Esc close.
  */
-export function Org_realm_switcher({ data, scope, on_close }: Switcher_props) {
+export function Org_switcher({ data, scope, on_close }: Switcher_props) {
 	const navigate = useNavigate();
+	const location = useLocation();
 	const [query, set_query] = useState('');
 	const [active, set_active] = useState(0);
 	const ref = useRef<HTMLDivElement>(null);
@@ -129,70 +125,41 @@ export function Org_realm_switcher({ data, scope, on_close }: Switcher_props) {
 		return () => document.removeEventListener('mousedown', on_click);
 	}, [on_close]);
 
-	const orgs = data?.orgs ?? [];
-	// Same org-aware layout whether you belong to one org or many.
-	const multi_org = orgs.length > 0;
 	const q = query.trim().toLowerCase();
-
-	// "All my work" is always offered first, so there is always a way back to everything.
-	const view_entries: Switcher_entry[] = useMemo(() => {
-		const list: Switcher_entry[] = [{ kind: 'all' }, ...(multi_org ? orgs.map((org) => ({ kind: 'org' as const, org })) : [])];
-		if (!q) return list;
-		return list.filter((e) => e.kind === 'org' && ((e.org.display_name || '').toLowerCase().includes(q) || e.org.slug.toLowerCase().includes(q)));
-	}, [orgs, multi_org, q]);
-
-	const groups = useMemo(() => orgs.map((org) => {
-		const matches = sort_realms(org.realms.filter((r) => !q || r.slug.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)));
-		return { org, matches, shown: matches.slice(0, SWITCHER_PER_ORG) };
-	}).filter((g) => g.matches.length > 0 || (!q && g.org.status === 'error')), [orgs, q]);
-
-	const entries: Switcher_entry[] = useMemo(() => [
-		...view_entries,
-		...groups.flatMap((g) => g.shown.map((realm) => ({ kind: 'realm' as const, org: g.org, realm }))),
-	], [view_entries, groups]);
-
+	const orgs = useMemo(() => (data?.orgs ?? []).filter((o) => !q || (o.display_name || '').toLowerCase().includes(q) || o.slug.toLowerCase().includes(q)), [data, q]);
+	const current_id = scope.org?.id ?? scope.realm?.org_id ?? null;
 	useEffect(() => set_active(0), [q]);
 
-	function open(entry: Switcher_entry, view_org = false) {
+	function open(org: Overview_org) {
 		on_close();
-		if (entry.kind === 'all') navigate('/home');
-		else if (entry.kind === 'org' || view_org) navigate(`/home?org=${encodeURIComponent(entry.org.slug)}`);
-		else navigate(`${realm_path(entry.realm.org_slug, entry.realm.slug)}/inbox`);
+		write_last_org(org.slug);
+		navigate(org_switch_href(location.pathname, org.slug));
 	}
 
 	function on_key(e: React.KeyboardEvent) {
 		if (e.key === 'Escape') { e.preventDefault(); on_close(); return; }
-		if (e.key === 'ArrowDown') { e.preventDefault(); set_active((i) => Math.min(entries.length - 1, i + 1)); return; }
+		if (e.key === 'ArrowDown') { e.preventDefault(); set_active((i) => Math.min(orgs.length - 1, i + 1)); return; }
 		if (e.key === 'ArrowUp') { e.preventDefault(); set_active((i) => Math.max(0, i - 1)); return; }
-		if (e.key === 'Enter' && entries[active]) { e.preventDefault(); open(entries[active], e.metaKey || e.ctrlKey); }
+		if (e.key === 'Enter' && orgs[active]) { e.preventDefault(); open(orgs[active]!); }
 	}
-
-	const is_current = (e: Switcher_entry) =>
-		(e.kind === 'all' && (scope.kind === 'all' || (!multi_org && scope.kind === 'org')))
-		|| (e.kind === 'org' && scope.kind === 'org' && scope.org.id === e.org.id)
-		|| (e.kind === 'realm' && scope.kind === 'realm' && scope.realm.id === e.realm.id);
-
-	let idx = -1;
-	const row_cls = (i: number, current: boolean) =>
-		`mx-1.5 flex w-[calc(100%-12px)] items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${i === active ? 'bg-[var(--g-hover)]' : 'hover:bg-[var(--g-soft)]'} ${current ? 'shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`;
 
 	return (
 		<div
 			ref={ref}
 			role="dialog"
-			aria-label="Switch view"
+			aria-label="Switch organization"
 			onKeyDown={on_key}
-			className="absolute left-0 top-[calc(100%+6px)] z-50 w-[380px] overflow-hidden rounded-xl border border-[#2c2f35] bg-[#17191c] shadow-[0_24px_60px_rgba(0,0,0,.6)]"
+			className="absolute left-0 top-[calc(100%+6px)] z-50 w-[340px] overflow-hidden rounded-xl border border-[#2c2f35] bg-[#17191c] shadow-[0_24px_60px_rgba(0,0,0,.6)]"
 		>
 			<div className="border-b border-[var(--g-line)] p-2.5">
 				<label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[13px]">
 					<Search aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
-					<span className="sr-only">Find an org or realm</span>
+					<span className="sr-only">Find an organization</span>
 					<input
 						ref={input_ref}
 						value={query}
 						onChange={(e) => set_query(e.target.value)}
-						placeholder={multi_org ? 'Find an org or realm…' : 'Find a realm…'}
+						placeholder="Switch organization…"
 						className="w-full bg-transparent text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-3)]"
 						role="combobox"
 						aria-expanded
@@ -200,83 +167,53 @@ export function Org_realm_switcher({ data, scope, on_close }: Switcher_props) {
 					/>
 				</label>
 			</div>
-
-			<div id="g-switcher-list" role="listbox" className="max-h-[440px] overflow-y-auto py-1.5">
-				{view_entries.length ? (
-					<div data-testid="switcher-views">
-						{multi_org ? <div className="px-4 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">Views</div> : null}
-						{view_entries.map((e) => {
-							idx += 1;
-							const i = idx;
-							const current = is_current(e);
-							return (
-								<button key={e.kind === 'all' ? 'all' : e.org.id} type="button" role="option" aria-selected={i === active} aria-current={current ? 'true' : undefined} onMouseEnter={() => set_active(i)} onClick={() => open(e)} className={row_cls(i, current)}>
-									{e.kind === 'all'
-										? <span className="grid h-5 w-5 place-items-center rounded-[5px] border border-[var(--g-line)]"><CircleDot className="h-3 w-3 text-[var(--g-acc)]" aria-hidden /></span>
-										: <Org_chip org={e.org} />}
-									<b className="font-semibold">{e.kind === 'all' ? 'All my work' : e.org.display_name || e.org.slug}</b>
-									<span className="truncate text-[11.5px] text-[var(--g-ink-3)]">
-										{e.kind === 'all'
-											? `${multi_org ? `${orgs.length} orgs · ` : 'Overview · '}${plural(data?.totals.realms ?? 0, 'realm')}`
-											: e.org.status === 'error' ? 'couldn’t load' : `${e.org.role} · ${plural(e.org.realms.length, 'realm')}`}
-									</span>
-									<Count_badge value={e.kind === 'all' ? data?.totals.needs_you ?? 0 : e.org.counts.needs_you} label="waiting on you" />
-									{current ? <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--g-acc)]" /> : null}
-								</button>
-							);
-						})}
-					</div>
-				) : null}
-
-				{groups.map(({ org, matches, shown }) => (
-					<div key={org.id} className="mt-1 border-t border-[var(--g-line-2)] pt-1 first:mt-0 first:border-t-0" data-testid={`switcher-group-${org.slug}`}>
-						{multi_org ? (
-							<div className="flex items-center gap-2 px-4 pb-1 pt-2 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
-								<Org_chip org={org} size={14} />
-								{org.display_name || org.slug}
-								<span className="ml-auto font-medium normal-case tracking-normal">
-									{q ? `${matches.length} of ${org.realms.length} match` : plural(org.realms.length, 'realm')}
-								</span>
-							</div>
-						) : null}
-						{org.status === 'error' ? <p className="px-4 py-1.5 text-[12px] text-[var(--g-bad)]">{org.error}</p> : null}
-						{shown.map((r) => {
-							idx += 1;
-							const i = idx;
-							const e: Switcher_entry = { kind: 'realm', org, realm: r };
-							const current = is_current(e);
-							return (
-								<button key={r.id} type="button" role="option" aria-selected={i === active} aria-current={current ? 'true' : undefined} onMouseEnter={() => set_active(i)} onClick={(ev) => open(e, ev.metaKey || ev.ctrlKey)} className={row_cls(i, current)}>
-									<Realm_dot realm={r} />
-									<b className="font-semibold">{highlight(realm_label(r), q)}</b>
-									{realm_label(r) !== r.slug ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{highlight(r.slug, q)}</span> : null}
-									<span className="truncate text-[11.5px] text-[var(--g-ink-3)]">
-										{r.daemons.total === 0 ? 'no daemons' : `${r.daemons.online}/${r.daemons.total} daemons`}{r.active_runs ? ` · ${r.active_runs} running` : ''}
-									</span>
-									<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
-									{current ? <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--g-acc)]" /> : null}
-								</button>
-							);
-						})}
-						{matches.length > shown.length ? (
-							<p className="px-4 py-1 text-[11.5px] text-[var(--g-ink-3)]">+{matches.length - shown.length} more — keep typing, or see all realms</p>
-						) : null}
-					</div>
-				))}
-
-				{entries.length === 0 ? (
-					<p className="px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">Nothing matches “{query}”.</p>
-				) : null}
+			<div id="g-switcher-list" role="listbox" className="max-h-[400px] overflow-y-auto py-1.5" data-testid="switcher-orgs">
+				{orgs.map((org, i) => {
+					const current = org.id === current_id;
+					return (
+						<button key={org.id} type="button" role="option" aria-selected={i === active} aria-current={current ? 'true' : undefined} onMouseEnter={() => set_active(i)} onClick={() => open(org)}
+							className={`mx-1.5 flex w-[calc(100%-12px)] items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] ${i === active ? 'bg-[var(--g-hover)]' : 'hover:bg-[var(--g-soft)]'}`}
+							data-testid={`switch-org-${org.slug}`}>
+							<Org_chip org={org} />
+							<b className="font-semibold">{highlight(org.display_name || org.slug, q)}</b>
+							<span className="truncate text-[11.5px] text-[var(--g-ink-3)]">{org.status === 'error' ? 'couldn’t load' : `${org.role} · ${plural(org.realms.length, 'realm')}`}</span>
+							<Count_badge value={org.counts.needs_you} label="waiting on you" />
+							{current ? <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--g-acc)]" /> : null}
+						</button>
+					);
+				})}
+				{orgs.length === 0 ? <p className="px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">{q ? `No organization matches “${query}”.` : 'You’re not in any organization yet.'}</p> : null}
 			</div>
-
 			<div className="flex items-center gap-3 border-t border-[var(--g-line)] px-4 py-2.5 text-[11.5px] text-[var(--g-ink-3)]">
 				<span><Kbd>↑↓</Kbd> move</span>
-				<span><Kbd>↵</Kbd> open</span>
-				{multi_org ? <span><Kbd>⌘↵</Kbd> view its org</span> : null}
-				<button type="button" onClick={() => { on_close(); navigate('/realms'); }} className="ml-auto font-medium text-[var(--g-acc)] hover:underline">
-					All realms
-				</button>
+				<span><Kbd>↵</Kbd> switch</span>
+				<span className="ml-auto">Realms are in the sidebar</span>
 			</div>
+		</div>
+	);
+}
+
+/** Org pages with no org chosen yet (several orgs, none remembered): pick one first. */
+export function Org_picker({ data }: { data: Overview_data | null }) {
+	const navigate = useNavigate();
+	const location = useLocation();
+	const orgs = data?.orgs ?? [];
+	const pick = (org: Overview_org) => { write_last_org(org.slug); navigate(org_switch_href(location.pathname, org.slug)); };
+	return (
+		<div className="flex max-w-[640px] flex-col gap-4 px-7 py-6" data-testid="org-picker">
+			<div>
+				<h1 className="text-[22px] font-semibold tracking-tight">Choose an organization</h1>
+				<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">You work in one organization at a time. Switch any time from the menu at the top left.</p>
+			</div>
+			{orgs.map((o) => (
+				<button key={o.id} type="button" onClick={() => pick(o)} className="flex items-center gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-3 text-left hover:border-[var(--g-acc-line)]" data-testid={`pick-org-${o.slug}`}>
+					<Org_chip org={o} size={28} />
+					<b className="font-semibold">{o.display_name || o.slug}</b>
+					<span className="text-[12.5px] text-[var(--g-ink-3)]">{o.role} · {plural(o.realms.length, 'realm')}</span>
+					<Count_badge value={o.counts.needs_you} label="waiting on you" />
+					<span className="ml-auto text-[var(--g-ink-3)]">→</span>
+				</button>
+			))}
 		</div>
 	);
 }
@@ -296,32 +233,26 @@ function highlight(text: string, q: string): ReactNode {
 	return <>{text.slice(0, i)}<mark className="bg-transparent text-[var(--g-acc)]">{text.slice(i, i + q.length)}</mark>{text.slice(i + q.length)}</>;
 }
 
-/** What the switcher button says: always where you are. */
+/** What the switcher button says: the organization you are working in. */
 function Scope_label({ scope }: { scope: View_scope }) {
-	if (scope.kind === 'all') {
+	const org = scope.org;
+	if (!org) {
 		return (
 			<>
-				<span className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] bg-[var(--g-soft)]"><CircleDot className="h-4 w-4 text-[var(--g-acc)]" aria-hidden /></span>
+				<span className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] bg-[var(--g-soft)]"><Building2 className="h-4 w-4 text-[var(--g-ink-3)]" aria-hidden /></span>
 				<span className="min-w-0 flex-1">
-					<span className="block text-[10px] uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Viewing</span>
-					<b className="block truncate text-[13px] font-semibold">All my work</b>
+					<span className="block text-[10px] uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Organization</span>
+					<b className="block truncate text-[13px] font-semibold">Choose one</b>
 				</span>
 			</>
 		);
 	}
-	const org = scope.org;
 	return (
 		<>
-			{org ? <Org_chip org={org} size={28} /> : null}
+			<Org_chip org={org} size={28} />
 			<span className="min-w-0 flex-1">
-				<span className="block truncate text-[10px] uppercase tracking-[0.08em] text-[var(--g-ink-3)]">
-					{scope.kind === 'realm' ? 'Viewing realm' : `Viewing org${org?.role ? ` · ${org.role}` : ''}`}
-				</span>
-				<b className="block truncate text-[13px] font-semibold">
-					{scope.kind === 'realm'
-						? `${org?.display_name || scope.realm.org_slug} › ${realm_label(scope.realm)}`
-						: org?.display_name || org?.slug}
-				</b>
+				<span className="block truncate text-[10px] uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{`Organization${org.role ? ` · ${org.role}` : ''}`}</span>
+				<b className="block truncate text-[13px] font-semibold">{org.display_name || org.slug}</b>
 			</span>
 		</>
 	);
@@ -441,21 +372,14 @@ interface Shell_props {
 	current_realm_id?: string | null;
 }
 
-/** Where "up" goes from the current view: realm → its org (multi-org) → all. */
-export function step_up_href(scope: View_scope, multi_org: boolean): string | null {
-	if (scope.kind === 'realm') return multi_org && scope.org ? `/home?org=${encodeURIComponent(scope.org.slug)}` : '/home';
-	if (scope.kind === 'org' && multi_org) return '/home';
-	return null;
-}
-
-/** Breadcrumb that always starts at "All my work"; every level is a link. */
-function Crumbs({ scope, multi_org, fallback, title }: { scope: View_scope; multi_org: boolean; fallback: { org: string; slug: string } | null; title: ReactNode }) {
-	const items: Array<{ to: string; node: ReactNode }> = [{ to: '/home', node: <><CircleDot aria-hidden className="h-3 w-3" />All my work</> }];
-	const org = scope.kind === 'all' ? null : scope.org;
+/** Breadcrumb from the organization down; every level is a link. */
+function Crumbs({ scope, fallback, title }: { scope: View_scope; fallback: { org: string; slug: string } | null; title: ReactNode }) {
+	const items: Array<{ to: string; node: ReactNode }> = [];
+	const org = scope.org;
 	const realm_slug = scope.kind === 'realm' ? scope.realm.slug : fallback?.slug ?? null;
 	const realm_org = scope.kind === 'realm' ? scope.realm.org_slug : fallback?.org ?? null;
-	if (multi_org && org) items.push({ to: `/home?org=${encodeURIComponent(org.slug)}`, node: <><Org_chip org={org} size={14} />{org.display_name || org.slug}</> });
-	else if (multi_org && !org && fallback) items.push({ to: `/home?org=${encodeURIComponent(fallback.org)}`, node: fallback.org });
+	if (org) items.push({ to: `/home?org=${encodeURIComponent(org.slug)}`, node: <><Org_chip org={org} size={14} />{org.display_name || org.slug}</> });
+	else if (fallback) items.push({ to: `/home?org=${encodeURIComponent(fallback.org)}`, node: fallback.org });
 	if (realm_slug && realm_org) items.push({ to: `${realm_path(realm_org, realm_slug)}/inbox`, node: scope.kind === 'realm' ? realm_label(scope.realm) : realm_slug });
 	return (
 		<nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-[13px]">
@@ -470,6 +394,9 @@ function Crumbs({ scope, multi_org, fallback, title }: { scope: View_scope; mult
 	);
 }
 
+/** Pages that belong to one organization (the shell asks for one before showing them). */
+const ORG_PAGES = ['/home', '/inbox', '/teams', '/agents', '/notifications', '/realms', '/o/'];
+
 export function Graphite_shell({ children, data, title, actions, current_realm_id = null }: Shell_props) {
 	const { user, logout } = useAuth();
 	const navigate = useNavigate();
@@ -478,6 +405,11 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const [switcher_open, set_switcher_open] = useState(false);
 	const [menu_open, set_menu_open] = useState(false);
 	const scope = use_view_scope(data, current_realm_id);
+	// Remember the org for the next visit in this browser.
+	const scope_org_slug = scope.org?.slug ?? null;
+	useEffect(() => { if (scope_org_slug) write_last_org(scope_org_slug); }, [scope_org_slug]);
+	const needs_org = Boolean(data && data.orgs.length > 0 && !scope.org
+		&& ORG_PAGES.some((p) => (p.endsWith('/') ? location.pathname.startsWith(p) : location.pathname === p || location.pathname.startsWith(`${p}/`))));
 	const progress = use_bff_read<Getting_started_data>('/v1/getting_started/get', {}, { refresh_ms: 120_000 });
 
 	// ⌘J / Ctrl+J opens the switcher from anywhere.
@@ -497,11 +429,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const multi_org = orgs.length > 0;
 	const is_site_admin = user?.role === 'admin';
 	const { shown, total } = sidebar_realms(data, scope);
-	const org_by_id = new Map(orgs.map((o) => [o.id, o]));
-	// Badges only where realms of several orgs sit together.
-	const show_badges = multi_org && scope.kind === 'all';
-	const view_org = scope.kind === 'all' ? null : scope.org;
-	const up = step_up_href(scope, multi_org);
+	const view_org = scope.org;
 	const route_realm = params.org && params.slug ? { org: params.org, slug: params.slug } : null;
 	const gs = progress.data;
 	const gs_done = Boolean(gs && gs.done_count >= gs.total);
@@ -546,26 +474,15 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							onClick={() => set_switcher_open((v) => !v)}
 							aria-haspopup="dialog"
 							aria-expanded={switcher_open}
-							aria-label={`Switch view (current: ${scope_text(scope)})`}
-							className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-[var(--g-panel)] py-2 pl-2.5 text-left ${up ? 'pr-9' : 'pr-2.5'} ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[#34373e]'}`}
+							aria-label={`Switch organization (current: ${scope_text(scope)})`}
+							className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-[var(--g-panel)] py-2 pl-2.5 text-left pr-2.5 ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[#34373e]'}`}
 							data-testid="view-switcher"
 						>
 							<Scope_label scope={scope} />
 							<ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-[var(--g-ink-3)]" />
 						</button>
-						{up ? (
-							<Link
-								to={up}
-								aria-label={scope.kind === 'realm' && multi_org ? 'Leave realm (view its org)' : 'Back to all my work'}
-								title={scope.kind === 'realm' && multi_org ? 'Up to the org' : 'Back to all my work'}
-								className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]"
-								data-testid="view-step-up"
-							>
-								<X className="h-3.5 w-3.5" aria-hidden />
-							</Link>
-						) : null}
 						{switcher_open ? (
-							<Org_realm_switcher data={data} scope={scope} on_close={() => set_switcher_open(false)} />
+							<Org_switcher data={data} scope={scope} on_close={() => set_switcher_open(false)} />
 						) : null}
 					</div>
 
@@ -584,7 +501,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							{total ? <span className="ml-auto font-medium normal-case tracking-normal">{total}</span> : null}
 						</div>
 						{shown.map((r) => {
-							const org = org_by_id.get(r.org_id);
 							const current = scope.kind === 'realm' && scope.realm.id === r.id;
 							return (
 								<Link
@@ -594,7 +510,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 									className={`flex items-center gap-2 rounded-md px-2.5 py-1 text-[12.5px] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)] ${current ? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-3)]'}`}
 								>
 									<Realm_dot realm={r} />
-									{show_badges && org ? <Org_chip org={org} size={16} /> : null}
 									<span className="truncate" title={realm_label(r) !== r.slug ? r.slug : undefined}>{realm_label(r)}</span>
 									<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
 								</Link>
@@ -608,7 +523,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 								All {total} realms →
 							</Link>
 						) : null}
-						{orgs.filter((o) => o.status === 'error' && (scope.kind === 'all' || o.id === view_org?.id)).map((o) => (
+						{orgs.filter((o) => o.status === 'error' && o.id === view_org?.id).map((o) => (
 							<p key={o.id} className="px-2.5 py-1 text-[11.5px] text-[var(--g-bad)]">Couldn’t load {o.display_name || o.slug}</p>
 						))}
 					</div>
@@ -677,13 +592,13 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 
 				<div className="flex min-h-0 flex-col">
 					<header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--g-line)] px-7">
-						<Crumbs scope={scope} multi_org={multi_org} fallback={scope.kind === 'realm' ? null : route_realm} title={title} />
+						<Crumbs scope={scope} fallback={scope.kind === 'realm' ? null : route_realm} title={title} />
 						<div className="ml-auto flex items-center gap-2">
 							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
 							{actions}
 						</div>
 					</header>
-					<main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
+					<main className="min-h-0 flex-1 overflow-y-auto">{needs_org ? <Org_picker data={data} /> : children}</main>
 				</div>
 			</div>
 		</div>
@@ -716,7 +631,7 @@ function Account_menu({ on_close, gs_done, on_sign_out }: { on_close: () => void
 }
 
 function scope_text(scope: View_scope): string {
-	if (scope.kind === 'all') return 'All my work';
+	if (scope.kind === 'all') return 'no organization chosen';
 	if (scope.kind === 'org') return scope.org.display_name || scope.org.slug;
 	return `${scope.org?.display_name || scope.realm.org_slug} › ${realm_label(scope.realm)}`;
 }

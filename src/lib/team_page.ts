@@ -48,6 +48,8 @@ export interface Team_list_row {
 	phase_types: string[] | null;
 	/** Builder kinds (agent, gate, human, …) — preferred over phase_types when present. */
 	phase_kinds?: string[] | null;
+	/** Phase names in workflow order (older BFFs omit them). */
+	phase_names?: string[] | null;
 	installs: Team_install[];
 }
 

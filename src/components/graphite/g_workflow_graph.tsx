@@ -102,7 +102,7 @@ export function Workflow_graph({
 			{roots.map((r) => { const a = at(r.name); const sx = a.x - 34; const sy = a.y + H / 2; return (
 				<g key={`start-${r.name}`} aria-hidden>
 					<path d={`M${sx + 7} ${sy} H${a.x}`} stroke="#3a3d44" strokeWidth={1.5} strokeDasharray="3 4" />
-					<circle cx={sx} cy={sy} r={7} fill="#0d0e10" stroke="#d4ff3f" strokeWidth={2} /><circle cx={sx} cy={sy} r={2.5} fill="#d4ff3f" />
+					<circle cx={sx} cy={sy} r={7} fill="#0d0e10" stroke="var(--g-acc)" strokeWidth={2} /><circle cx={sx} cy={sy} r={2.5} fill="var(--g-acc)" />
 				</g>
 			); })}
 			{leaves.map((r) => { const a = at(r.name); const ex = a.x + W + 30; const ey = a.y + H / 2; return (

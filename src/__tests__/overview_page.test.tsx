@@ -1,6 +1,9 @@
 /**
- * Overview page + Graphite shell (multi-org, single-org, empty, partial,
- * errors, take-over and site-admin visibility, switcher behaviour).
+ * Overview page + Graphite shell. You work in one org at a time: the org
+ * comes from ?org=, the last org used in this browser (tests start in
+ * measureone, see setup.ts), the default realm's org, or your only org;
+ * with several orgs and none of those, an org picker. Also: empty, partial,
+ * errors, site-admin visibility, the org switcher, breadcrumb, footer.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
@@ -61,7 +64,7 @@ describe('Overview page', () => {
 	it('makes exactly one BFF call and no direct Core fan-out', async () => {
 		const spy = respond(multi_org_overview());
 		render_page();
-		await screen.findByText(/Good (morning|afternoon|evening), Sapan/);
+		await screen.findByRole('heading', { level: 1, name: /MeasureOne/ });
 		expect(overview_calls(spy)).toHaveLength(1);
 		const [url, init] = overview_calls(spy)[0] as [string, RequestInit];
 		expect(url).toBe('/v1/overview/get');
@@ -69,70 +72,72 @@ describe('Overview page', () => {
 		expect(JSON.parse(String(init.body))).toEqual({});
 	});
 
-	it('all-orgs view: counts, org badges on items, and a Realms panel with the org as subtext', async () => {
+	it('opens in the remembered org: its counts, items and realms only', async () => {
 		respond(multi_org_overview());
 		render_page();
-		expect(await screen.findByText(/Across/)).toHaveTextContent('Across 2 orgs and 3 realms you can access.');
-		expect(screen.queryByRole('group', { name: 'Filter by org' })).toBeNull();
-		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('6');
-		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('5 reviews · 1 input');
-		expect(screen.getAllByTitle('measureone › prod-us').length).toBeGreaterThan(0);
-		expect(screen.queryByRole('region', { name: 'By organization' })).toBeNull();
+		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('MeasureOne');
+		expect(screen.getByText(/you’re an owner/)).toBeInTheDocument();
+		expect(screen.queryByText(/All my work/)).toBeNull();
+		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('5');
+		expect(screen.getByText('Approve architecture · PROJ-482')).toBeInTheDocument();
+		expect(screen.queryByText('Review docs page')).toBeNull();
 		const panel = screen.getByRole('region', { name: 'Realms' });
-		// Realms, each with its org as subtext; links open the realm (no view switch).
 		expect(within(panel).getByTestId('realm-measureone-prod-us')).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
-		expect(within(panel).getByTestId('realm-measureone-prod-us')).toHaveTextContent('MeasureOne');
-		expect(within(panel).getByTestId('realm-acme-labs-sandbox')).toHaveTextContent('Acme Labs');
-		expect(within(panel).getByTestId('realm-measureone-prod-us')).toHaveTextContent('4 need you');
-		expect(within(panel).getByRole('link', { name: 'All 3 realms →' })).toHaveAttribute('href', '/realms');
+		expect(within(panel).queryByTestId('realm-acme-labs-sandbox')).toBeNull();
 	});
 
-	it('org view comes from ?org= and re-scopes everything — without another request', async () => {
+	it('?org= wins over the remembered org, re-scopes everything without another request, and is remembered', async () => {
 		const spy = respond(multi_org_overview());
 		render_page('/home?org=acme-labs');
 		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Acme Labs');
 		expect(screen.getByText(/you’re a member/)).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: '← All my work' })).toHaveAttribute('href', '/home');
 		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('1');
 		expect(screen.queryByText('Approve architecture · PROJ-482')).toBeNull();
 		expect(screen.getByText('Review docs page')).toBeInTheDocument();
 		expect(screen.getByRole('region', { name: 'Realms' })).toHaveTextContent('sandbox');
 		expect(screen.getByRole('region', { name: 'Realms' })).not.toHaveTextContent('prod-us');
-		expect(screen.queryByText('PROJ-491 · Webhook signing')).toBeNull();
 		expect(screen.getByText('Nothing is running right now.')).toBeInTheDocument();
 		expect(overview_calls(spy)).toHaveLength(1);
+		await waitFor(() => expect(window.localStorage.getItem('cliqhub.last_org')).toBe('acme-labs'));
 	});
 
-	it('an unknown ?org= falls back to all orgs (never leaks or blanks)', async () => {
+	it('an unknown ?org= falls back to the remembered org (never leaks or blanks)', async () => {
 		respond(multi_org_overview());
 		render_page('/home?org=not-mine');
-		expect(await screen.findByText(/Across/)).toHaveTextContent('Across 2 orgs and 3 realms');
-		expect(screen.getByTestId('view-switcher')).toHaveTextContent('All my work');
+		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('MeasureOne');
+		expect(screen.getByTestId('view-switcher')).toHaveTextContent('MeasureOne');
 	});
 
-	it('single org looks the same as many: org count, Realms panel with org subtext, org badges', async () => {
+	it('several orgs and none remembered: pick one first; the pick is remembered', async () => {
+		window.localStorage.clear();
+		respond(multi_org_overview());
+		render_page();
+		const picker = await screen.findByTestId('org-picker');
+		expect(within(picker).getByRole('heading', { name: 'Choose an organization' })).toBeInTheDocument();
+		expect(screen.getByTestId('view-switcher')).toHaveTextContent('Choose one');
+		// No realms in the sidebar until an org is chosen.
+		expect(within(screen.getByTestId('sidebar-realms')).queryAllByRole('link')).toHaveLength(0);
+		fireEvent.click(within(picker).getByTestId('pick-org-acme-labs'));
+		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=acme-labs');
+		expect(window.localStorage.getItem('cliqhub.last_org')).toBe('acme-labs');
+	});
+
+	it('a single-org user is always in their org (no picker)', async () => {
+		window.localStorage.clear();
 		respond(single_org_overview());
 		render_page();
-		expect(await screen.findByText(/Across/)).toHaveTextContent('Across 1 org and 2 realms you can access.');
-		const panel = screen.getByRole('region', { name: 'Realms' });
-		expect(within(panel).getByTestId('realm-measureone-staging')).toHaveTextContent('MeasureOne');
-		expect(screen.getByTestId('view-switcher')).toHaveTextContent('All my work');
-		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link')[0].textContent).toMatch(/^ME/);
+		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('MeasureOne');
+		expect(screen.queryByTestId('org-picker')).toBeNull();
 	});
 
-	it('realms are labelled by name (slug as secondary) in the sidebar and the switcher', async () => {
+	it('realms are labelled by name (slug as secondary) in the sidebar', async () => {
 		const data = multi_org_overview();
 		data.orgs[0].realms[1] = { ...data.orgs[0].realms[1], slug: 'measureone', name: 'measureone-sdlc' };
 		respond(data);
 		render_page();
 		const side = await screen.findByTestId('sidebar-realms');
-		const link = within(side).getByRole('link', { name: /measureone-sdlc/ });
+		const link = await within(side).findByRole('link', { name: /measureone-sdlc/ });
 		expect(link.getAttribute('href')).toBe('/o/measureone/realms/measureone/inbox');
-		fireEvent.click(screen.getByTestId('view-switcher'));
-		fireEvent.change(screen.getByPlaceholderText('Find an org or realm…'), { target: { value: 'sdlc' } });
-		const opt = await screen.findByRole('option', { name: /measureone-sdlc/ });
-		expect(opt).toHaveTextContent('measureone-sdlc');
-		expect(opt).toHaveTextContent('measureone');
 	});
 
 	it('single org, org view: realms panel sorted waiting-on-you first', async () => {
@@ -147,14 +152,13 @@ describe('Overview page', () => {
 	it('needs-you tabs filter by kind and link to the right place', async () => {
 		respond(multi_org_overview());
 		render_page();
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1, name: /MeasureOne/ });
 		fireEvent.click(screen.getByRole('tab', { name: /Input 1/ }));
 		expect(screen.getByRole('tab', { name: /Input 1/ })).toHaveAttribute('aria-selected', 'true');
 		expect(screen.queryByText('Approve architecture · PROJ-482')).toBeNull();
 		expect(screen.getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
-		fireEvent.click(screen.getByRole('tab', { name: /Reviews 2/ }));
-		const review_links = screen.getAllByRole('link', { name: 'Review' });
-		expect(review_links[0]).toHaveAttribute('href', '/reviews/rev-1');
+		fireEvent.click(screen.getByRole('tab', { name: /Reviews 1/ }));
+		expect(screen.getAllByRole('link', { name: 'Review' })[0]).toHaveAttribute('href', '/reviews/rev-1');
 	});
 
 	it('shows the caught-up empty state', async () => {
@@ -170,14 +174,13 @@ describe('Overview page', () => {
 		expect(screen.getByRole('link', { name: 'Create a realm' })).toHaveAttribute('href', '/realms');
 	});
 
-	it('partial data: warns, and shows the failed org with its error', async () => {
+	it('partial data: the org that failed to load says so', async () => {
 		const d = multi_org_overview();
 		d.orgs[1] = { ...d.orgs[1], status: 'error', error: 'No access to org', realms: [] };
 		d.partial = true;
 		respond(d);
-		render_page();
-		expect(await screen.findByText(/Some data couldn’t be loaded/)).toBeInTheDocument();
-		expect(screen.getByTestId('org-error-acme-labs')).toHaveTextContent('No access to org');
+		render_page('/home?org=acme-labs');
+		expect(await screen.findByTestId('org-error-acme-labs')).toHaveTextContent('No access to org');
 		expect(within(screen.getByTestId('sidebar-realms')).getByText('Couldn’t load Acme Labs')).toBeInTheDocument();
 	});
 
@@ -189,7 +192,7 @@ describe('Overview page', () => {
 		render_page();
 		expect(await screen.findByRole('alert')).toHaveTextContent('Core unreachable');
 		fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-		expect(await screen.findByText(/Across/)).toBeInTheDocument();
+		expect(await screen.findByRole('heading', { level: 1, name: /MeasureOne/ })).toBeInTheDocument();
 		expect(overview_calls(spy)).toHaveLength(2);
 	});
 
@@ -202,13 +205,13 @@ describe('Overview page', () => {
 	it('Admin entry only for site admins, and it opens admin mode', async () => {
 		respond(single_org_overview());
 		const { unmount } = render_page('/home?x=1');
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		expect(screen.queryByRole('button', { name: /Admin/ })).toBeNull();
 		unmount();
 		auth.user.role = 'admin';
 		respond(single_org_overview());
 		render_page('/home?x=1');
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		expect(screen.getByText(/site admin/)).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: /Admin.*SITE/ }));
 		expect(await screen.findByTestId('where')).toHaveTextContent(/^\/admin$/);
@@ -218,30 +221,17 @@ describe('Overview page', () => {
 describe('Sidebar realms', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('is always titled "Realms"; in the all view each row carries its org badge and links to the realm inbox', async () => {
+	it('titled "Realms": the org’s realms only, no org badges, linking to the realm inbox', async () => {
 		respond(multi_org_overview());
 		render_page();
-		await screen.findByText(/Across/);
-		const side = screen.getByTestId('sidebar-realms');
-		expect(within(side).getByText('Realms')).toBeInTheDocument();
-		expect(within(side).queryByText('Organizations')).toBeNull();
-		const links = within(side).getAllByRole('link');
-		expect(links.map((a) => a.getAttribute('href'))).toEqual([
-			// needs_you 4, then two ties at 1 broken by activity, then name.
-			'/o/measureone/realms/prod-us/inbox', '/o/acme-labs/realms/sandbox/inbox', '/o/measureone/realms/staging/inbox',
-		]);
-		// Org initials badge on every row (MeasureOne → ME, Acme Labs → AL).
-		expect(links.map((a) => a.textContent)).toEqual([expect.stringMatching(/^ME.*prod-us/), expect.stringMatching(/^AL.*sandbox/), expect.stringMatching(/^ME.*staging/)]);
-		expect(within(side).getByLabelText('4 waiting on you')).toBeInTheDocument();
-	});
-
-	it('in an org view it lists only that org’s realms, without badges', async () => {
-		respond(multi_org_overview());
-		render_page('/home?org=measureone');
 		await screen.findByRole('heading', { level: 1 });
 		const side = screen.getByTestId('sidebar-realms');
-		expect(within(side).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
-		// Nav links carry the view.
+		expect(within(side).getByText('Realms')).toBeInTheDocument();
+		const links = within(side).getAllByRole('link');
+		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/o/measureone/realms/prod-us/inbox', '/o/measureone/realms/staging/inbox']);
+		expect(links.map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
+		expect(within(side).getByLabelText('4 waiting on you')).toBeInTheDocument();
+		// Nav links carry the org.
 		expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/home?org=measureone');
 	});
 
@@ -252,7 +242,7 @@ describe('Sidebar realms', () => {
 		d.totals = { ...d.totals, realms: 14 };
 		respond(d);
 		render_page();
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		const side = screen.getByTestId('sidebar-realms');
 		const links = within(side).getAllByRole('link');
 		expect(links).toHaveLength(11);
@@ -264,7 +254,7 @@ describe('Sidebar realms', () => {
 	});
 });
 
-describe('View switcher', () => {
+describe('Org switcher', () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	async function open(path = '/home') {
@@ -272,127 +262,77 @@ describe('View switcher', () => {
 		render_page(path);
 		await screen.findByRole('heading', { level: 1 });
 		fireEvent.click(screen.getByTestId('view-switcher'));
-		return screen.getByRole('dialog', { name: 'Switch view' });
+		return screen.getByRole('dialog', { name: 'Switch organization' });
 	}
 
-	it('lists views (all + each org with role, realm count, waiting) then realms grouped by org', async () => {
+	it('lists organizations only (role, realm count, waiting), the current one marked', async () => {
 		const dlg = await open();
-		const views = within(dlg).getByTestId('switcher-views');
-		expect(within(views).getByRole('option', { name: /All my work/ })).toHaveAttribute('aria-current', 'true');
-		expect(within(views).getByRole('option', { name: /MeasureOne.*owner · 2 realms/ })).toBeInTheDocument();
-		expect(within(views).getByRole('option', { name: /Acme Labs.*member · 1 realm/ })).toBeInTheDocument();
-		expect(within(within(dlg).getByTestId('switcher-group-measureone')).getAllByRole('option').map((o) => o.textContent)).toEqual([
-			expect.stringContaining('prod-us'), expect.stringContaining('staging'),
-		]);
+		const options = within(dlg).getAllByRole('option');
+		expect(options.map((o) => o.textContent)).toEqual([expect.stringMatching(/MeasureOne.*owner · 2 realms/), expect.stringMatching(/Acme Labs.*member · 1 realm/)]);
+		expect(within(dlg).getByRole('option', { name: /MeasureOne/ })).toHaveAttribute('aria-current', 'true');
+		expect(within(dlg).queryByText(/All my work/)).toBeNull();
+		expect(within(dlg).queryByRole('option', { name: /prod-us/ })).toBeNull();
 	});
 
-	it('picking an org sets the view for the whole app', async () => {
+	it('picking an org switches the whole app and remembers it', async () => {
 		const dlg = await open();
 		fireEvent.click(within(dlg).getByRole('option', { name: /Acme Labs/ }));
 		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=acme-labs');
 		expect(screen.getByTestId('view-switcher')).toHaveTextContent('Acme Labs');
-		expect(screen.getByTestId('view-switcher')).toHaveTextContent('Viewing org · member');
+		expect(screen.getByTestId('view-switcher')).toHaveTextContent('Organization · member');
+		expect(window.localStorage.getItem('cliqhub.last_org')).toBe('acme-labs');
 	});
 
-	it('picking a realm opens that realm’s inbox', async () => {
+	it('search narrows the orgs and Enter switches to the first hit', async () => {
 		const dlg = await open();
-		fireEvent.click(within(dlg).getByRole('option', { name: /sandbox/ }));
-		expect(await screen.findByTestId('where')).toHaveTextContent('/o/acme-labs/realms/sandbox/inbox');
-	});
-
-	it('⌘-click (or ⌘Enter) on a realm views its org instead', async () => {
-		const dlg = await open();
-		fireEvent.click(within(dlg).getByRole('option', { name: /sandbox/ }), { metaKey: true });
-		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=acme-labs');
-	});
-
-	it('search matches realms and orgs, shows match counts, highlights, and keyboard-opens the first hit', async () => {
-		const dlg = await open();
-		fireEvent.change(within(dlg).getByPlaceholderText('Find an org or realm…'), { target: { value: 'stag' } });
-		expect(within(dlg).queryByTestId('switcher-views')).toBeNull();
-		expect(within(dlg).getByTestId('switcher-group-measureone')).toHaveTextContent('1 of 2 match');
-		expect(within(dlg).queryByTestId('switcher-group-acme-labs')).toBeNull();
+		fireEvent.change(within(dlg).getByPlaceholderText('Switch organization…'), { target: { value: 'acme' } });
+		expect(within(dlg).getAllByRole('option')).toHaveLength(1);
 		fireEvent.keyDown(dlg, { key: 'Enter' });
-		expect(await screen.findByTestId('where')).toHaveTextContent('/o/measureone/realms/staging/inbox');
+		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=acme-labs');
 	});
 
 	it('arrow keys move the selection', async () => {
 		const dlg = await open();
 		fireEvent.keyDown(dlg, { key: 'ArrowDown' });
-		expect(within(dlg).getByRole('option', { name: /MeasureOne/ })).toHaveAttribute('aria-selected', 'true');
+		expect(within(dlg).getByRole('option', { name: /Acme Labs/ })).toHaveAttribute('aria-selected', 'true');
 		fireEvent.keyDown(dlg, { key: 'Enter' });
-		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=measureone');
+		expect(await screen.findByTestId('where')).toHaveTextContent('/home?org=acme-labs');
 	});
 
 	it('shows a no-match message', async () => {
 		const dlg = await open();
-		fireEvent.change(within(dlg).getByPlaceholderText('Find an org or realm…'), { target: { value: 'zzz' } });
-		expect(within(dlg).getByText(/Nothing matches/)).toBeInTheDocument();
+		fireEvent.change(within(dlg).getByPlaceholderText('Switch organization…'), { target: { value: 'zzz' } });
+		expect(within(dlg).getByText(/No organization matches/)).toBeInTheDocument();
 	});
 
 	it('closes on Escape and toggles with ⌘J', async () => {
 		const dlg = await open();
 		fireEvent.keyDown(dlg, { key: 'Escape' });
-		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switch view' })).toBeNull());
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Switch organization' })).toBeNull());
 		fireEvent.keyDown(document, { key: 'j', metaKey: true });
-		expect(screen.getByRole('dialog', { name: 'Switch view' })).toBeInTheDocument();
-	});
-
-	it('single-org users get the same switcher: views (all + their org) and realms under an org header', async () => {
-		respond(single_org_overview());
-		render_page();
-		await screen.findByText(/Across/);
-		fireEvent.click(screen.getByTestId('view-switcher'));
-		const dlg = screen.getByRole('dialog', { name: 'Switch view' });
-		const views = within(dlg).getByTestId('switcher-views');
-		expect(within(views).getByText('Views')).toBeInTheDocument();
-		expect(within(views).getAllByRole('option').map((o) => o.textContent)).toEqual([expect.stringContaining('All my work'), expect.stringContaining('MeasureOne')]);
-		expect(within(views).getByRole('option', { name: /All my work/ })).toHaveAttribute('aria-current', 'true');
-		expect(within(dlg).getByPlaceholderText('Find an org or realm…')).toBeInTheDocument();
-		const group = within(dlg).getByTestId('switcher-group-measureone');
-		expect(group).toHaveTextContent('MeasureOne');
-		expect(within(group).getByRole('option', { name: /prod-us/ })).toBeInTheDocument();
+		expect(screen.getByRole('dialog', { name: 'Switch organization' })).toBeInTheDocument();
 		void ORG_B;
 	});
 });
 
-describe('Way back, breadcrumb, footer', () => {
+describe('Breadcrumb, footer', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('all view: no step-up; breadcrumb is All my work › Overview', async () => {
+	it('the breadcrumb starts at the org; there is no step-up to “all”', async () => {
 		respond(multi_org_overview());
-		render_page();
-		await screen.findByText(/Across/);
+		render_page('/home?org=acme-labs');
+		await screen.findByRole('heading', { level: 1 });
 		expect(screen.queryByTestId('view-step-up')).toBeNull();
 		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-		expect(within(crumb).getByRole('link', { name: /All my work/ })).toHaveAttribute('href', '/home');
-		expect(within(crumb).getByText('Overview')).toHaveAttribute('aria-current', 'page');
-	});
-
-	it('org view: × steps up to all, breadcrumb links the org', async () => {
-		respond(multi_org_overview());
-		render_page('/home?org=acme-labs');
-		await screen.findByRole('heading', { level: 1 });
-		expect(screen.getByTestId('view-step-up')).toHaveAttribute('href', '/home');
-		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
+		expect(within(crumb).queryByRole('link', { name: /All my work/ })).toBeNull();
 		expect(within(crumb).getByRole('link', { name: /Acme Labs/ })).toHaveAttribute('href', '/home?org=acme-labs');
-		fireEvent.click(screen.getByTestId('view-step-up'));
-		expect(await screen.findByTestId('where')).toHaveTextContent(/^\/home$/);
-	});
-
-	it('the switcher always lets you get back to everything', async () => {
-		respond(multi_org_overview());
-		render_page('/home?org=acme-labs');
-		await screen.findByRole('heading', { level: 1 });
-		fireEvent.click(screen.getByTestId('view-switcher'));
-		fireEvent.click(within(screen.getByRole('dialog', { name: 'Switch view' })).getByRole('option', { name: /All my work/ }));
-		expect(await screen.findByTestId('where')).toHaveTextContent(/^\/home$/);
+		expect(within(crumb).getByText('Overview')).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('footer shows Getting started progress, Docs, and an account menu with settings and sign out', async () => {
 		respond(single_org_overview());
 		render_page();
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		const foot = screen.getByTestId('sidebar-footer');
 		expect(await within(foot).findByLabelText('2 of 4 done')).toHaveTextContent('2 / 4');
 		expect(within(foot).getByRole('link', { name: /Getting started/ })).toHaveAttribute('href', '/getting-started');
@@ -410,7 +350,7 @@ describe('Colour by kind (overview)', () => {
 	it('input rows are amber like everywhere else, reviews pink', async () => {
 		respond(multi_org_overview());
 		render_page();
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		const kinds = Array.from(document.querySelectorAll('[data-kind]')) as HTMLElement[];
 		expect(kinds.find((k) => k.dataset.kind === 'input')!.style.color).toBe('var(--g-warn-text)');
 		expect(kinds.find((k) => k.dataset.kind === 'review')!.style.color).toBe('var(--g-hug)');
@@ -422,10 +362,10 @@ describe('Stat strips', () => {
 	it('every tile has a colour strip, daemons reflect health', async () => {
 		respond(multi_org_overview());
 		render_page();
-		await screen.findByText(/Across/);
+		await screen.findByRole('heading', { level: 1 });
 		expect(screen.getByTestId('stat-Waiting on you')).toHaveAttribute('data-tone', 'attention');
 		expect(screen.getByTestId('stat-Running now')).toHaveAttribute('data-tone', 'run');
 		expect(screen.getByTestId('stat-Failed · 24h')).toHaveAttribute('data-tone', 'failed');
-		expect(screen.getByTestId('stat-Daemons')).toHaveAttribute('data-tone', 'warn'); // 6/7 online
+		expect(screen.getByTestId('stat-Daemons')).toHaveAttribute('data-tone', 'warn'); // 5/6 online
 	});
 });

@@ -99,22 +99,23 @@ describe('Notifications page', () => {
 		const { calls } = route_fetch();
 		render_page();
 		await screen.findByTestId('rule-rl-org');
-		expect(calls).toEqual([{ url: '/v1/notification_center/get', body: { realm_limit: 10, realm_offset: 0 } }]);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toMatchObject({ url: '/v1/notification_center/get', body: { realm_limit: 10, realm_offset: 0 } });
 	});
 
-	it('lists every rule in the All view, shows the replaces chip, and filters by level and search', async () => {
+	it('lists the org’s rules (not other orgs’), shows the replaces chip, and filters by level and search', async () => {
 		route_fetch();
 		render_page();
 		await screen.findByTestId('rule-rl-org');
-		expect(rule_ids()).toEqual(['rule-rl-org', 'rule-rl-realm', 'rule-rl-acme']);
+		expect(rule_ids()).toEqual(['rule-rl-org', 'rule-rl-realm']);
 		expect(within(screen.getByTestId('rule-rl-realm')).getByTestId('replaces')).toHaveTextContent('replaces the org rule');
 		expect(within(screen.getByTestId('rule-rl-realm')).getByText('disabled')).toBeInTheDocument();
 
 		fireEvent.click(screen.getByRole('button', { name: 'Realm' }));
 		expect(rule_ids()).toEqual(['rule-rl-realm']);
 		fireEvent.click(screen.getByRole('button', { name: 'All levels' }));
-		fireEvent.change(screen.getByLabelText('Search rules'), { target: { value: 'review' } });
-		expect(rule_ids()).toEqual(['rule-rl-acme']);
+		fireEvent.change(screen.getByLabelText('Search rules'), { target: { value: 'oncall' } });
+		expect(rule_ids()).toEqual(['rule-rl-org']);
 	});
 
 	it('follows the view switcher (?org=)', async () => {
@@ -151,7 +152,7 @@ describe('Notifications page', () => {
 		fireEvent.click(screen.getByRole('button', { name: /Delete rule Any run event/ }));
 		fireEvent.click(within(screen.getByTestId('rule-rl-org')).getByRole('button', { name: 'Delete' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('Admins only');
-		expect(rule_ids()).toHaveLength(3);
+		expect(rule_ids()).toHaveLength(2);
 	});
 
 	it('new org-wide rule posts to orgs/set_notification_rules', async () => {
@@ -344,16 +345,21 @@ describe('Notifications — edit only where you can', () => {
 		return d;
 	}
 
-	it('rules you can’t change are view only; filter shows only yours', async () => {
+	it('rules you can’t change are view only', async () => {
+		window.localStorage.setItem('cliqhub.last_org', 'acme-labs');
 		route_fetch({ center: limited });
 		render_page();
 		await screen.findByTestId('rule-rl-acme');
 		expect(within(screen.getByTestId('rule-rl-acme')).getByTestId('view-only')).toBeInTheDocument();
 		expect(within(screen.getByTestId('rule-rl-acme')).queryByRole('button', { name: /Delete rule/ })).toBeNull();
+		expect(screen.queryByTestId('rule-rl-org')).toBeNull();
+	});
+
+	it('in an org you can change, rules have delete', async () => {
+		route_fetch({ center: limited });
+		render_page();
+		await screen.findByTestId('rule-rl-org');
 		expect(within(screen.getByTestId('rule-rl-org')).getByRole('button', { name: /Delete rule/ })).toBeInTheDocument();
-		expect(screen.getByTestId('view-only-note')).toHaveTextContent('View only in Acme Labs (member)');
-		fireEvent.click(screen.getByRole('button', { name: 'Only ones I can edit' }));
-		expect(rule_ids()).toEqual(['rule-rl-org', 'rule-rl-realm']);
 	});
 
 	it('new rule: orgs you can’t change are listed but locked', async () => {
@@ -367,6 +373,7 @@ describe('Notifications — edit only where you can', () => {
 	});
 
 	it('channel details are view only where you can’t change them', async () => {
+		window.localStorage.setItem('cliqhub.last_org', 'acme-labs');
 		route_fetch({ center: limited });
 		render_page('/notifications?tab=channels');
 		await screen.findByTestId('channel-ch-acme');

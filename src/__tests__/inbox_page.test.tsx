@@ -63,8 +63,8 @@ describe('Inbox · Needs me', () => {
 		render_page();
 		await screen.findByTestId('inbox-item-review-rev-1');
 		const ids = screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid);
-		// run-88 (38m), rev-2 (60m), rev-1 (12m) → oldest waiting first.
-		expect(ids).toEqual(['inbox-item-review-rev-2', 'inbox-item-input-run-88', 'inbox-item-review-rev-1']);
+		// This org only (rev-2 is Acme's): run-88 (38m), rev-1 (12m) → oldest waiting first.
+		expect(ids).toEqual(['inbox-item-input-run-88', 'inbox-item-review-rev-1']);
 		expect(calls.filter((c) => c.url === '/v1/inbox/get')).toHaveLength(0);
 		expect(within(screen.getByTestId('inbox-item-review-rev-1')).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-1');
 		expect(within(screen.getByTestId('inbox-item-input-run-88')).getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
@@ -86,9 +86,9 @@ describe('Inbox · Needs me', () => {
 		expect(within(nav).getByText('Work')).toBeInTheDocument();
 		expect(within(nav).getByText('Build')).toBeInTheDocument();
 		expect(within(nav).getByText('Manage')).toBeInTheDocument();
-		expect(within(nav).getByRole('link', { name: /^Teams/ })).toHaveAttribute('href', '/teams');
+		expect(within(nav).getByRole('link', { name: /^Teams/ })).toHaveAttribute('href', '/teams?org=measureone');
 		expect(within(nav).queryByText('Library')).toBeNull();
-		expect(within(nav).getByRole('link', { name: /^Notifications/ })).toHaveAttribute('href', '/notifications');
+		expect(within(nav).getByRole('link', { name: /^Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone');
 		expect(within(nav).queryByText('Reviews & activity')).toBeNull();
 	});
 });
@@ -120,7 +120,7 @@ describe('Inbox · All notifications', () => {
 		await screen.findByTestId('inbox-item-a');
 		fireEvent.click(screen.getByRole('button', { name: 'Show older' }));
 		await screen.findByTestId('inbox-item-old');
-		expect(calls.filter((c) => c.url === '/v1/inbox/get').at(-1)!.body).toEqual({ limit: 50, until_ms: 12345 });
+		expect(calls.filter((c) => c.url === '/v1/inbox/get').at(-1)!.body).toMatchObject({ limit: 50, until_ms: 12345 });
 		expect(screen.queryByRole('button', { name: 'Show older' })).toBeNull();
 	});
 
@@ -142,7 +142,7 @@ describe('Bell', () => {
 		const pop = screen.getByRole('dialog', { name: 'Latest notifications' });
 		expect(within(pop).getByText('Title n1')).toBeInTheDocument();
 		expect(within(pop).getByRole('link', { name: 'Fix channel' })).toHaveAttribute('href', '/notifications?tab=channels&channel=ch-1&org=measureone');
-		expect(within(pop).getByRole('link', { name: 'Open inbox →' })).toHaveAttribute('href', '/inbox?tab=all');
+		expect(within(pop).getByRole('link', { name: 'Open inbox →' })).toHaveAttribute('href', '/inbox?tab=all&org=measureone');
 	});
 });
 

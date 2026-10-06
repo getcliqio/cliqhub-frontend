@@ -134,7 +134,9 @@ describe('Build › Teams list', () => {
 		const calls = route_fetch();
 		render_at('/teams');
 		const row = await screen.findByTestId('team-measureone/feature-dev-js');
-		expect(calls.filter((c) => c.url === '/v1/team_list/get')).toEqual([{ url: '/v1/team_list/get', body: { status: 'all', limit: 25, offset: 0 } }]);
+		const reads = calls.filter((c) => c.url === '/v1/team_list/get');
+		expect(reads).toHaveLength(1);
+		expect(reads[0]!.body).toMatchObject({ status: 'all', limit: 25, offset: 0, scope: 'measureone' });
 		expect(within(row).getByText('Published')).toBeInTheDocument();
 		expect(within(row).getByLabelText(/3 phases/)).toBeInTheDocument();
 		expect(within(row).getByText('staging · on 1.3.0')).toBeInTheDocument();
@@ -153,13 +155,15 @@ describe('Build › Teams list', () => {
 		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ q: 'kyc', status: 'draft' }));
 	});
 
-	it('install into one realm is one Core write', async () => {
+	it('install into one realm of the current org is one Core write', async () => {
+		window.localStorage.setItem('cliqhub.last_org', 'acme-labs');
 		const calls = route_fetch();
 		render_at('/teams');
 		const row = await screen.findByTestId('team-measureone/feature-dev-js');
 		fireEvent.click(within(row).getByRole('button', { name: 'Install ▾' }));
 		const dlg = screen.getByRole('dialog', { name: 'Install @measureone/feature-dev-js' });
-		expect(within(dlg).getByRole('radio', { name: /prod-us/ })).toBeDisabled();
+		// Only this org's realms are offered.
+		expect(within(dlg).queryByRole('radio', { name: /prod-us/ })).toBeNull();
 		fireEvent.click(within(dlg).getByRole('radio', { name: /sandbox/ }));
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ realm_id: 'r-sand', scope: 'measureone', slug: 'feature-dev-js' }));
@@ -174,7 +178,9 @@ describe('Team page', () => {
 		const calls = route_fetch();
 		render_at('/teams/measureone/feature-dev-js');
 		await screen.findByRole('group', { name: 'Team workflow' });
-		expect(calls.filter((c) => c.url === '/v1/team_page/get')).toEqual([{ url: '/v1/team_page/get', body: { scope: 'measureone', name: 'feature-dev-js', view: 'overview' } }]);
+		const reads = calls.filter((c) => c.url === '/v1/team_page/get');
+		expect(reads).toHaveLength(1);
+		expect(reads[0]!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev-js', view: 'overview' });
 		const nav = screen.getByRole('navigation', { name: 'Team' });
 		expect(within(nav).getByRole('button', { name: /Workflow\s*7/ })).toBeInTheDocument();
 		expect(within(nav).getByRole('button', { name: /Runs\s*142/ })).toBeInTheDocument();
@@ -238,7 +244,7 @@ describe('Team page', () => {
 		const calls = route_fetch();
 		render_at('/teams/measureone/feature-dev-js?tab=runs');
 		const row = await screen.findByTestId('run-run-1843');
-		expect(calls.at(-1)!.body).toEqual({ scope: 'measureone', name: 'feature-dev-js', view: 'runs', limit: 25, offset: 0 });
+		expect(calls.at(-1)!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev-js', view: 'runs', limit: 25, offset: 0 });
 		expect(within(row).getByRole('link', { name: 'PROJ-491' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1843');
 		fireEvent.click(screen.getByRole('button', { name: /Failed · 7d\s*3/ }));
 		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ view: 'runs', state: 'failed' }));

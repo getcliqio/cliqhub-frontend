@@ -187,12 +187,23 @@ export function initials(name: string): string {
 	return s.toUpperCase();
 }
 
-/** Stable avatar hue per name. */
+/**
+ * Avatar colours: calm tones, no yellow / orange / red so an avatar never
+ * reads as a warning or an error. Used as an outline, never a fill.
+ */
+export const AVATAR_PALETTE = ['#7d7aff', '#cf7fe6', '#4fc8d9', '#a77bc9', '#8fb36a', '#c98fb4', '#6fb7cf', '#b8a9ff'] as const;
+
+/** Stable avatar colour per name. */
 export function avatar_color(name: string): string {
-	const palette = ['#3ecf8e', '#b06cff', '#ff6b8a', '#2dd4bf', '#ffb224', '#5b9dff', '#a3c43b', '#ff8a4c'];
 	let h = 0;
 	for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-	return palette[h % palette.length];
+	return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+/** Outline avatar style for a name (users, orgs, teams, realms): coloured ring and initials, no fill. */
+export function avatar_outline(name: string, size: number): { color: string; border: string; background: string } {
+	const color = avatar_color(name);
+	return { color, border: `${size >= 24 ? 1.5 : 1}px solid ${color}`, background: 'transparent' };
 }
 
 export function ago(iso_or_ms: string | number | null, now: number = Date.now()): string {

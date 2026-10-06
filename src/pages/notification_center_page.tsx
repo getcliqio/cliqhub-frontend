@@ -389,7 +389,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 							disabled={k === 'org' && !can_edit_org(data, org_id)}
 							title={k === 'org' && !can_edit_org(data, org_id) ? 'Needs org owner' : undefined}
 							onClick={() => { set_kind(k); set_channel_id(''); }}
-							className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold ${kind === k ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[var(--g-line)] hover:border-[#3a3d44]'} disabled:cursor-not-allowed disabled:opacity-40`}
+							className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold ${kind === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)] hover:border-[#3a3d44]'} disabled:cursor-not-allowed disabled:opacity-40`}
 						>
 							{l}
 						</button>
@@ -651,7 +651,7 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 				<span className={LABEL}>Owned by</span>
 				<div role="radiogroup" aria-label="Owned by" className="grid grid-cols-2 gap-2">
 					{([['org', 'The whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
-						<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org_channels(data, org_id)} title={k === 'org' && !can_edit_org_channels(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[var(--g-line)]'}`}>{l}</button>
+						<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org_channels(data, org_id)} title={k === 'org' && !can_edit_org_channels(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)]'}`}>{l}</button>
 					))}
 				</div>
 				<div className="mt-2 grid gap-2">

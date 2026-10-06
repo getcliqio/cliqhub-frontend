@@ -268,17 +268,17 @@ export function Gb_canvas({
 					{/* inputs → roots */}
 					{main.filter((p) => !p.depends_on.some((d) => L.pos.has(d))).map((p) => { const b = at(p.name); return <path key={`in-${p.name}`} d={`M${content_w / 2} 84 C${content_w / 2} 100, ${b.x + W / 2} ${b.y - 26}, ${b.x + W / 2} ${b.y - 3}`} stroke="#3a3d44" strokeWidth={1.4} strokeDasharray="3 4" fill="none" />; })}
 					<g style={{ pointerEvents: 'auto' }}>{paths}</g>
-					{wire ? (() => { const a = at(wire.from); const x1 = a.x + W / 2; const y1 = a.y + H; return <path d={`M${x1} ${y1} C${x1} ${y1 + 60}, ${wire.x} ${wire.y - 60}, ${wire.x} ${wire.y}`} stroke="#d4ff3f" strokeWidth={2} strokeDasharray="6 5" fill="none" data-testid="wire" />; })() : null}
+					{wire ? (() => { const a = at(wire.from); const x1 = a.x + W / 2; const y1 = a.y + H; return <path d={`M${x1} ${y1} C${x1} ${y1 + 60}, ${wire.x} ${wire.y - 60}, ${wire.x} ${wire.y}`} stroke="var(--g-acc)" strokeWidth={2} strokeDasharray="6 5" fill="none" data-testid="wire" />; })() : null}
 				</svg>
 
 				{/* run inputs */}
-				<button type="button" onClick={(e) => { e.stopPropagation(); on_inputs(); }} data-testid="inputs-node" className="absolute rounded-[14px] border-[1.5px] border-[rgba(212,255,63,.5)] bg-[linear-gradient(180deg,#171a10,#121316)] px-3 py-2 text-left shadow-[0_0_0_4px_rgba(212,255,63,.07)]" style={{ left: content_w / 2 - 160, top: 22, width: 320 }}>
+				<button type="button" onClick={(e) => { e.stopPropagation(); on_inputs(); }} data-testid="inputs-node" className="absolute rounded-[14px] border-[1.5px] border-[var(--g-acc-line)] bg-[#141518] px-3 py-2 text-left shadow-[0_0_0_4px_var(--g-acc-soft)]" style={{ left: content_w / 2 - 160, top: 22, width: 320 }}>
 					<span className="flex items-center gap-2 text-[12.5px] font-semibold"><span aria-hidden className="grid h-[18px] w-[18px] place-items-center rounded-full border-2 border-[var(--g-acc)]"><i className="block h-1.5 w-1.5 rounded-full bg-[var(--g-acc)]" /></span>Run inputs<span className="ml-auto text-[11px] font-normal text-[var(--g-ink-3)]">click to edit</span></span>
 					<span className="mt-1.5 flex flex-wrap gap-1">{inputs.length ? inputs.map((i) => <span key={i.name} className="g-mono rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] px-1.5 text-[11px]">{i.name}</span>) : <span className="text-[11.5px] text-[var(--g-ink-3)]">none — runs start straight away</span>}</span>
 				</button>
 
 				{!main.length ? (
-					<div className={`absolute grid place-items-center rounded-2xl border-2 border-dashed text-center ${drop ? 'border-[var(--g-acc)] bg-[rgba(212,255,63,.05)]' : 'border-[#2c2f35]'}`} style={{ left: content_w / 2 - 230, top: TOP + 10, width: 460, height: 200 }}>
+					<div className={`absolute grid place-items-center rounded-2xl border-2 border-dashed text-center ${drop ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[#2c2f35]'}`} style={{ left: content_w / 2 - 230, top: TOP + 10, width: 460, height: 200 }}>
 						<div>
 							<p className="text-[14px] font-semibold">Drag a phase here to start</p>
 							<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">or click a tile on the left, or ask AI on the right tab</p>
@@ -311,7 +311,7 @@ export function Gb_canvas({
 						>
 							<div className="relative flex h-full items-center gap-2.5 rounded-xl px-3" style={{
 								background: 'linear-gradient(180deg,#1c1e23,#131417)',
-								border: `${sel || mark || is_drop ? 1.5 : 1}px ${mark === 'new' ? 'dashed' : 'solid'} ${mark === 'new' ? '#3ecf8e' : mark === 'changed' ? '#f5a524' : is_drop ? '#d4ff3f' : sel ? k.color : hexa(k.color, 0.38)}`,
+								border: `${sel || mark || is_drop ? 1.5 : 1}px ${mark === 'new' ? 'dashed' : 'solid'} ${mark === 'new' ? '#3ecf8e' : mark === 'changed' ? '#f5a524' : is_drop ? 'var(--g-acc)' : sel ? k.color : hexa(k.color, 0.38)}`,
 								boxShadow: sel ? `0 0 0 4px ${hexa(k.color, 0.14)}, 0 0 24px ${hexa(k.color, 0.35)}` : '0 8px 18px rgba(0,0,0,.5)',
 							}}>
 								<Kind_tile kind={kind} />
@@ -350,7 +350,7 @@ export function Gb_canvas({
 						<button type="button" aria-label={`Remove link ${hover.from} → ${hover.to}`} onClick={(e) => { e.stopPropagation(); set_hover_edge(null); apply(disconnect(team, hover.from, hover.to)); }} className="h-6 rounded-full border border-[rgba(255,92,92,.6)] bg-[#2a1414] px-2 text-[11px] text-[#ff8b8b]">✕</button>
 					</span>
 				) : null}
-				{drop_mid ? <span className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border-[1.5px] border-dashed border-[#d4ff3f] bg-[rgba(212,255,63,.08)] px-3 py-1 text-[11.5px] text-[#d4ff3f]" style={{ left: drop_mid.x - 90, top: drop_mid.y - 14 }}>insert here</span> : null}
+				{drop_mid ? <span className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border-[1.5px] border-dashed border-[var(--g-acc)] bg-[var(--g-acc-soft)] px-3 py-1 text-[11.5px] text-[var(--g-acc)]" style={{ left: drop_mid.x - 90, top: drop_mid.y - 14 }}>insert here</span> : null}
 				{menu ? <div className="absolute z-30" style={{ left: menu.x, top: menu.y }}><Kind_menu label={menu.kind === 'after' ? `Add after ${menu.name}` : menu.kind === 'between' ? `Insert between ${menu.from} → ${menu.to}` : 'Add a phase'} on_pick={pick} on_close={() => set_menu(null)} /></div> : null}
 
 				{/* support shelf */}

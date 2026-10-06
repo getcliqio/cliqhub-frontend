@@ -249,7 +249,7 @@ export function Component() {
 						{([['needs', 'Needs me', needs_count, 'var(--g-warn)'], ['all', 'All notifications', tab === 'all' ? 0 : new_count, 'var(--g-acc)']] as const).map(([id, label, n, bg]) => (
 							<button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => on_tab(id)} className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium ${tab === id ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
 								{label}
-								{n ? <span className="rounded-full px-1.5 text-[10.5px] font-bold leading-[17px] text-[var(--g-on-acc)]" style={{ background: bg }}>{n}</span> : null}
+								{n ? <span className="rounded-full px-1.5 text-[10.5px] font-bold leading-[17px] text-[var(--g-on-color)]" style={{ background: bg }}>{n}</span> : null}
 							</button>
 						))}
 					</div>
