@@ -10,6 +10,8 @@ import { useAuthFetch } from '@/lib/auth_context';
 import { api_message } from '@/lib/use_bff_read';
 import { setting_applies } from '@/lib/setting_when';
 import { agent_kind, settings_patch, type Agent_field, type Agent_settings_view } from '@/lib/agents';
+import { MCP_SECRET_PREFIX } from '@/lib/mcp';
+import { Mcp_section } from '@/components/graphite/g_mcp';
 
 export const G_PRIMARY = 'inline-flex shrink-0 items-center whitespace-nowrap gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-40';
 export const G_BTN = 'inline-flex shrink-0 items-center whitespace-nowrap gap-1.5 rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-40';
@@ -92,11 +94,14 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 		return v;
 	}, [view.fields, edits]);
 	const visible = view.fields.filter((f) => setting_applies({ when: f.when ?? undefined }, current));
-	const required = visible.filter((f) => f.required);
-	const optional = visible.filter((f) => !f.required);
+	// MCP keys (the server list and its placeholder secrets) render in their own section.
+	const is_mcp = (f: Agent_field) => f.type === 'mcp_servers' || f.key.startsWith(MCP_SECRET_PREFIX);
+	const required_all = visible.filter((f) => f.required);
+	const required = required_all.filter((f) => !is_mcp(f));
+	const optional = visible.filter((f) => !f.required && !is_mcp(f));
 	const patch = settings_patch(view.fields, edits, clears, mode);
 	const dirty = Object.keys(patch.values).length + patch.clear.length > 0;
-	const missing = required.filter((f) => {
+	const missing = required_all.filter((f) => {
 		if (clears.has(f.key)) return !(mode === 'realm' && f.org_value);
 		if (f.key in edits) return !edits[f.key].trim() && !(mode === 'realm' && f.org_value);
 		return !(f.set || (mode === 'realm' && f.org_value));
@@ -172,6 +177,20 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 			</div>
 			{!view.fields.length ? <p className="py-4 text-[13px] text-[var(--g-ink-3)]">This agent has no settings.</p> : null}
 			{required.map(field)}
+			{view.mcp ? (
+				<Mcp_section
+					opts={view.mcp}
+					servers_field={view.fields.find((f) => f.type === 'mcp_servers')}
+					secret_fields={view.fields.filter((f) => f.key.startsWith(MCP_SECRET_PREFIX))}
+					mode={mode}
+					edits={edits}
+					set_edits={set_edits}
+					on_use_org={() => {
+						set_edits((e) => { const n = { ...e }; delete n['mcp.servers']; return n; });
+						if (view.fields.find((f) => f.type === 'mcp_servers')?.source === 'realm') set_clears((c) => new Set(c).add('mcp.servers'));
+					}}
+				/>
+			) : null}
 			{optional.length ? (
 				<div className="py-2">
 					<button type="button" aria-expanded={open_optional} onClick={() => set_open_optional(!open_optional)} className="text-[12.5px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{open_optional ? '▾' : '▸'} Optional settings ({optional.length})</button>

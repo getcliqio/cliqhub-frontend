@@ -3,6 +3,7 @@
  * `POST /v1/agent_page/get` (BFF composition), plus small pure helpers.
  */
 import { KINDS } from '@/lib/builder/kinds';
+import type { Mcp_options } from '@/lib/mcp';
 
 export interface Agent_used_by { scope: string; name: string; version: string | null; realms: Array<{ id: string; slug: string }> }
 export interface Agent_list_row {
@@ -26,12 +27,16 @@ export interface Agent_field {
 	key: string; description: string | null; default: string | null; when: Record<string, string> | null;
 	required: boolean; secret: boolean;
 	value: string | null; set: boolean; source: 'org' | 'realm' | null; org_value: string | null;
+	/** How the form edits it (older BFFs omit it: treat as text / secret). */
+	type?: 'text' | 'secret' | 'mcp_servers';
 }
 export interface Agent_settings_view {
 	scope: 'org' | 'realm';
 	realm: { id: string; slug: string; name: string } | null;
 	fields: Agent_field[];
 	required_total: number; required_configured: number; ready: boolean;
+	/** The agent's MCP options, when it can use MCP servers. */
+	mcp?: Mcp_options | null;
 }
 export interface Agent_realm_row { realm: { id: string; slug: string; name: string }; ready: boolean; keys: Record<string, 'org' | 'realm' | 'missing'>; used_here: string[] }
 export type Agent_view = 'settings' | 'realms' | 'used_by' | 'manifest' | 'versions';
@@ -95,5 +100,8 @@ export function settings_patch(fields: Agent_field[], edits: Record<string, stri
 		if (own && v === (f.value ?? '')) continue;
 		values[f.key] = v;
 	}
+	// MCP secrets for servers added in this edit have no field yet (Core lists one per saved placeholder).
+	const known = new Set(fields.map((f) => f.key));
+	for (const [k, v] of Object.entries(edits)) if (k.startsWith('mcp.secrets.') && !known.has(k) && v.trim()) values[k] = v.trim();
 	return { values, clear };
 }

@@ -312,3 +312,57 @@ describe('Realm › Agents', () => {
 		expect(screen.getByTestId('used-card')).toHaveTextContent('Used in prod-us');
 	});
 });
+
+describe('Agent page — MCP servers', () => {
+	const MCP = {
+		transports: ['http', 'stdio'] as Array<'http' | 'stdio'>, allow_custom: true,
+		presets: [{ name: 'linear', label: 'Linear', transport: 'http' as const, url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' }, secrets: [{ key: 'LINEAR_API_KEY', description: 'Linear personal API key' }] }],
+	};
+	const mcp_page = (fields: Agent_field[]) => page({
+		agent: { id: JIRA, name: 'claude-api', version: '1.0.0', description: 'Claude API', agent_type: 'llm', is_system: true, versions: [{ id: JIRA, version: '1.0.0', created_at: Date.now(), newest: true }] },
+		settings: { scope: 'org', realm: null, fields, required_total: 1, required_configured: 1, ready: true, mcp: MCP },
+	});
+	const base_fields = [
+		field({ key: 'api_key', secret: true, type: 'secret', value: '••••abcd', set: true, source: 'org' }),
+		field({ key: 'mcp.servers', type: 'mcp_servers', required: false }),
+	];
+
+	it('adds a preset, asks for its secret, saves the list and the secret', async () => {
+		const calls = route_fetch({ '/v1/agent_page/get': () => ({ body: { ok: true, data: mcp_page(base_fields) } }) });
+		render_at(`/agents/${JIRA}?org=measureone`);
+		const section = await screen.findByTestId('mcp-section');
+		expect(within(section).getByText('No MCP servers yet.')).toBeInTheDocument();
+		fireEvent.click(within(section).getByText('+ Add server ▾'));
+		fireEvent.click(within(section).getByRole('menuitem', { name: /Linear/ }));
+		expect(within(section).getByTestId('mcp-server-linear')).toHaveTextContent('LINEAR_API_KEY missing');
+		expect(within(section).getByText('Linear personal API key')).toBeInTheDocument();
+		fireEvent.change(within(section).getByLabelText('mcp.secrets.LINEAR_API_KEY'), { target: { value: 'lin_api_123' } });
+		expect(within(section).getByTestId('mcp-server-linear')).toHaveTextContent('secrets set');
+		fireEvent.click(screen.getByText('Save for org'));
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/agents/update_settings')).toBe(true));
+		const values = (calls.find((c) => c.url === '/v1/agents/update_settings')!.body.settings as { values: Record<string, string> }).values;
+		expect(JSON.parse(values['mcp.servers']!)).toEqual({ linear: { url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' } } });
+		expect(values['mcp.secrets.LINEAR_API_KEY']).toBe('lin_api_123');
+	});
+
+	it('custom server form, and pasted { mcpServers } JSON', async () => {
+		route_fetch({ '/v1/agent_page/get': () => ({ body: { ok: true, data: mcp_page(base_fields) } }) });
+		render_at(`/agents/${JIRA}?org=measureone`);
+		const section = await screen.findByTestId('mcp-section');
+		fireEvent.click(within(section).getByText('+ Add server ▾'));
+		fireEvent.click(within(section).getByRole('menuitem', { name: /Custom server/ }));
+		const draft = within(section).getByTestId('mcp-draft');
+		fireEvent.change(within(draft).getByLabelText('Server name'), { target: { value: 'docs' } });
+		fireEvent.change(within(draft).getByLabelText('Server URL'), { target: { value: 'not a url' } });
+		expect(within(draft).getByRole('alert')).toHaveTextContent('URL is not valid');
+		fireEvent.change(within(draft).getByLabelText('Server URL'), { target: { value: 'https://docs.example.com/mcp' } });
+		fireEvent.click(within(draft).getByText('Add server'));
+		expect(within(section).getByTestId('mcp-server-docs')).toHaveTextContent('https://docs.example.com/mcp');
+
+		fireEvent.click(within(section).getByText('Paste / edit JSON'));
+		fireEvent.change(within(section).getByLabelText('MCP servers JSON'), { target: { value: JSON.stringify({ mcpServers: { gh: { command: 'npx', args: ['-y', 'server-github'], env: { GITHUB_TOKEN: '${GITHUB_TOKEN}' } } } }) } });
+		fireEvent.click(within(section).getByText('Apply'));
+		expect(within(section).getByTestId('mcp-server-gh')).toHaveTextContent('npx -y server-github');
+		expect(within(section).getByTestId('mcp-secret-GITHUB_TOKEN')).toBeInTheDocument();
+	});
+});
