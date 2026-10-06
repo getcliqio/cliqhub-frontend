@@ -19,6 +19,7 @@ import {
 } from '@/lib/review_packet';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Artifact_viewer, Checks, Field_input, Md, Review_chat } from '@/components/graphite/g_review';
+import { G_phase_outputs_list } from '@/components/graphite/g_phase_output';
 import { G_BTN, G_INPUT, G_PRIMARY } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 
@@ -79,6 +80,10 @@ export function Component() {
 	const other_claim = r.claimed_by != null && r.claimed_by !== user?.id;
 	const title = as_text(r.payload?.title) ?? (mode === 'chat' ? `Chat · ${r.phase ?? 'agent'}` : pause ? `Inputs needed · ${r.phase ?? 'phase'}` : `Review · ${r.phase ?? r.run_name ?? 'run'}`);
 	const run_href = r.org_slug && r.realm_slug ? `/o/${r.org_slug}/realms/${r.realm_slug}/runs/${encodeURIComponent(r.run_id)}` : null;
+	// Phase outputs are shown per phase (formatted, with Raw) when the BFF read them;
+	// the viewer keeps the files and documents to review. An older BFF: as before.
+	const earlier = read.data?.phase_outputs ?? [];
+	const files = earlier.length ? r.artifacts.filter((a) => !(a.source === 'record' && (a.kind === 'output' || a.kind === 'phase_output'))) : r.artifacts;
 
 	async function submit(action: string) {
 		const affirmative = action === 'PASS' || action.startsWith('ROUTE:');
@@ -133,10 +138,16 @@ export function Component() {
 							{brief ? <Md>{brief}</Md> : <p className="text-[13px] text-[var(--g-ink-3)]">No summary was attached.</p>}
 							{summary && brief !== summary ? <div className="mt-3 border-t border-[var(--g-line)] pt-3"><Md>{summary}</Md></div> : null}
 						</section>
-						{r.artifacts.length ? (
-							<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Artifacts">
-								<h2 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold">Artifacts <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{r.artifacts.length}</span></h2>
-								<Artifact_viewer artifacts={r.artifacts} />
+						{files.length ? (
+							<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Files to review">
+								<h2 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold">Files to review <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{files.length}</span></h2>
+								<Artifact_viewer artifacts={files} />
+							</section>
+						) : null}
+						{earlier.length ? (
+							<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Earlier phases">
+								<h2 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold">Earlier phases <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{new Set(earlier.map((o) => o.phase)).size}</span></h2>
+								<G_phase_outputs_list outputs={earlier} run_link={(id) => (r.org_slug && r.realm_slug ? `/o/${r.org_slug}/realms/${r.realm_slug}/runs/${encodeURIComponent(id)}` : '#')} />
 							</section>
 						) : null}
 						<Checks rows={checks} />

@@ -28,7 +28,7 @@ function review(over: Partial<Review_data> = {}): Review_data {
 }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(r: Review_data, extra: Record<string, (b: Record<string, unknown>) => unknown> = {}) {
+function route_fetch(r: Review_data, extra: Record<string, (b: Record<string, unknown>) => unknown> = {}, phase_outputs?: unknown[]) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -36,7 +36,7 @@ function route_fetch(r: Review_data, extra: Record<string, (b: Record<string, un
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
-		if (u === '/v1/review_page/get') return new Response(JSON.stringify({ ok: true, data: { review: r, org_id: null } }));
+		if (u === '/v1/review_page/get') return new Response(JSON.stringify({ ok: true, data: { review: r, org_id: null, ...(phase_outputs ? { phase_outputs } : {}) } }));
 		if (extra[u]) return new Response(JSON.stringify({ ok: true, data: extra[u](body) }));
 		return new Response(JSON.stringify({ ok: true, data: {} }));
 	});
@@ -61,6 +61,26 @@ describe('Review page', () => {
 		const viewer = screen.getByTestId('artifact-viewer');
 		expect(within(viewer).getByRole('heading', { name: 'Payment retry' })).toBeInTheDocument();
 		expect(screen.getByText(/iteration 2 of 3/)).toBeInTheDocument();
+	});
+
+	it('shows earlier phases\' outputs per phase (formatted, with Raw) and keeps files to review in the viewer', async () => {
+		const r = review({ artifacts: [
+			{ id: 1, phase: 'design-review', kind: 'design', name: 'design.md', mime_type: 'text/markdown', content: '# Payment retry', content_preview: null, sequence: 1 },
+			{ id: 4, source: 'record', phase: 'draft', kind: 'output', name: 'phase_output', mime_type: 'application/json', content: '{"text":"Drafted."}', content_preview: null, sequence: 2 },
+		] as Review_data['artifacts'] });
+		route_fetch(r, {}, [{
+			artifact_id: '4', phase: 'draft', created_at: null, raw: '{"text":"Drafted the plan."}', complete: true,
+			view: { kind: 'agent', summary: 'Drafted the plan.', body_markdown: 'Drafted the **plan**.', steps: ["I'll read the brief."], verdict: null, commands: null, sources: [], sub_run: null },
+		}]);
+		open();
+		const viewer = await screen.findByTestId('artifact-viewer');
+		expect(within(viewer).queryByRole('button', { name: /phase_output/ })).toBeNull();
+		const earlier = screen.getByTestId('earlier-phases');
+		expect(earlier).toHaveTextContent('Drafted the plan.');
+		fireEvent.click(within(earlier).getByRole('button', { name: 'Show output of draft' }));
+		expect(within(earlier).getByText('plan').tagName).toBe('STRONG');
+		fireEvent.click(within(earlier).getByRole('button', { name: 'Raw' }));
+		expect(within(earlier).getByTestId('output-raw')).toHaveTextContent('"text": "Drafted the plan."');
 	});
 
 	it('artifact viewer: JSON pretty-prints, Source toggle, CSV as a table', async () => {

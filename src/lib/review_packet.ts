@@ -11,6 +11,7 @@
  *   payload.mode                                verdict | input_pause | chat
  *   review.artifacts                            full content + preview
  */
+import type { Run_phase_output } from '@/lib/realm_inbox';
 
 export interface Review_artifact {
 	id: string | number;
@@ -61,7 +62,12 @@ export interface Review_data {
 	notification_groups?: Review_group[];
 	policy?: Record<string, unknown>;
 }
-export interface Review_page_data { review: Review_data; org_id: string | null }
+export interface Review_page_data {
+	review: Review_data;
+	org_id: string | null;
+	/** Earlier phases' outputs in the packet, read for display (absent from an older BFF). */
+	phase_outputs?: Run_phase_output[];
+}
 
 export type Field_type = 'text' | 'textarea' | 'number' | 'boolean' | 'select' | 'channel';
 export interface Field_spec {
