@@ -88,11 +88,11 @@ describe('Graphite run detail', () => {
 		expect(other).toEqual([]);
 	});
 
-	it('always shows Artifacts: "No artifacts" when the run stored none', async () => {
+	it('always shows Files, with how agents publish them when the run has none', async () => {
 		route_fetch(run_detail());
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No artifacts for this run.');
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No files in this run. Agents publish files with cliq-artifact submit');
 	});
 
 	it('lists stored artifacts and downloads through artifacts/get_by_id', async () => {
@@ -112,7 +112,7 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'a1' }]);
 	});
 
-	it('groups everything by phase: files download, records read inline (full text loaded when long)', async () => {
+	it('groups files and documents by phase (phase outputs stay on their phase): files download, documents read inline', async () => {
 		const long = 'L'.repeat(2000);
 		const spy = route_fetch(
 			run_detail({ artifacts: [
@@ -124,28 +124,68 @@ describe('Graphite run detail', () => {
 		);
 		render_page();
 		await ready();
-		const design = screen.getByTestId('artifact-phase-design');
+		expect(screen.queryByTestId('artifact-phase-design')).toBeNull();
 		const build = screen.getByTestId('artifact-phase-build');
-		expect(design).toHaveTextContent('Phase output');
 		expect(within(build).getAllByTestId('artifact-row')).toHaveLength(2);
 		expect(within(build).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
-
-		fireEvent.click(within(design).getByRole('button', { name: 'Read phase_output' }));
-		expect(within(design).getByTestId('artifact-text')).toHaveTextContent('design done');
-		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([]);
 
 		fireEvent.click(within(build).getByRole('button', { name: 'Read transcript' }));
 		await waitFor(() => expect(within(build).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
 	});
 
-	it('says when artifacts could not be loaded', async () => {
+	it('shows each phase output as a summary, opens it formatted, and keeps the raw output one click away', async () => {
+		const raw = JSON.stringify({ text: '## Exec Results\n\nFAIL fetch (exit 1)', data: { total: '1', failed: '1', results: [{ name: 'fetch', pass: 'false', exit_code: '1', duration_ms: '20' }] } });
+		route_fetch(run_detail({
+			phase_outputs: [{
+				artifact_id: 'rec:9', phase: 'fetch', created_at: 1, raw, complete: true,
+				view: {
+					kind: 'commands', summary: '1 of 1 command failed', body_markdown: null, steps: [], verdict: null, sources: [], sub_run: null,
+					commands: { total: 1, failed: 1, items: [{ label: 'fetch', command: 'fetch', pass: false, exit_code: 1, duration_ms: 20 }] },
+				},
+			}],
+			artifacts: [{ artifact_id: 'rec:10', source: 'record', kind: 'handoff', content_preview: 'use the cached ledger', phase: 'fetch', name: 'handoff', description: null, mime_type: 'text/plain', size_bytes: 21, created_at: 2 }],
+		}));
+		render_page();
+		await ready();
+		expect(screen.getByTestId('phase-output-summary')).toHaveTextContent('1 of 1 command failed');
+		expect(screen.queryByTestId('phase-output')).toBeNull();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Show output of fetch' }));
+		const panel = screen.getByTestId('phase-output');
+		expect(within(panel).getByTestId('output-commands')).toHaveTextContent('exit 1');
+		expect(within(panel).getByTestId('output-handoffs')).toHaveTextContent('use the cached ledger');
+
+		fireEvent.click(within(panel).getByRole('button', { name: 'Raw' }));
+		expect(within(panel).getByTestId('output-raw')).toHaveTextContent('"exit_code": "1"');
+		expect(screen.getByRole('button', { name: 'Download raw outputs' })).toBeInTheDocument();
+		// Handoffs are on their phase, not in Files.
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No files in this run.');
+	});
+
+	it('links a sub-team phase to its sub-run', async () => {
+		route_fetch(run_detail({
+			phase_outputs: [{
+				artifact_id: 'rec:11', phase: 'match', created_at: 1, raw: '{}', complete: true,
+				view: {
+					kind: 'sub_team', summary: 'Ran acme/ingest — 1 phase', body_markdown: null, steps: [], verdict: null, sources: [], commands: null,
+					sub_run: { run_id: 'run-sub', team_ref: 'acme/ingest', phases: [{ phase: 'pull', ok: true, summary: '1 command passed' }] },
+				},
+			}],
+		}));
+		render_page();
+		await ready();
+		fireEvent.click(screen.getByRole('button', { name: 'Show output of match' }));
+		expect(screen.getByRole('link', { name: 'open the sub-run' })).toHaveAttribute('href', expect.stringContaining('/runs/run-sub'));
+	});
+
+	it('says when files could not be loaded', async () => {
 		const d = run_detail({ partial: true });
 		d.sections.artifacts = { status: 'error', error: 'storage down' };
 		route_fetch(d);
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load artifacts: storage down.');
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load files: storage down.');
 	});
 
 	it('renders phases in workflow order with errors, the run error and details', async () => {

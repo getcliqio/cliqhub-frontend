@@ -24,7 +24,9 @@ import {
 	type Force_terminate_status,
 	type Pending_control,
 	type Run_detail_data,
+	type Run_artifact,
 	type Run_detail_phase,
+	type Run_phase_output,
 	type Run_row,
 } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
@@ -37,6 +39,7 @@ import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
+import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_phase_output';
 import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
 import { fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_bar, type Telemetry_phase } from '@/lib/run_telemetry';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -144,8 +147,18 @@ function phase_duration(p: Run_detail_phase, now: number): string {
 	return format_duration((p.completed_at ?? now) - p.started_at);
 }
 
-function Phase_list({ phases, run_state, telemetry, on_open }: { phases: Run_detail_phase[]; run_state: string; telemetry?: Run_telemetry_data | null; on_open?: (phase: string) => void }) {
+function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, run_link }: {
+	phases: Run_detail_phase[];
+	run_state: string;
+	telemetry?: Run_telemetry_data | null;
+	on_open?: (phase: string) => void;
+	/** Each phase's recorded outputs, oldest first. */
+	outputs?: Map<string, Run_phase_output[]>;
+	handoffs?: Map<string, Run_artifact[]>;
+	run_link?: (run_id: string) => string;
+}) {
 	const tel = new Map<string, Telemetry_phase>((telemetry?.phases ?? []).map((x) => [x.name, x]));
+	const [shown, set_shown] = useState<Set<string>>(() => new Set());
 	const now = Date.now();
 	if (phases.length === 0) {
 		return <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">No phases recorded yet{is_live_state(run_state) ? ' — the daemon hasn’t reported any progress.' : '.'}</p>;
@@ -154,6 +167,9 @@ function Phase_list({ phases, run_state, telemetry, on_open }: { phases: Run_det
 		<ol className="relative py-2" aria-label="Phases">
 			{phases.map((p, i) => {
 				const live = p.status === 'running';
+				const mine = outputs?.get(p.phase) ?? [];
+				const latest = mine[mine.length - 1];
+				const open = Boolean(latest) && shown.has(p.phase);
 				return (
 					<li key={`${p.phase}-${i}`} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open && tel.get(p.phase)?.start_ms != null ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid="phase-row" onClick={() => { if (on_open && tel.get(p.phase)?.start_ms != null) on_open(p.phase); }}>
 						{i < phases.length - 1 ? <span aria-hidden className="absolute left-[29px] top-[26px] h-[calc(100%-12px)] w-px bg-[var(--g-line)]" /> : null}
@@ -169,10 +185,29 @@ function Phase_list({ phases, run_state, telemetry, on_open }: { phases: Run_det
 								{[p.agent ? `agent ${p.agent}` : null, p.started_at ? `started ${relative_time(p.started_at)}` : 'not started', tel.get(p.phase)?.tokens_in != null ? `${fmt_count(tel.get(p.phase)!.tokens_in)} / ${fmt_count(tel.get(p.phase)!.tokens_out)} tokens` : null, (tel.get(p.phase)?.runs ?? 1) > 1 ? `ran ${tel.get(p.phase)!.runs}×` : null].filter(Boolean).join(' · ')}
 							</p>
 							{p.error ? <p className="g-mono mt-1 whitespace-pre-wrap break-words text-[11.5px] text-[var(--g-bad)]">{p.error}</p> : null}
+							{latest ? (
+								<p className="mt-1 flex min-w-0 items-center gap-2 text-[12.5px] text-[var(--g-ink-2)]">
+									<span className="min-w-0 truncate" data-testid="phase-output-summary">{latest.view.summary}</span>
+									<button
+										type="button"
+										aria-expanded={open}
+										aria-label={`${open ? 'Hide' : 'Show'} output of ${p.phase}`}
+										onClick={(e) => { e.stopPropagation(); set_shown((cur) => { const next = new Set(cur); if (next.has(p.phase)) next.delete(p.phase); else next.add(p.phase); return next; }); }}
+										className="shrink-0 rounded border border-[var(--g-line)] px-1.5 py-px text-[11.5px] font-semibold text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"
+									>
+										{open ? 'Hide output' : 'Output'}
+									</button>
+								</p>
+							) : null}
 						</div>
 						<span className="hidden sm:block"><Phase_clock p={tel.get(p.phase)} t={telemetry ?? null} /></span>
 						<span className="g-mono mt-0.5 text-right text-[12px] text-[var(--g-ink-3)]">{phase_duration(p, now)}</span>
 						<span className="g-mono mt-0.5 hidden sm:block w-[52px] text-right text-[12px] text-[var(--g-ink-2)]" data-testid="phase-cost">{telemetry ? fmt_usd(tel.get(p.phase)?.cost_usd ?? null) : ''}</span>
+						{open ? (
+							<div className="col-span-full cursor-default sm:pl-[40px]" onClick={(e) => e.stopPropagation()}>
+								<G_phase_output outputs={mine} handoffs={handoffs?.get(p.phase)} run_link={run_link ?? ((id) => id)} />
+							</div>
+						) : null}
 					</li>
 				);
 			})}
@@ -379,6 +414,17 @@ export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_da
 	const open_in_timeline = (phase: string) => { set_focus(null); setTimeout(() => set_focus(phase), 0); set_tab('timeline'); };
 
 	const phases = useMemo(() => sort_phases_workflow(data.phases.map((p) => ({ ...p, agent_name: p.agent }))) as unknown as Run_detail_phase[], [data.phases]);
+	const phase_outputs = useMemo(() => data.phase_outputs ?? [], [data.phase_outputs]);
+	const outputs_by_phase = useMemo(() => {
+		const m = new Map<string, Run_phase_output[]>();
+		for (const o of phase_outputs) m.set(o.phase, [...(m.get(o.phase) ?? []), o]);
+		return m;
+	}, [phase_outputs]);
+	const handoffs_by_phase = useMemo(() => {
+		const m = new Map<string, Run_artifact[]>();
+		for (const a of data.artifacts ?? []) if (a.source === 'record' && a.kind === 'handoff') m.set(a.phase, [...(m.get(a.phase) ?? []), a]);
+		return m;
+	}, [data.artifacts]);
 	const live = is_live_state(run.state);
 	const awaiting = run.state === 'awaiting_input';
 	const failed = run.state === 'failed' || run.state === 'crashed';
@@ -538,7 +584,22 @@ export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_da
 					<div role="tabpanel">
 						{tab === 'phases' ? (
 							<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
-								<Phase_list phases={phases} run_state={run.state} telemetry={telemetry} on_open={open_in_timeline} />
+								{phase_outputs.length ? (
+									<div className="flex justify-end border-b border-[var(--g-line-2)] px-4 py-1.5">
+										<button type="button" onClick={() => download_raw_outputs(run.run_id, phase_outputs)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
+											Download raw outputs
+										</button>
+									</div>
+								) : null}
+								<Phase_list
+									phases={phases}
+									run_state={run.state}
+									telemetry={telemetry}
+									on_open={open_in_timeline}
+									outputs={outputs_by_phase}
+									handoffs={handoffs_by_phase}
+									run_link={(id) => `${base}/runs/${encodeURIComponent(id)}`}
+								/>
 							</section>
 						) : tab === 'timeline' || tab === 'usage' || tab === 'dag' ? (
 							!telemetry ? <div className="h-[320px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading telemetry" />

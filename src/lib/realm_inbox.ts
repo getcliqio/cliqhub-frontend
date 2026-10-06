@@ -112,13 +112,41 @@ export interface Run_artifact {
 	created_at: number | null;
 }
 
+/** How a phase's output is shown (read by the BFF from the stored `{ text, data }`). */
+export interface Phase_output_view {
+	kind: 'commands' | 'tool' | 'agent' | 'verdict' | 'sub_team' | 'text';
+	/** One line for the collapsed phase row. */
+	summary: string;
+	body_markdown: string | null;
+	/** The agent's "I'll …" narration before its answer. */
+	steps: string[];
+	verdict: { outcome: string; reason: string | null } | null;
+	commands: { total: number; failed: number; items: Array<{ label: string; command: string; pass: boolean; exit_code: number | null; duration_ms: number | null }> } | null;
+	sources: Array<{ name: string; detail: string | null; url: string | null }>;
+	sub_run: { run_id: string; team_ref: string | null; phases: Array<{ phase: string; ok: boolean | null; summary: string }> } | null;
+}
+
+/** A phase's recorded output: the view, plus the stored text exactly as kept. */
+export interface Run_phase_output {
+	artifact_id: string;
+	phase: string;
+	created_at: number | null;
+	view: Phase_output_view;
+	/** The stored output, unmodified — the Raw view. */
+	raw: string;
+	/** False when only the start could be read. */
+	complete: boolean;
+}
+
 export interface Run_detail_data {
 	run: Run_row;
 	phases: Run_detail_phase[];
 	realm: Control_realm | null;
 	reviews: Array<{ id: string; title: string; phase: string | null; requested_at: number | null; message: string | null }>;
-	/** Files the run stored (`artifacts/get`, composed by the BFF). */
+	/** Files the run stored and its run records (`artifacts/get`, composed by the BFF). */
 	artifacts: Run_artifact[];
+	/** Each phase output, oldest first (absent from an older BFF). */
+	phase_outputs?: Run_phase_output[];
 	sections: Record<'phases' | 'labels' | 'realm' | 'reviews' | 'artifacts', Section_status>;
 	partial: boolean;
 }

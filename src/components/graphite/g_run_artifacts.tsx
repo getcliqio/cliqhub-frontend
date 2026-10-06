@@ -1,10 +1,11 @@
 /**
- * Run detail › Artifacts — everything the run's phases produced, grouped by
- * phase: stored files (Download asks `artifacts/get_by_id` for a fresh link —
- * stored links expire) and run records (phase output, transcript, attached
- * docs — a preview, Read loads the whole text from `artifacts/get_by_id`).
- * Rows come with the run page read (`run_detail/get`). Always shown: "No
- * artifacts" when there are none, the load error when the read failed.
+ * Run detail › Files — what the run's phases published, grouped by phase:
+ * stored files (Download asks `artifacts/get_by_id` for a fresh link — stored
+ * links expire) and documents kept as run records (transcript, design or
+ * review doc — a preview, Read loads the whole text from `artifacts/get_by_id`).
+ * Phase outputs and handoffs are not listed here: they show on their phase
+ * (Phases tab). Rows come with the run page read (`run_detail/get`). Always
+ * shown: an empty state when there are none, the load error when the read failed.
  */
 import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
@@ -29,6 +30,14 @@ export function kind_label(kind: string | undefined): string {
 	return KIND_LABEL[kind ?? 'file'] ?? (kind ?? 'File');
 }
 
+/** Records shown on their phase instead (Phases tab), not as files. */
+const ON_PHASE_KINDS = new Set(['output', 'phase_output', 'handoff']);
+
+/** What this section lists: stored files and document records. */
+export function file_rows(artifacts: Run_artifact[]): Run_artifact[] {
+	return artifacts.filter((a) => (a.source ?? 'file') === 'file' || !ON_PHASE_KINDS.has(a.kind ?? ''));
+}
+
 /** Rows grouped by phase, phases in the order they first produced something. */
 export function group_by_phase(artifacts: Run_artifact[]): Array<{ phase: string; items: Run_artifact[] }> {
 	const groups = new Map<string, Run_artifact[]>();
@@ -39,7 +48,8 @@ export function group_by_phase(artifacts: Run_artifact[]): Array<{ phase: string
 	return [...groups].map(([phase, items]) => ({ phase, items }));
 }
 
-export function G_run_artifacts({ artifacts, status }: { artifacts: Run_artifact[]; status: Section_status | undefined }) {
+export function G_run_artifacts({ artifacts: all, status }: { artifacts: Run_artifact[]; status: Section_status | undefined }) {
+	const artifacts = useMemo(() => file_rows(all), [all]);
 	const auth_fetch = useAuthFetch();
 	const [busy, set_busy] = useState<string | null>(null);
 	const [err, set_err] = useState<string | null>(null);
@@ -83,15 +93,15 @@ export function G_run_artifacts({ artifacts, status }: { artifacts: Run_artifact
 
 	const failed = status?.status === 'error';
 	return (
-		<section aria-label="Artifacts" className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="run-artifacts">
+		<section aria-label="Files" className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="run-artifacts">
 			<div className="flex items-center gap-2 border-b border-[var(--g-line-2)] px-4 py-2.5">
-				<h2 className="text-[13px] font-semibold">Artifacts</h2>
+				<h2 className="text-[13px] font-semibold">Files</h2>
 				{artifacts.length ? <span className="text-[12px] text-[var(--g-ink-3)]">{artifacts.length}</span> : null}
 			</div>
 			{failed && !artifacts.length ? (
-				<p role="status" className="px-4 py-4 text-[12.5px] text-[var(--g-warn-text)]">Couldn’t load artifacts{status?.error ? `: ${status.error}` : ''}.</p>
+				<p role="status" className="px-4 py-4 text-[12.5px] text-[var(--g-warn-text)]">Couldn’t load files{status?.error ? `: ${status.error}` : ''}.</p>
 			) : !artifacts.length ? (
-				<p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">No artifacts for this run.</p>
+				<p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">No files in this run. Agents publish files with <code className="g-mono">cliq-artifact submit</code>; each phase’s output is on the Phases tab.</p>
 			) : (
 				<div className="divide-y divide-[var(--g-line-2)]">
 					{groups.map((g) => (
