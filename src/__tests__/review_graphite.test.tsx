@@ -112,13 +112,13 @@ describe('Review page', () => {
 		expect(calls.filter((c) => c.url === '/v1/artifacts/get_by_id').map((c) => c.body)).toEqual([{ artifact_id: 'a9' }]);
 	});
 
-	it('verdict: approve / reject / route send the notification id and comment; then back to the inbox', async () => {
+	it('verdict: approve / reject / route send the notification id and comment; then back to HUGs', async () => {
 		const calls = route_fetch(review(), { '/v1/reviews/verdict': () => ({}) });
 		open();
 		fireEvent.change(await screen.findByLabelText('Comment'), { target: { value: 'add a DLQ alert' } });
 		fireEvent.click(screen.getByRole('button', { name: /Approve/ }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/reviews/verdict')?.body).toEqual({ review_id: 'rv1', action: 'PASS', fields: { comment: 'add a DLQ alert' }, notification_id: 'n1' }));
-		await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/inbox'));
+		await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/hugs'));
 	});
 
 	it('packet form: SDK fields (enum/number/boolean/text); required blocks approve; values go with the verdict', async () => {

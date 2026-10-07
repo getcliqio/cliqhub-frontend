@@ -33,15 +33,13 @@ afterEach(() => vi.restoreAllMocks());
 describe('Realms page', () => {
 	it('slugify', () => { expect(slugify('Production US!')).toBe('production-us'); });
 
-	it('groups realms by org with health; filters by org and search', async () => {
+	it('the org’s realms with health (no other orgs, no org filter); search narrows', async () => {
 		route_fetch();
 		open();
 		expect(await screen.findByTestId('realm-prod-us')).toHaveTextContent('5/6');
 		expect(within(screen.getByTestId('realm-prod-us')).getByText('4 need you')).toBeInTheDocument();
-		expect(screen.getByTestId('realm-sandbox')).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: /Acme Labs/ }));
-		expect(screen.queryByTestId('realm-prod-us')).toBeNull();
-		fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+		expect(screen.queryByTestId('realm-sandbox')).toBeNull();
+		expect(screen.queryByRole('button', { name: /Acme Labs/ })).toBeNull();
 		fireEvent.change(screen.getByLabelText('Search realms'), { target: { value: 'stag' } });
 		expect(screen.getByTestId('realm-staging')).toBeInTheDocument();
 		expect(screen.queryByTestId('realm-prod-us')).toBeNull();

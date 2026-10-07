@@ -139,7 +139,12 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/teams/team_graphite_page')),
           },
           {
-            // Needs me + all in-app notifications (BFF composition).
+            // HUGs: reviews + input requests waiting on a person, and past ones.
+            path: 'hugs',
+            lazy: lazy_route(() => import('@/pages/hugs_page')),
+          },
+          {
+            // System events for the org (HUGs excluded).
             path: 'inbox',
             lazy: lazy_route(() => import('@/pages/inbox_page')),
           },
@@ -333,17 +338,17 @@ export const router = createBrowserRouter([
             element: <Realm_runtime_redirect section="logs" />,
           },
           {
-            // Events and reviews live in the Inbox.
+            // Events live in the Inbox; reviews in HUGs.
             path: 'events',
             element: <Navigate to="/inbox" replace />,
           },
           {
             path: 'hug',
-            element: <Navigate to="/inbox" replace />,
+            element: <Navigate to="/hugs" replace />,
           },
           {
             path: 'reviews',
-            element: <Navigate to="/inbox" replace />,
+            element: <Navigate to="/hugs" replace />,
           },
           {
             // Discoverable second entry for the personal "Access" tab

@@ -1,5 +1,5 @@
 /**
- * Realms (Graphite) — /realms[?org=slug&q=&new=1]
+ * Realms (Graphite) — /realms[?org=slug&q=&new=1] — the realms of the org you're in.
  * List: from the overview read already on every Graphite page (realms per org
  * with daemon health, live runs and what needs you) — no extra read.
  * New realm (owners/admins): 3 steps, each action one Core call —
@@ -12,9 +12,10 @@ import { Plus, Search } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
+import { use_view_scope } from '@/lib/view_scope';
 import { handle, person_name } from '@/lib/admin';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
-import { Banner, Chips, Pill } from '@/components/graphite/g_admin';
+import { Banner, Pill } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { use_invite } from '@/components/graphite/g_invites';
@@ -226,44 +227,36 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 
 export function Component() {
 	const overview = use_overview();
+	const scope = use_view_scope(overview.data);
 	const [sp, set_sp] = useSearchParams();
-	const orgs = overview.data?.orgs ?? [];
-	const org_filter = sp.get('org');
+	const org = scope.org;
 	const q = (sp.get('q') ?? '').toLowerCase();
 	const creating = sp.get('new') === '1';
 	const joined = sp.get('joined');
-	const joined_realm = joined ? orgs.flatMap((o) => o.realms).find((r) => r.slug === joined) ?? null : null;
-	const creatable = orgs.filter(can_create);
+	const joined_realm = joined ? (org?.realms ?? []).find((r) => r.slug === joined) ?? null : null;
+	const may_create = Boolean(org && can_create(org));
 	const set = (k: string, v: string | null) => set_sp((prev) => { const p = new URLSearchParams(prev); if (v) p.set(k, v); else p.delete(k); return p; }, { replace: true });
-	const groups = useMemo(() => orgs
-		.filter((o) => !org_filter || o.slug === org_filter)
-		.map((o) => ({ org: o, realms: o.realms.filter((r) => !q || `${r.slug} ${r.name}`.toLowerCase().includes(q)) }))
-		.filter((g) => g.realms.length || !q), [orgs, org_filter, q]);
-	const total = orgs.reduce((n, o) => n + o.realms.length, 0);
+	const realms = useMemo(() => (org?.realms ?? []).filter((r) => !q || `${r.slug} ${r.name}`.toLowerCase().includes(q)), [org, q]);
+	const total = org?.realms.length ?? 0;
 	return (
 		<Graphite_shell data={overview.data} title="Realms">
 			<div className="flex flex-col gap-4 px-7 py-6">
 				<header className="flex flex-wrap items-center gap-3">
-					<div><h1 className="text-[22px] font-semibold tracking-tight">Realms</h1><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">Groups of machines that run your teams. {total} realm{total === 1 ? '' : 's'} across {orgs.length} organization{orgs.length === 1 ? '' : 's'}.</p></div>
-					{creatable.length && !creating ? <button type="button" onClick={() => set('new', '1')} className={`${G_PRIMARY} ml-auto`}><Plus className="h-3.5 w-3.5" /> New realm</button> : null}
+					<div><h1 className="text-[22px] font-semibold tracking-tight">Realms</h1><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">Groups of machines that run your teams. {total} realm{total === 1 ? '' : 's'} in {org?.display_name || org?.slug || 'this organization'}.</p></div>
+					{may_create && !creating ? <button type="button" onClick={() => set('new', '1')} className={`${G_PRIMARY} ml-auto`}><Plus className="h-3.5 w-3.5" /> New realm</button> : null}
 				</header>
 				{joined_realm ? <Banner tone="ok">You joined {joined_realm.name || joined_realm.slug}. <Link to={`${realm_path(joined_realm.org_slug, joined_realm.slug)}/inbox`} className="font-semibold underline">Open it →</Link></Banner> : null}
-				{creating && creatable.length ? <New_realm orgs={creatable} initial_org={org_filter} on_close={() => set('new', null)} /> : null}
+				{creating && may_create && org ? <New_realm orgs={[org]} initial_org={org.slug} on_close={() => set('new', null)} /> : null}
 				<div className="flex flex-wrap items-center gap-2">
-					{orgs.length > 1 ? <Chips value={org_filter ?? 'all'} on_change={(v) => set('org', v === 'all' ? null : v)} options={[{ key: 'all', label: 'All', count: total }, ...orgs.map((o) => ({ key: o.slug, label: o.display_name || o.slug, count: o.realms.length }))]} /> : null}
 					<label className="relative ml-auto"><Search aria-hidden className="absolute left-2.5 top-2 h-3.5 w-3.5 text-[var(--g-ink-3)]" /><input aria-label="Search realms" value={sp.get('q') ?? ''} onChange={(e) => set('q', e.target.value || null)} placeholder="Search realms" className={`${G_INPUT} w-[220px] pl-8`} /></label>
 				</div>
 				{!overview.data ? <div className="h-[240px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading realms" /> : null}
-				{groups.map(({ org, realms }) => (
-					<section key={org.id} aria-label={org.display_name || org.slug} className="flex flex-col gap-2">
-						<div className="flex items-center gap-2"><h2 className="text-[13px] font-semibold text-[var(--g-ink-2)]">{org.display_name || org.slug}</h2><span className="text-[11.5px] text-[var(--g-ink-3)]">{org.role}</span>{can_create(org) ? <Link to={`/orgs/${org.id}`} className="ml-auto text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Manage org →</Link> : null}</div>
-						{org.status === 'error' ? <Banner tone="bad">{org.error ?? 'Could not load this organization’s realms.'}</Banner> : null}
-						{realms.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{realms.map((r) => <Realm_card key={r.id} r={r} />)}</div> : (
-							<p className="rounded-[10px] border border-dashed border-[var(--g-line)] px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">No realms yet.{can_create(org) ? <> <button type="button" onClick={() => { set('org', org.slug); set('new', '1'); }} className="text-[var(--g-acc)] hover:underline">Create one</button></> : ' Ask an owner or admin to add you to one.'}</p>
-						)}
-					</section>
-				))}
-				{overview.data && q && !groups.length ? <p className="text-[13px] text-[var(--g-ink-3)]">No realms match “{sp.get('q')}”.</p> : null}
+				{org?.status === 'error' ? <Banner tone="bad">{org.error ?? 'Could not load this organization’s realms.'}</Banner> : null}
+				{org && realms.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{realms.map((r) => <Realm_card key={r.id} r={r} />)}</div> : null}
+				{org && !total && !creating ? (
+					<p className="rounded-[10px] border border-dashed border-[var(--g-line)] px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">No realms yet.{may_create ? <> <button type="button" onClick={() => set('new', '1')} className="text-[var(--g-acc)] hover:underline">Create one</button></> : ' Ask an org admin to add you to one.'}</p>
+				) : null}
+				{org && q && !realms.length ? <p className="text-[13px] text-[var(--g-ink-3)]">No realms match “{sp.get('q')}”.</p> : null}
 			</div>
 		</Graphite_shell>
 	);

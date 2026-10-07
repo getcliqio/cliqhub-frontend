@@ -38,8 +38,7 @@ export function Component() {
 	const scope = use_view_scope(overview.data);
 	const orgs = overview.data?.orgs ?? [];
 	const view_org = scope.kind === 'org' ? scope.org : scope.kind === 'realm' ? orgs.find((o) => o.id === scope.realm.org_id) ?? null : null;
-	const picked = search.get('org');
-	const org = view_org ?? orgs.find((o) => o.slug === picked) ?? orgs[0] ?? null;
+	const org = view_org;
 	const f = ((v) => (FILTERS.some((x) => x.id === v) ? v : 'all'))(search.get('filter')) as Filter;
 	const [q, set_q] = useState('');
 	const [kind, set_kind] = useState('');
@@ -79,11 +78,6 @@ export function Component() {
 						<h1 className="text-[22px] font-semibold tracking-tight">Agents</h1>
 						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">What your teams’ phases run on{org ? ` in ${org.display_name}` : ''}. Set keys once for the org — any realm can override them.</p>
 					</div>
-					{!view_org && orgs.length > 1 ? (
-						<label className="ml-auto flex items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]">Org
-							<select aria-label="Organization" value={org?.slug ?? ''} onChange={(e) => set_param('org', e.target.value)} className={`${G_INPUT} w-[200px]`}>{orgs.map((o) => <option key={o.id} value={o.slug}>{o.display_name}</option>)}</select>
-						</label>
-					) : null}
 				</div>
 
 				{!org && overview.status !== 'loading' ? <p className="text-[13px] text-[var(--g-ink-3)]">Agents belong to an organization — join or create one first.</p> : null}

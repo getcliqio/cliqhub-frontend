@@ -1,6 +1,6 @@
 /**
- * Graphite Inbox — Needs me from the overview (no extra call), All
- * notifications from one BFF read per view, the bell, and row actions.
+ * Graphite Inbox — system events for the org (HUG events live in HUGs), one
+ * BFF read per filter, the bell, row actions, and the shell's flat nav.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
@@ -55,56 +55,56 @@ function render_page(path = '/inbox') {
 	);
 }
 
-describe('Inbox · Needs me', () => {
+describe('Shell nav', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('lists reviews + input from the overview, oldest first, with no extra request', async () => {
-		const calls = route_fetch();
-		render_page();
-		await screen.findByTestId('inbox-item-review-rev-1');
-		const ids = screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid);
-		// This org only (rev-2 is Acme's): run-88 (38m), rev-1 (12m) → oldest waiting first.
-		expect(ids).toEqual(['inbox-item-input-run-88', 'inbox-item-review-rev-1']);
-		expect(calls.filter((c) => c.url === '/v1/inbox/get')).toHaveLength(0);
-		expect(within(screen.getByTestId('inbox-item-review-rev-1')).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-1');
-		expect(within(screen.getByTestId('inbox-item-input-run-88')).getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
-		fireEvent.click(screen.getByRole('button', { name: /^Input/ }));
-		expect(screen.getAllByTestId(/^inbox-item-/)).toHaveLength(1);
-	});
-
-	it('follows the view (?org=)', async () => {
-		route_fetch();
-		render_page('/inbox?org=acme-labs');
-		await waitFor(() => expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-review-rev-2']));
-	});
-
-	it('sidebar has Work and Manage sections', async () => {
+	it('one flat list of resources (no Inbox — that is the bell); realm shortcuts under Realms; Org admin group for owners; Marketplace top right', async () => {
 		route_fetch();
 		render_page();
-		await screen.findByTestId('inbox-item-review-rev-1');
+		await screen.findByTestId('inbox-item-a');
 		const nav = screen.getByRole('navigation', { name: 'Main' });
-		expect(within(nav).getByText('Work')).toBeInTheDocument();
-		expect(within(nav).getByText('Build')).toBeInTheDocument();
-		expect(within(nav).getByText('Manage')).toBeInTheDocument();
-		expect(within(nav).getByRole('link', { name: /^Teams/ })).toHaveAttribute('href', '/teams?org=measureone');
-		expect(within(nav).queryByText('Library')).toBeNull();
-		expect(within(nav).getByRole('link', { name: /^Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone');
-		expect(within(nav).queryByText('Reviews & activity')).toBeNull();
+		const main = ['Dashboard', 'HUGs', 'Realms', 'Teams'];
+		for (const label of main) expect(within(nav).getByRole('link', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+		// The inbox lives behind the bell, not in the sidebar.
+		expect(within(nav).queryByRole('link', { name: /^Inbox/ })).toBeNull();
+		expect(within(nav).queryByText('Work')).toBeNull();
+		expect(within(nav).queryByText('Manage')).toBeNull();
+		expect(within(nav).getByRole('link', { name: /^HUGs/ })).toHaveAttribute('href', '/hugs?org=measureone');
+		expect(within(nav).getByRole('link', { name: /^HUGs/ })).toHaveTextContent('5');
+		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
+		// measureone: you're the owner → Org admin.
+		const admin = within(nav).getByTestId('nav-org-admin');
+		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Events', 'Settings']);
+		expect(within(admin).getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/notifications?org=measureone');
+		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
+		expect(screen.getByTestId('marketplace-link')).toHaveAttribute('href', '/browse');
+	});
+
+	it('members (not admins) see no Org admin group', async () => {
+		window.localStorage.setItem('cliqhub.last_org', 'acme-labs');
+		route_fetch();
+		render_page();
+		await screen.findByTestId('inbox-item-a');
+		expect(screen.queryByTestId('nav-org-admin')).toBeNull();
+		expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: /^Teams/ })).toBeInTheDocument();
 	});
 });
 
-describe('Inbox · All notifications', () => {
+describe('Inbox · events', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one inbox call scoped to the view, filters map to event types, row links', async () => {
+	it('one inbox call scoped to the org; HUG events are left out; filters map to event types; row links', async () => {
 		const calls = route_fetch();
-		render_page('/inbox?tab=all&org=measureone');
+		render_page('/inbox?org=measureone');
 		await screen.findByTestId('inbox-item-a');
 		const reads = () => calls.filter((c) => c.url === '/v1/inbox/get');
 		expect(reads()).toHaveLength(1);
 		expect(reads()[0].body).toEqual({ limit: 50, org_id: ORG_A });
 		expect(within(screen.getByTestId('inbox-item-a')).getByRole('link', { name: 'Investigate' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1');
-		expect(within(screen.getByTestId('inbox-item-b')).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-9');
+		// The review request (a HUG) belongs to HUGs, not the inbox.
+		expect(screen.queryByTestId('inbox-item-b')).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Reviews' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Input' })).toBeNull();
 		const why = within(screen.getByTestId('inbox-item-a')).getByRole('link', { name: 'Why did I get this?' });
 		expect(why.getAttribute('href')).toBe('/notifications?tab=check&org=measureone&realm=r-prod&event=run.failed');
 
@@ -116,7 +116,7 @@ describe('Inbox · All notifications', () => {
 		const calls = route_fetch((body) => (body.until_ms
 			? { items: [item('old', { at: now - 3 * 86_400_000 })], next_until_ms: null, orgs: [], partial: false }
 			: { items: [item('a')], next_until_ms: 12345, orgs: [], partial: false }));
-		render_page('/inbox?tab=all');
+		render_page('/inbox');
 		await screen.findByTestId('inbox-item-a');
 		fireEvent.click(screen.getByRole('button', { name: 'Show older' }));
 		await screen.findByTestId('inbox-item-old');
@@ -126,7 +126,7 @@ describe('Inbox · All notifications', () => {
 
 	it('names orgs that failed to load', async () => {
 		route_fetch(() => ({ items: [item('a')], next_until_ms: null, orgs: [{ id: 'x', slug: 'acme-labs', display_name: 'Acme Labs', status: 'error', error: 'down' }], partial: true }));
-		render_page('/inbox?tab=all');
+		render_page('/inbox');
 		expect(await screen.findByText(/Couldn’t load notifications for Acme Labs/)).toBeInTheDocument();
 	});
 });

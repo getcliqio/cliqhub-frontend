@@ -113,7 +113,7 @@ export function Install_popover({
 						<label key={r.id} className={`flex items-center gap-2.5 px-3.5 py-1.5 text-[13px] ${has ? 'text-[var(--g-ink-3)]' : 'cursor-pointer hover:bg-[var(--g-soft)]'}`}>
 							<input type="radio" name="install-realm" disabled={has} checked={pick === r.id} onChange={() => set_pick(r.id)} />
 							<span className="truncate">{r.slug}</span>
-							<span className="ml-auto text-[11px] text-[var(--g-ink-3)]">{has ? 'installed' : r.org_slug}</span>
+							{has ? <span className="ml-auto text-[11px] text-[var(--g-ink-3)]">installed</span> : null}
 						</label>
 					);
 				})}

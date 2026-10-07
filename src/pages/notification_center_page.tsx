@@ -38,7 +38,7 @@ import {
 	type Notification_center_data,
 	type Notification_check_data,
 } from '@/lib/notification_center';
-import { Graphite_shell, Org_chip } from '@/components/graphite/graphite_shell';
+import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Realm_picker, type Picked_realm } from '@/components/graphite/g_realm_picker';
 import { Event_picker } from '@/components/graphite/g_event_picker';
@@ -66,11 +66,11 @@ const TAG_STYLE: Record<Notif_scope_kind | 'personal', { fg: string; bg: string;
 	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'only you' },
 };
 
-export function Scope_tag({ kind, text, org }: { kind: Notif_scope_kind | 'personal'; text: string; org?: { slug: string; display_name: string } | null }) {
+export function Scope_tag({ kind, text }: { kind: Notif_scope_kind | 'personal'; text: string; org?: { slug: string; display_name: string } | null }) {
+	// One org at a time: the org is the page's context, so the tag names only the level.
 	const t = TAG_STYLE[kind];
 	return (
 		<span className="inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]" style={{ color: t.fg, background: t.bg }} data-scope={kind}>
-			{org ? <Org_chip org={org} size={13} /> : null}
 			<span className="text-[10px] uppercase tracking-[0.06em] opacity-80">{t.word}</span>
 			<span className="truncate">{text}</span>
 		</span>
@@ -396,9 +396,9 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 					))}
 				</div>
 				<div className="mt-2 grid gap-2">
-					<select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (kind === 'org' && !can_edit_org(data, id)) set_kind('realm'); set_channel_id(''); }} className={INPUT}>
+					{view_org_id ? null : <select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (kind === 'org' && !can_edit_org(data, id)) set_kind('realm'); set_channel_id(''); }} className={INPUT}>
 						{ok_orgs.map((o) => <option key={o.id} value={o.id} disabled={!org_usable(o.id)}>{o.display_name}{org_usable(o.id) ? '' : ` — ${o.role}, can’t add rules`}</option>)}
-					</select>
+					</select>}
 					{kind !== 'org' ? (
 						<Realm_picker
 							org_id={org_id}
@@ -655,9 +655,9 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 					))}
 				</div>
 				<div className="mt-2 grid gap-2">
-					<select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org_channels(data, id)) set_owner('realm'); }} className={INPUT}>
+					{view_org_id ? null : <select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org_channels(data, id)) set_owner('realm'); }} className={INPUT}>
 						{ok_orgs.map((o) => <option key={o.id} value={o.id} disabled={!org_usable(o.id)}>{o.display_name}{org_usable(o.id) ? '' : ` — ${o.role}, view only`}</option>)}
-					</select>
+					</select>}
 					{owner === 'realm' ? (
 						<Realm_picker org_id={org_id} value={realm} on_change={set_realm} blocked={(id) => (can_edit_realm(data, id) ? null : 'view only')} />
 					) : null}

@@ -69,6 +69,18 @@ export function inbox_kind(e: string): Inbox_kind {
 	return 'info';
 }
 
+/** HUG events (human reviews and agents asking for input) live in HUGs, not the inbox or bell. */
+export function is_hug_event(e: string): boolean {
+	const k = inbox_kind(e);
+	return k === 'review' || k === 'input' || e === 'phase.inputs_supplied';
+}
+
+/** Events that mean something went wrong — the Dashboard's "Needs attention" panel. */
+export function is_problem_event(e: string): boolean {
+	const k = inbox_kind(e);
+	return k === 'failed' || k === 'delivery' || k === 'timeout' || e === 'daemon.offline';
+}
+
 const realm_base = (i: Inbox_item) => (i.org_slug && i.realm_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}` : null);
 
 /** The one action a row offers, or null when there is nothing to open. */

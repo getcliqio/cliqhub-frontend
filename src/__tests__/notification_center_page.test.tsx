@@ -122,13 +122,9 @@ describe('Notifications page', () => {
 		route_fetch();
 		render_page('/notifications?org=acme-labs');
 		await waitFor(() => expect(rule_ids()).toEqual(['rule-rl-acme']));
-		// Sidebar: Work (Overview, Inbox) · Build (Teams, Marketplace) · Manage (Notifications); links keep the view.
-		const labels = screen.getAllByRole('link').map((a) => a.textContent?.trim() ?? '');
-		const at = (l: string) => labels.findIndex((x) => x.startsWith(l));
-		expect(at('Overview')).toBeLessThan(at('Inbox'));
-		expect(at('Marketplace')).toBeLessThan(at('Notifications'));
-		expect(screen.getByRole('link', { name: /^Inbox/ })).toHaveAttribute('href', '/inbox?org=acme-labs');
-		expect(screen.getByRole('link', { name: /^Notifications/ })).toHaveAttribute('href', '/notifications?org=acme-labs');
+		// Links keep the org.
+		expect(screen.getByRole('link', { name: /^Realms/ })).toHaveAttribute('href', '/realms?org=acme-labs');
+		expect(screen.getByRole('link', { name: /^HUGs/ })).toHaveAttribute('href', '/hugs?org=acme-labs');
 	});
 
 	it('deletes a rule after inline confirmation via the org or realm route, then reloads', async () => {
@@ -362,14 +358,13 @@ describe('Notifications — edit only where you can', () => {
 		expect(within(screen.getByTestId('rule-rl-org')).getByRole('button', { name: /Delete rule/ })).toBeInTheDocument();
 	});
 
-	it('new rule: orgs you can’t change are listed but locked', async () => {
+	it('new rule: no org picker — the rule is for the org you’re in', async () => {
 		route_fetch({ center: limited });
 		render_page();
 		await screen.findByTestId('rule-rl-org');
 		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
 		const dlg = screen.getByRole('dialog', { name: 'New rule' });
-		const acme = within(dlg).getByRole('option', { name: /Acme Labs — member, can’t add rules/ }) as HTMLOptionElement;
-		expect(acme.disabled).toBe(true);
+		expect(within(dlg).queryByRole('combobox', { name: 'Org' })).toBeNull();
 	});
 
 	it('channel details are view only where you can’t change them', async () => {

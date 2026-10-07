@@ -109,14 +109,14 @@ export function Component() {
 			const res = await auth_fetch('/v1/reviews/verdict', { method: 'POST', body: JSON.stringify({ review_id: r!.id, action, fields: out, notification_id: notif }) });
 			const d = await res.json().catch(() => null);
 			if (!res.ok || !d?.ok) { set_err(typeof d?.error === 'string' ? d.error : d?.error?.message ?? 'Could not submit.'); return; }
-			navigate('/inbox', { replace: true });
+			navigate('/hugs', { replace: true });
 		} catch { set_err('Network error — try again.'); } finally { set_busy(false); }
 	}
 
 	return (
 		<Graphite_shell data={overview.data} title="Review" current_realm_id={realm_id}>
 			<div className="flex flex-col gap-4 px-7 py-6">
-				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to="/inbox" className="hover:text-[var(--g-ink)]">Inbox</Link> › Review</nav>
+				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to="/hugs" className="hover:text-[var(--g-ink)]">HUGs</Link> › Review</nav>
 				<header className="flex flex-wrap items-start gap-3">
 					<span aria-hidden className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(255,122,217,.14)] font-bold text-[var(--g-hug)]">H</span>
 					<div className="min-w-0 flex-1">

@@ -13,9 +13,7 @@ import {
 	Rocket,
 	Check,
 	ChevronsUpDown,
-	CircleDot,
 	Bell,
-	Inbox,
 	LogOut,
 	Search,
 	Settings,
@@ -24,11 +22,16 @@ import {
 	UsersRound,
 	UserRound,
 	KeyRound,
-	MoreHorizontal,
 	ChevronRight,
 	type LucideIcon,
 	Bot,
 	Building2,
+	BellRing,
+	Hand,
+	Layers,
+	LayoutDashboard,
+	UserCog,
+	Zap,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
 import { avatar_outline } from '@/lib/admin';
@@ -39,7 +42,7 @@ import { ImpersonationRibbon } from '@/components/impersonation_ribbon';
 import { realm_label, type Overview_data, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
 import { sidebar_realms, use_view_scope, view_href, write_last_org, type View_scope } from '@/lib/view_scope';
-import { mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
+import { is_hug_event, mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import '@/styles/graphite.css';
 
@@ -95,7 +98,7 @@ interface Switcher_props {
 }
 
 /** Sections that keep their place when you switch org (`/teams` stays `/teams`). */
-const ORG_SECTIONS = ['/home', '/inbox', '/teams', '/agents', '/notifications', '/realms'];
+const ORG_SECTIONS = ['/home', '/hugs', '/inbox', '/teams', '/agents', '/notifications', '/realms'];
 
 /** Where switching to `slug` goes: the same section in the new org, else its overview. */
 export function org_switch_href(pathname: string, slug: string): string {
@@ -296,6 +299,8 @@ function Side_link({ item }: { item: Nav_item }) {
 
 /** In a view, only show notifications that belong to it (account-wide ones always show). */
 function in_view_item(i: Inbox_item, scope: View_scope): boolean {
+	// HUGs have their own page and nav badge; the bell is for system events.
+	if (is_hug_event(i.event)) return false;
 	if (scope.kind === 'all' || !i.org_id) return true;
 	if (scope.kind === 'org') return i.org_id === scope.org.id;
 	return i.org_id === scope.realm.org_id && (!i.realm_id || i.realm_id === scope.realm.id);
@@ -347,7 +352,7 @@ function Bell_menu({ data, scope, multi_org }: { data: Overview_data | null; sco
 						{count ? <span className="text-[12px] text-[var(--g-ink-3)]">{count}{summary?.capped ? '+' : ''} new</span> : null}
 					</div>
 					{latest.length ? latest.map((i) => (
-						<Inbox_row key={i.id} item={i} compact is_new={i.at > seen_at_open} show_realm_org={multi_org && scope.kind === 'all'}
+						<Inbox_row key={i.id} item={i} compact is_new={i.at > seen_at_open} show_realm_org={false}
 							org_chip={i.org_id && orgs.get(i.org_id) ? <Org_chip org={orgs.get(i.org_id)!} size={13} /> : null}
 							on_open={() => set_open(false)} />
 					)) : (
@@ -395,7 +400,7 @@ function Crumbs({ scope, fallback, title }: { scope: View_scope; fallback: { org
 }
 
 /** Pages that belong to one organization (the shell asks for one before showing them). */
-const ORG_PAGES = ['/home', '/inbox', '/teams', '/agents', '/notifications', '/realms', '/o/'];
+const ORG_PAGES = ['/home', '/hugs', '/inbox', '/teams', '/agents', '/notifications', '/realms', '/o/'];
 
 export function Graphite_shell({ children, data, title, actions, current_realm_id = null }: Shell_props) {
 	const { user, logout } = useAuth();
@@ -434,23 +439,22 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const gs = progress.data;
 	const gs_done = Boolean(gs && gs.done_count >= gs.total);
 
-	const scope_waiting = view_org ? view_org.counts.needs_you : data?.totals.needs_you;
-	// Work: what you do every day. Build: teams. Manage: setup owned by org / realm admins (one place, every level).
+	const hugs_waiting = view_org ? view_org.counts.needs_you : 0;
+	// One flat list of resources, the same for everyone; org admins get one extra group.
+	// The inbox lives behind the bell (top right); problems also surface on the Dashboard.
 	const nav: Nav_item[] = [
-		{ to: view_href('/home', scope, multi_org), label: 'Overview', icon: CircleDot, end: true },
-		{ to: view_href('/inbox', scope, multi_org), label: 'Inbox', icon: Inbox, badge: scope_waiting },
+		{ to: view_href('/home', scope, multi_org), label: 'Dashboard', icon: LayoutDashboard, end: true },
+		{ to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting },
+		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
-	// Build: teams you and your orgs author, and the public catalog.
-	const build: Nav_item[] = [
-		{ to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound },
-		{ to: '/browse', label: 'Marketplace', icon: Store },
-	];
-	const manage: Nav_item[] = [
-		{ to: view_href('/notifications', scope, multi_org), label: 'Notifications', icon: Bell },
+	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
+	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
+	const org_admin: Nav_item[] = view_org ? [
+		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
-		// Members, roles, scopes, A2A of the org in view (or a chooser).
-		{ to: view_org ? `/orgs/${view_org.id}` : '/org', label: 'Organization', icon: Building2 },
-	];
+		{ to: view_href('/notifications', scope, multi_org), label: 'Events', icon: Zap },
+		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Settings', icon: Settings },
+	] : [];
 
 	function enter_admin() {
 		// Remember where to come back to ("Back to my work").
@@ -486,116 +490,81 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 						) : null}
 					</div>
 
-					<nav aria-label="Main">
-						<div className={SECTION_CLS}>Work</div>
-						<div className="space-y-0.5">{nav.map((item) => <Side_link key={item.label} item={item} />)}</div>
-						<div className={`${SECTION_CLS} mt-4`}>Build</div>
-						<div className="space-y-0.5">{build.map((item) => <Side_link key={item.label} item={item} />)}</div>
-						<div className={`${SECTION_CLS} mt-4`}>Manage</div>
-						<div className="space-y-0.5">{manage.map((item) => <Side_link key={item.label} item={item} />)}</div>
-					</nav>
-
-					<div className="mt-5 min-h-0 flex-1 overflow-y-auto" data-testid="sidebar-realms">
-						<div className="flex items-center px-2.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">
-							Realms
-							{total ? <span className="ml-auto font-medium normal-case tracking-normal">{total}</span> : null}
+					<nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto">
+						<div className="space-y-0.5">
+							{nav.map((item) => <Side_link key={item.label} item={item} />)}
 						</div>
-						{shown.map((r) => {
-							const current = scope.kind === 'realm' && scope.realm.id === r.id;
-							return (
-								<Link
-									key={r.id}
-									to={`${realm_path(r.org_slug, r.slug)}/inbox`}
-									aria-current={current ? 'page' : undefined}
-									className={`flex items-center gap-2 rounded-md px-2.5 py-1 text-[12.5px] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)] ${current ? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-3)]'}`}
-								>
-									<Realm_dot realm={r} />
-									<span className="truncate" title={realm_label(r) !== r.slug ? r.slug : undefined}>{realm_label(r)}</span>
-									<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
+						{/* Realm shortcuts sit under Realms: the most relevant first, then all of them. */}
+						<div className="mb-1 ml-[18px] border-l border-[var(--g-line-2)] pl-1.5" data-testid="sidebar-realms">
+							{shown.map((r) => {
+								const current = scope.kind === 'realm' && scope.realm.id === r.id;
+								return (
+									<Link
+										key={r.id}
+										to={`${realm_path(r.org_slug, r.slug)}/inbox`}
+										aria-current={current ? 'page' : undefined}
+										className={`flex items-center gap-2 rounded-md px-2 py-1 text-[12.5px] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)] ${current ? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-3)]'}`}
+									>
+										<Realm_dot realm={r} />
+										<span className="truncate" title={realm_label(r) !== r.slug ? r.slug : undefined}>{realm_label(r)}</span>
+										<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
+									</Link>
+								);
+							})}
+							{total === 0 && data && view_org ? <p className="px-2 py-1 text-[12px] text-[var(--g-ink-3)]">No realms yet.</p> : null}
+							{total > shown.length ? (
+								<Link to={view_href('/realms', scope, multi_org)} className="block px-2 py-1 text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
+									All {total} realms →
 								</Link>
-							);
-						})}
-						{total === 0 && data ? (
-							<p className="px-2.5 py-1 text-[12px] text-[var(--g-ink-3)]">No realms yet.</p>
-						) : null}
-						{total > shown.length ? (
-							<Link to="/realms" className="block px-2.5 py-1.5 text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
-								All {total} realms →
-							</Link>
-						) : null}
-						{orgs.filter((o) => o.status === 'error' && o.id === view_org?.id).map((o) => (
-							<p key={o.id} className="px-2.5 py-1 text-[11.5px] text-[var(--g-bad)]">Couldn’t load {o.display_name || o.slug}</p>
-						))}
-					</div>
-
-					<div className="mt-2 space-y-0.5 border-t border-[var(--g-line)] pt-2.5" data-testid="sidebar-footer">
-						{!gs_done ? (
-							<NavLink
-								to="/getting-started"
-								className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium ${isActive ? 'bg-[var(--g-hover)] text-white shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)]'}`}
-							>
-								<Rocket aria-hidden className="h-4 w-4 opacity-70" strokeWidth={1.8} />
-								Getting started
-								{gs ? <span className="ml-auto text-[11px] font-semibold text-[var(--g-acc)]" aria-label={`${gs.done_count} of ${gs.total} done`}>{gs.done_count} / {gs.total}</span> : null}
-							</NavLink>
-						) : null}
-						<a
-							href="https://docs.getcliq.io"
-							target="_blank"
-							rel="noopener noreferrer"
-							className="flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium text-[var(--g-ink-2)] hover:bg-[var(--g-soft)]"
-						>
-							<BookOpen aria-hidden className="h-4 w-4 opacity-70" strokeWidth={1.8} />
-							Docs
-							<span aria-hidden className="text-[11px] opacity-60">↗</span>
-						</a>
-						{is_site_admin ? (
-							<button
-								type="button"
-								onClick={enter_admin}
-								className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-left text-[13px] font-medium text-[var(--g-ink-2)] hover:bg-[var(--g-soft)]"
-							>
-								<Shield aria-hidden className="h-4 w-4 opacity-70" strokeWidth={1.8} />
-								Admin
-								<span className="ml-auto rounded border border-[rgba(255,159,90,.45)] px-1.5 text-[10px] font-bold tracking-[0.06em] text-[#ff9f5a]">SITE</span>
-							</button>
-						) : null}
-
-						<div className="relative pt-1.5">
-							{menu_open ? (
-								<Account_menu
-									on_close={() => set_menu_open(false)}
-									gs_done={gs_done}
-									on_sign_out={() => void logout()}
-								/>
 							) : null}
-							<button
-								type="button"
-								onClick={() => set_menu_open((v) => !v)}
-								aria-haspopup="menu"
-								aria-expanded={menu_open}
-								className="flex w-full items-center gap-2.5 rounded-lg border border-[var(--g-line-2)] px-2 py-2 text-left hover:bg-[var(--g-soft)]"
-								data-testid="account-button"
-							>
-								<span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[var(--g-line)] bg-[var(--g-soft)] text-[11px] font-bold">
-									{initials(user?.display_name || user?.username || '')}
-								</span>
-								<span className="min-w-0 flex-1">
-									<b className="block truncate text-[12.5px] font-semibold">{user?.display_name || user?.username}</b>
-									<span className="block truncate text-[11px] text-[var(--g-ink-3)]">@{user?.username}{is_site_admin ? ' · site admin' : ''}</span>
-								</span>
-								<MoreHorizontal aria-hidden className="h-4 w-4 text-[var(--g-ink-3)]" />
-							</button>
+							{orgs.filter((o) => o.status === 'error' && o.id === view_org?.id).map((o) => (
+								<p key={o.id} className="px-2 py-1 text-[11.5px] text-[var(--g-bad)]">Couldn’t load {o.display_name || o.slug}</p>
+							))}
 						</div>
-					</div>
+						<div className="space-y-0.5"><Side_link item={teams_item} /></div>
+
+						{is_org_admin ? (
+							<div data-testid="nav-org-admin">
+								<div className={`${SECTION_CLS} mt-5`}>Org admin</div>
+								<div className="space-y-0.5">{org_admin.map((item) => <Side_link key={item.label} item={item} />)}</div>
+							</div>
+						) : null}
+					</nav>
 				</aside>
 
 				<div className="flex min-h-0 flex-col">
 					<header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--g-line)] px-7">
 						<Crumbs scope={scope} fallback={scope.kind === 'realm' ? null : route_realm} title={title} />
 						<div className="ml-auto flex items-center gap-2">
-							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
 							{actions}
+							<Link to="/browse" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--g-line)] px-2.5 text-[12.5px] font-medium text-[var(--g-ink-2)] hover:text-[var(--g-ink)]" data-testid="marketplace-link">
+								<Store aria-hidden className="h-3.5 w-3.5" />Marketplace
+							</Link>
+							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
+							<div className="relative">
+								<button
+									type="button"
+									onClick={() => set_menu_open((v) => !v)}
+									aria-haspopup="menu"
+									aria-expanded={menu_open}
+									aria-label={`Account (${user?.display_name || user?.username || ''})`}
+									className="grid h-8 w-8 place-items-center rounded-full text-[11px] font-semibold"
+									style={avatar_outline(user?.display_name || user?.username || '?', 32)}
+									data-testid="account-button"
+								>
+									{initials(user?.display_name || user?.username || '')}
+								</button>
+								{menu_open ? (
+									<Account_menu
+										on_close={() => set_menu_open(false)}
+										user={user}
+										is_site_admin={is_site_admin}
+										progress={gs ? { done: gs.done_count, total: gs.total } : null}
+										on_admin={enter_admin}
+										on_sign_out={() => void logout()}
+									/>
+								) : null}
+							</div>
 						</div>
 					</header>
 					<main className="min-h-0 flex-1 overflow-y-auto">{needs_org ? <Org_picker data={data} /> : children}</main>
@@ -607,8 +576,15 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 
 export const ADMIN_RETURN_KEY = 'cliq.admin_return';
 
-/** Account menu: personal settings live here, not in the main nav. */
-function Account_menu({ on_close, gs_done, on_sign_out }: { on_close: () => void; gs_done: boolean; on_sign_out: () => void }) {
+/** Account menu (top right): you, your settings, help, site admin, sign out. */
+function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_sign_out }: {
+	on_close: () => void;
+	user: { username: string; display_name: string } | null;
+	is_site_admin: boolean;
+	progress: { done: number; total: number } | null;
+	on_admin: () => void;
+	on_sign_out: () => void;
+}) {
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		const on_click = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) on_close(); };
@@ -619,11 +595,28 @@ function Account_menu({ on_close, gs_done, on_sign_out }: { on_close: () => void
 	}, [on_close]);
 	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-[var(--g-ink-2)] hover:bg-[var(--g-hover)] hover:text-[var(--g-ink)]';
 	return (
-		<div ref={ref} role="menu" aria-label="Account" className="absolute bottom-[calc(100%+4px)] left-0 z-50 w-full rounded-xl border border-[#2c2f35] bg-[#17191c] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,.6)]">
+		<div ref={ref} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+6px)] z-50 w-[250px] rounded-xl border border-[#2c2f35] bg-[#17191c] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,.6)]">
+			<div className="px-2.5 pb-2 pt-1.5">
+				<b className="block truncate text-[13px] font-semibold">{user?.display_name || user?.username}</b>
+				<span className="block truncate text-[11.5px] text-[var(--g-ink-3)]">@{user?.username}{is_site_admin ? ' · site admin' : ''}</span>
+			</div>
+			<div className="mb-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/settings?tab=profile" onClick={on_close} className={item}><UserRound aria-hidden className="h-4 w-4 opacity-70" />Profile &amp; security</Link>
 			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />API tokens</Link>
+			<Link role="menuitem" to="/settings?tab=notifications" onClick={on_close} className={item}><BellRing aria-hidden className="h-4 w-4 opacity-70" />My notifications</Link>
 			<Link role="menuitem" to="/settings" onClick={on_close} className={item}><Settings aria-hidden className="h-4 w-4 opacity-70" />All settings</Link>
-			{gs_done ? <Link role="menuitem" to="/getting-started" onClick={on_close} className={item}><Rocket aria-hidden className="h-4 w-4 opacity-70" />Getting started</Link> : null}
+			<div className="my-1 border-t border-[var(--g-line)]" />
+			<Link role="menuitem" to="/getting-started" onClick={on_close} className={item}>
+				<Rocket aria-hidden className="h-4 w-4 opacity-70" />Getting started
+				{progress && progress.done < progress.total ? <span className="ml-auto text-[11px] font-semibold text-[var(--g-acc)]" aria-label={`${progress.done} of ${progress.total} done`}>{progress.done} / {progress.total}</span> : null}
+			</Link>
+			<a role="menuitem" href="https://docs.getcliq.io" target="_blank" rel="noopener noreferrer" onClick={on_close} className={item}><BookOpen aria-hidden className="h-4 w-4 opacity-70" />Docs<span aria-hidden className="text-[11px] opacity-60">↗</span></a>
+			{is_site_admin ? (
+				<button role="menuitem" type="button" onClick={() => { on_close(); on_admin(); }} className={item}>
+					<Shield aria-hidden className="h-4 w-4 opacity-70" />Site admin
+					<span className="ml-auto rounded border border-[rgba(255,159,90,.45)] px-1.5 text-[10px] font-bold tracking-[0.06em] text-[#ff9f5a]">SITE</span>
+				</button>
+			) : null}
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<button role="menuitem" type="button" onClick={() => { on_close(); on_sign_out(); }} className={item}><LogOut aria-hidden className="h-4 w-4 opacity-70" />Sign out</button>
 		</div>

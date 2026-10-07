@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import type { Overview_data } from '@/lib/overview';
+import type { Inbox_item } from '@/lib/inbox';
 import { multi_org_overview, single_org_overview, org, realm, counts, gs_response, ORG_A, ORG_B } from './fixtures_overview';
 
 const auth = {
@@ -161,6 +162,29 @@ describe('Overview page', () => {
 		expect(screen.getAllByRole('link', { name: 'Review' })[0]).toHaveAttribute('href', '/reviews/rev-1');
 	});
 
+	it('Needs attention: only problems for this org from the latest events, with a way into the inbox', async () => {
+		const ev = (id: string, event: string, org_id: string | null = ORG_A): Inbox_item => ({
+			id, event, title: `T ${id}`, message: null, severity: null, org_id, org_slug: org_id === ORG_B ? 'acme-labs' : 'measureone',
+			realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, review_id: null, channel_id: null, original_event: null, at: Date.now() - 60_000,
+		});
+		const d = multi_org_overview();
+		d.inbox = { new_count: 0, capped: false, status: 'ok', latest: [
+			ev('fail', 'run.failed'), ev('done', 'run.completed'), ev('hug', 'hug.review_requested'),
+			ev('off', 'daemon.offline'), ev('on', 'daemon.online'), ev('other-org', 'run.crashed', ORG_B),
+		] };
+		respond(d);
+		render_page();
+		const panel = await screen.findByTestId('needs-attention');
+		expect(within(panel).getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-fail', 'inbox-item-off']);
+		expect(within(panel).getByRole('link', { name: 'Open inbox →' })).toHaveAttribute('href', '/inbox?org=measureone');
+	});
+
+	it('Needs attention: says so when nothing went wrong', async () => {
+		respond(multi_org_overview());
+		render_page();
+		expect(within(await screen.findByTestId('needs-attention')).getByText('Nothing has gone wrong recently.')).toBeInTheDocument();
+	});
+
 	it('shows the caught-up empty state', async () => {
 		respond({ ...single_org_overview(), needs_you: [] });
 		render_page();
@@ -206,14 +230,17 @@ describe('Overview page', () => {
 		respond(single_org_overview());
 		const { unmount } = render_page('/home?x=1');
 		await screen.findByRole('heading', { level: 1 });
-		expect(screen.queryByRole('button', { name: /Admin/ })).toBeNull();
+		fireEvent.click(screen.getByTestId('account-button'));
+		expect(within(screen.getByRole('menu', { name: 'Account' })).queryByRole('menuitem', { name: /Site admin/ })).toBeNull();
 		unmount();
 		auth.user.role = 'admin';
 		respond(single_org_overview());
 		render_page('/home?x=1');
 		await screen.findByRole('heading', { level: 1 });
-		expect(screen.getByText(/site admin/)).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: /Admin.*SITE/ }));
+		fireEvent.click(screen.getByTestId('account-button'));
+		const menu = screen.getByRole('menu', { name: 'Account' });
+		expect(within(menu).getByText(/site admin/)).toBeInTheDocument();
+		fireEvent.click(within(menu).getByRole('menuitem', { name: /Site admin.*SITE/ }));
 		expect(await screen.findByTestId('where')).toHaveTextContent(/^\/admin$/);
 	});
 });
@@ -221,21 +248,20 @@ describe('Overview page', () => {
 describe('Sidebar realms', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('titled "Realms": the org’s realms only, no org badges, linking to the realm inbox', async () => {
+	it('realm shortcuts under Realms: the org’s realms only, no org badges, linking to the realm inbox', async () => {
 		respond(multi_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1 });
 		const side = screen.getByTestId('sidebar-realms');
-		expect(within(side).getByText('Realms')).toBeInTheDocument();
 		const links = within(side).getAllByRole('link');
 		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/o/measureone/realms/prod-us/inbox', '/o/measureone/realms/staging/inbox']);
 		expect(links.map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
 		expect(within(side).getByLabelText('4 waiting on you')).toBeInTheDocument();
 		// Nav links carry the org.
-		expect(screen.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/home?org=measureone');
+		expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/home?org=measureone');
 	});
 
-	it('caps at 10 (waiting on you first, then latest activity) with an "All N realms" link', async () => {
+	it('caps at 5 (waiting on you first, then latest activity) with an "All N realms" link', async () => {
 		const many = Array.from({ length: 14 }, (_, i) => realm({ id: `r${i}`, slug: `realm-${String(i).padStart(2, '0')}`, org_id: ORG_A, org_slug: 'measureone', last_activity_at: i, needs_you: i === 3 ? 2 : 0 }));
 		const d = single_org_overview();
 		d.orgs = [org({ id: ORG_A, slug: 'measureone', display_name: 'MeasureOne', role: 'owner', counts: counts(), realms: many })];
@@ -245,12 +271,11 @@ describe('Sidebar realms', () => {
 		await screen.findByRole('heading', { level: 1 });
 		const side = screen.getByTestId('sidebar-realms');
 		const links = within(side).getAllByRole('link');
-		expect(links).toHaveLength(11);
+		expect(links).toHaveLength(6);
 		expect(links[0]).toHaveTextContent('realm-03');
 		expect(links[1]).toHaveTextContent('realm-13');
-		expect(links[10]).toHaveTextContent('All 14 realms →');
-		expect(links[10]).toHaveAttribute('href', '/realms');
-		expect(within(side).getByText('14')).toBeInTheDocument();
+		expect(links[5]).toHaveTextContent('All 14 realms →');
+		expect(links[5]).toHaveAttribute('href', '/realms?org=measureone');
 	});
 });
 
@@ -315,7 +340,7 @@ describe('Org switcher', () => {
 	});
 });
 
-describe('Breadcrumb, footer', () => {
+describe('Breadcrumb, account menu', () => {
 	afterEach(() => vi.restoreAllMocks());
 
 	it('the breadcrumb starts at the org; there is no step-up to “all”', async () => {
@@ -326,19 +351,19 @@ describe('Breadcrumb, footer', () => {
 		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
 		expect(within(crumb).queryByRole('link', { name: /All my work/ })).toBeNull();
 		expect(within(crumb).getByRole('link', { name: /Acme Labs/ })).toHaveAttribute('href', '/home?org=acme-labs');
-		expect(within(crumb).getByText('Overview')).toHaveAttribute('aria-current', 'page');
+		expect(within(crumb).getByText('Dashboard')).toHaveAttribute('aria-current', 'page');
 	});
 
-	it('footer shows Getting started progress, Docs, and an account menu with settings and sign out', async () => {
+	it('account menu (top right): profile, tokens, Getting started progress, Docs, sign out', async () => {
 		respond(single_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1 });
-		const foot = screen.getByTestId('sidebar-footer');
-		expect(await within(foot).findByLabelText('2 of 4 done')).toHaveTextContent('2 / 4');
-		expect(within(foot).getByRole('link', { name: /Getting started/ })).toHaveAttribute('href', '/getting-started');
-		expect(within(foot).getByRole('link', { name: /Docs/ })).toHaveAttribute('target', '_blank');
-		fireEvent.click(screen.getByTestId('account-button'));
+		expect(screen.queryByTestId('sidebar-footer')).toBeNull();
+		await waitFor(() => { fireEvent.click(screen.getByTestId('account-button')); expect(screen.getByRole('menu', { name: 'Account' })).toBeInTheDocument(); });
 		const menu = screen.getByRole('menu', { name: 'Account' });
+		expect(await within(menu).findByLabelText('2 of 4 done')).toHaveTextContent('2 / 4');
+		expect(within(menu).getByRole('menuitem', { name: /Getting started/ })).toHaveAttribute('href', '/getting-started');
+		expect(within(menu).getByRole('menuitem', { name: /Docs/ })).toHaveAttribute('target', '_blank');
 		expect(within(menu).getByRole('menuitem', { name: 'API tokens' })).toHaveAttribute('href', '/settings?tab=tokens');
 		fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
 		expect(auth.logout).toHaveBeenCalled();

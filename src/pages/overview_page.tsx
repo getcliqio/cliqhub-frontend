@@ -22,7 +22,9 @@ import {
 	type Overview_realm,
 } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
-import { sort_realms, use_view_scope } from '@/lib/view_scope';
+import { sort_realms, use_view_scope, view_href } from '@/lib/view_scope';
+import { is_problem_event } from '@/lib/inbox';
+import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import { KIND_STYLE, KIND_STRIPE, Kind_icon, ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Count_badge, Graphite_shell, Org_chip, Realm_dot } from '@/components/graphite/graphite_shell';
 
@@ -95,9 +97,9 @@ function Needs_row({ item, show_org, org }: { item: Overview_item; show_org: boo
 }
 
 const REALMS_PANEL_LIMIT = 6;
+const ATTENTION_LIMIT = 5;
 
 function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: Overview_realm[]; total: number }) {
-	const org_by_id = new Map(orgs.map((o) => [o.id, o]));
 	const failed_orgs = orgs.filter((o) => o.status === 'error');
 	return (
 		<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="realms-h">
@@ -107,7 +109,6 @@ function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: O
 				<Link to="/realms" className="ml-auto text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">All {total} realms →</Link>
 			</div>
 			{realms.map((r) => {
-				const org = org_by_id.get(r.org_id);
 				return (
 					<Link
 						key={r.id}
@@ -119,9 +120,6 @@ function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: O
 						<span className="min-w-0 flex-1">
 							<b className="block truncate text-[13.5px] font-semibold">{r.name || r.slug}</b>
 							<span className="flex items-center gap-1.5 truncate text-[12px] text-[var(--g-ink-3)]">
-								{org ? <Org_chip org={org} size={13} /> : null}
-								{org?.display_name || r.org_slug}
-								<span aria-hidden>·</span>
 								{r.daemons.total === 0 ? 'no daemons' : `${r.daemons.online}/${r.daemons.total} daemons`}
 								{r.active_runs ? <><span aria-hidden>·</span>{r.active_runs} running</> : null}
 							</span>
@@ -203,6 +201,12 @@ export function Overview_view({ data }: { data: Overview_data }) {
 	const realms_panel = view_realms.slice(0, REALMS_PANEL_LIMIT);
 	const realms_total = view_realms.length;
 
+	// Problems from the bell's latest events (already loaded): failures, delivery problems, timeouts, daemons offline.
+	const problems = (data.inbox?.latest ?? [])
+		.filter((i) => is_problem_event(i.event) && (!view_org || !i.org_id || i.org_id === view_org.id))
+		.slice(0, ATTENTION_LIMIT);
+	const inbox_href = view_href('/inbox', scope, multi_org);
+
 	if (data.totals.realms === 0 && !data.partial) return <Empty_no_realms />;
 
 	return (
@@ -266,19 +270,20 @@ export function Overview_view({ data }: { data: Overview_data }) {
 			<div className="grid gap-3.5 xl:grid-cols-[1.5fr_1fr]">
 				<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="needs-h">
 					<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
-						<h2 id="needs-h" className="text-[15px] font-semibold">Needs you</h2>
-						<span className="text-[12px] text-[var(--g-ink-3)]">{show_org_tags ? 'across every org' : view_org && multi_org ? 'in this org' : 'across your realms'}</span>
-						<div className="ml-auto flex gap-1" role="tablist" aria-label="Filter needs">
+						<h2 id="needs-h" className="text-[15px] font-semibold">HUGs</h2>
+						<span className="text-[12px] text-[var(--g-ink-3)]">waiting on a person</span>
+						<div className="ml-auto flex items-center gap-1" role="tablist" aria-label="Filter HUGs">
 							<Tab on={needs_filter === 'all'} onClick={() => set_needs_filter('all')}>All {view.needs_you.length}</Tab>
 							<Tab on={needs_filter === 'review'} onClick={() => set_needs_filter('review')}>Reviews {reviews}</Tab>
 							<Tab on={needs_filter === 'input'} onClick={() => set_needs_filter('input')}>Input {inputs}</Tab>
+							<Link to="/hugs" className="ml-2 text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">All HUGs →</Link>
 						</div>
 					</div>
 					{needs_list.length === 0 ? (
 						<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
 							<CheckCircle2 aria-hidden className="h-7 w-7 text-[var(--g-ok)]" />
 							<p className="text-[14px] font-semibold">You’re all caught up</p>
-							<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews and input requests will show up here.</p>
+							<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews, and agents asking a question, show up here.</p>
 						</div>
 					) : (
 						<ul>{needs_list.map((i) => <Needs_row key={`${i.kind}-${i.id}`} item={i} show_org={show_org_tags} org={data.orgs.find((o) => o.id === i.org_id)} />)}</ul>
@@ -288,28 +293,72 @@ export function Overview_view({ data }: { data: Overview_data }) {
 				<Realms_panel orgs={view.orgs} realms={realms_panel} total={realms_total} />
 			</div>
 
-			<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="live-h">
+			<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="attention-h" data-testid="needs-attention">
 				<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
-					<h2 id="live-h" className="text-[15px] font-semibold">Running now</h2>
-					<span className="inline-flex"><Count_badge value={view.live_runs.length} tone="muted" /></span>
+					<h2 id="attention-h" className="text-[15px] font-semibold">Needs attention</h2>
+					<span className="text-[12px] text-[var(--g-ink-3)]">failures and problems</span>
+					<Link to={inbox_href} className="ml-auto text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Open inbox →</Link>
 				</div>
-				{view.live_runs.length === 0 ? (
-					<p className="px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Nothing is running right now.</p>
+				{problems.length === 0 ? (
+					<p className="flex items-center gap-2 px-4 py-6 text-[13px] text-[var(--g-ink-3)]">
+						<CheckCircle2 aria-hidden className="h-4 w-4 text-[var(--g-ok)]" />
+						Nothing has gone wrong recently.
+					</p>
 				) : (
-					<ul>
-						{view.live_runs.map((r) => (
-							<li key={r.id} className="border-b border-[var(--g-line-2)] last:border-b-0">
-								<Link to={item_href(r)} className="grid grid-cols-[14px_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-2.5 hover:bg-[var(--g-soft)]">
-									<span aria-hidden className="h-2 w-2 rounded-full bg-[var(--g-run)] shadow-[0_0_0_4px_var(--g-run-soft)]" />
-									<span className="min-w-0 truncate text-[13.5px] font-semibold">{r.title}<span className="ml-2 text-[12px] font-normal text-[var(--g-ink-3)]">{r.team}</span></span>
-									<Where item={r} show_org={show_org_tags} org={data.orgs.find((o) => o.id === r.org_id)} />
-									<span className="w-[80px] text-right text-[12px] text-[var(--g-ink-3)]">{relative_time(r.at)}</span>
-								</Link>
-							</li>
-						))}
-					</ul>
+					<div>{problems.map((i) => <Inbox_row key={i.id} item={i} is_new={false} show_realm_org={false} />)}</div>
 				)}
 			</section>
+
+			<div className="grid gap-3.5 xl:grid-cols-2">
+				<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="live-h">
+					<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
+						<h2 id="live-h" className="text-[15px] font-semibold">Running now</h2>
+						<span className="inline-flex"><Count_badge value={view.live_runs.length} tone="muted" /></span>
+					</div>
+					{view.live_runs.length === 0 ? (
+						<p className="px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Nothing is running right now.</p>
+					) : (
+						<ul>
+							{view.live_runs.map((r) => (
+								<li key={r.id} className="border-b border-[var(--g-line-2)] last:border-b-0">
+									<Link to={item_href(r)} className="grid grid-cols-[14px_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-2.5 hover:bg-[var(--g-soft)]">
+										<span aria-hidden className="h-2 w-2 rounded-full bg-[var(--g-run)] shadow-[0_0_0_4px_var(--g-run-soft)]" />
+										<span className="min-w-0 truncate text-[13.5px] font-semibold">{r.title}<span className="ml-2 text-[12px] font-normal text-[var(--g-ink-3)]">{r.team}</span></span>
+										<Where item={r} show_org={show_org_tags} org={data.orgs.find((o) => o.id === r.org_id)} />
+										<span className="w-[80px] text-right text-[12px] text-[var(--g-ink-3)]">{relative_time(r.at)}</span>
+									</Link>
+								</li>
+							))}
+						</ul>
+					)}
+				</section>
+
+				<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="recent-h" data-testid="recent-runs">
+					<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
+						<h2 id="recent-h" className="text-[15px] font-semibold">Recent runs</h2>
+						<span className="text-[12px] text-[var(--g-ink-3)]">finished, newest first</span>
+					</div>
+					{(view.recent_runs ?? []).length === 0 ? (
+						<p className="px-4 py-6 text-[13px] text-[var(--g-ink-3)]">No finished runs yet.</p>
+					) : (
+						<ul>
+							{(view.recent_runs ?? []).map((r) => {
+								const tone = r.state === 'completed' ? 'var(--g-ok)' : r.state === 'cancelled' ? 'var(--g-ink-3)' : 'var(--g-bad)';
+								return (
+									<li key={r.id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`recent-run-${r.id}`}>
+										<Link to={item_href(r)} className="grid grid-cols-[14px_minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-2.5 hover:bg-[var(--g-soft)]">
+											<span aria-hidden className="h-2 w-2 rounded-full" style={{ background: tone }} />
+											<span className="min-w-0 truncate text-[13.5px] font-semibold">{r.title}<span className="ml-2 text-[12px] font-normal text-[var(--g-ink-3)]">{r.team}</span></span>
+											<span className="text-[11.5px] font-semibold" style={{ color: tone }}>{r.state}</span>
+											<span className="w-[80px] text-right text-[12px] text-[var(--g-ink-3)]">{relative_time(r.at)}</span>
+										</Link>
+									</li>
+								);
+							})}
+						</ul>
+					)}
+				</section>
+			</div>
 		</div>
 	);
 }
@@ -339,7 +388,7 @@ export function Component() {
 	return (
 		<Graphite_shell
 			data={data}
-			title="Overview"
+			title="Dashboard"
 			actions={
 				<>
 					<button

@@ -32,7 +32,7 @@ export function Inbox_icon({ kind, size = 30 }: { kind: Inbox_kind; size?: numbe
 	);
 }
 
-export function Inbox_row({ item, is_new, compact = false, show_realm_org = true, org_chip, extra, on_open }: {
+export function Inbox_row({ item, is_new, compact = false, show_realm_org = false, org_chip, extra, on_open }: {
 	item: Inbox_item;
 	is_new: boolean;
 	compact?: boolean;

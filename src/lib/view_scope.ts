@@ -20,8 +20,8 @@ export type View_scope =
 	| { kind: 'org'; org: Overview_org; realm: null }
 	| { kind: 'realm'; org: Overview_org | null; realm: Overview_realm };
 
-/** Max realms listed in the sidebar in any view. */
-export const SIDEBAR_REALM_LIMIT = 10;
+/** Realm shortcuts under Realms in the sidebar (then "All N realms"). */
+export const SIDEBAR_REALM_LIMIT = 5;
 
 /** Browser key for the last org the user worked in. */
 export const LAST_ORG_KEY = 'cliqhub.last_org';

@@ -479,10 +479,10 @@ export function Component() {
 					</div>
 					<select aria-label="Realm" value={runs_realm ?? ''} onChange={(e) => set_params({ realm: e.target.value || null, page: null }, true)} className={`${INPUT} ml-2 w-[200px]`}>
 						<option value="">Realm: all</option>
-						{r.realms.map((x) => <option key={x.id} value={x.id}>{x.slug}{x.org_slug ? ` · ${x.org_slug}` : ''}</option>)}
+						{r.realms.map((x) => <option key={x.id} value={x.id}>{x.slug}</option>)}
 					</select>
 					<input aria-label="Search runs" value={q_draft} onChange={(e) => set_q_draft(e.target.value)} placeholder="Search runs…" className={`${INPUT} w-[240px]`} />
-					<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">across {view_org ? `${view_org.display_name}’s realms` : 'every realm you can see'}</span>
+					<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">across {view_org ? `${view_org.display_name}’s realms` : 'this org’s realms'}</span>
 				</div>
 				<div className={`${CARD} overflow-hidden`}>
 					{r.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{runs_state || runs_realm || runs_q ? 'No runs match these filters.' : 'This team hasn’t run yet.'}</p> : (
@@ -539,7 +539,7 @@ export function Component() {
 									const short = i.installed_count < i.online_daemon_count;
 									return (
 										<tr key={i.realm_id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`install-${i.realm_slug}`}>
-											<td className="px-4 py-2.5"><Link to={i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : '#'} className="font-semibold text-[var(--g-ink)] hover:underline">{i.realm_slug}</Link>{i.org_slug ? <span className="ml-1.5 text-[11px] text-[var(--g-ink-3)]">{i.org_slug}</span> : null}</td>
+											<td className="px-4 py-2.5"><Link to={i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : '#'} className="font-semibold text-[var(--g-ink)] hover:underline">{i.realm_slug}</Link></td>
 											<td className="px-4 py-2.5"><span className={`g-mono ${i.behind ? 'text-[var(--g-warn-text)]' : ''}`}>{i.version ?? '—'}</span>{i.behind ? <span className="ml-2 rounded-full bg-[var(--g-warn-soft)] px-2 py-px text-[11px] font-semibold text-[var(--g-warn-text)]">{team?.latest_version} available</span> : i.version && i.version === team?.latest_version ? <span className="ml-2 text-[11.5px] text-[var(--g-ink-3)]">latest</span> : null}
 												{i.missing_agents.length ? <span className="block text-[11px] text-[var(--g-warn-text)]">needs agents: {i.missing_agents.join(', ')}</span> : null}</td>
 											<td className="px-4 py-2.5"><Coverage i={i} /></td>

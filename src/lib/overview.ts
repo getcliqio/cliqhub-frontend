@@ -72,6 +72,8 @@ export interface Overview_data {
 	totals: Overview_counts & { orgs: number; realms: number };
 	needs_you: Overview_item[];
 	live_runs: Overview_item[];
+	/** Finished runs (completed / failed / cancelled), most recently ended first. Older BFFs omit it. */
+	recent_runs?: Overview_item[];
 	partial: boolean;
 	/** Bell summary (newest in-app notifications). Absent on older BFFs. */
 	inbox?: Inbox_summary;
@@ -155,6 +157,7 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 		},
 		needs_you: data.needs_you.filter((i) => i.org_id === org_id),
 		live_runs: data.live_runs.filter((i) => i.org_id === org_id),
+		recent_runs: (data.recent_runs ?? []).filter((i) => i.org_id === org_id),
 		inbox: data.inbox,
 		partial: orgs.some((o) => o.status === 'error'),
 	};

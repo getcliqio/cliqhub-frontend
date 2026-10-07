@@ -8,6 +8,7 @@
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import yaml from 'js-yaml';
+import { use_view_scope } from '@/lib/view_scope';
 import { use_overview, relative_time } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
@@ -190,7 +191,8 @@ export function Component() {
 	const [search] = useSearchParams();
 	const overview = use_overview();
 	const orgs = overview.data?.orgs ?? [];
-	const org = orgs.find((o) => o.slug === search.get('org')) ?? orgs[0] ?? null;
+	// The org you're in (the shell's switcher), like every other org page.
+	const org = use_view_scope(overview.data).org;
 	return (
 		<Graphite_shell
 			data={overview.data}
