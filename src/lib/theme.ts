@@ -33,19 +33,31 @@ export function resolve_theme(t: Theme): 'dark' | 'light' {
 	return t === 'system' ? (system_light() ? 'light' : 'dark') : t;
 }
 
+/**
+ * Paint the page: Graphite's `data-g-theme`, plus the older pages' `dark` class and `data-theme`
+ * (`lib/theme_context.tsx` shares the `cliqhub.theme` key but only reads it on load). Both must
+ * match, or the old global `html.dark` rules (inputs, table headers) stay dark inside a light app.
+ */
+function paint(resolved: 'dark' | 'light'): void {
+	const root = document.documentElement;
+	root.dataset.gTheme = resolved;
+	root.classList.toggle('dark', resolved === 'dark');
+	root.setAttribute('data-theme', resolved);
+}
+
 /** Paint with `t` now and remember it in this browser. */
 export function apply_theme(t: Theme): void {
-	document.documentElement.dataset.gTheme = resolve_theme(t);
+	paint(resolve_theme(t));
 	try { window.localStorage.setItem(KEY, t); } catch { /* storage unavailable */ }
 	window.dispatchEvent(new CustomEvent(EVENT, { detail: t }));
 }
 
 /** Boot: apply the remembered choice and follow the OS while it is "system". */
 export function init_theme(): void {
-	document.documentElement.dataset.gTheme = resolve_theme(read_theme());
+	paint(resolve_theme(read_theme()));
 	try {
 		window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-			if (read_theme() === 'system') document.documentElement.dataset.gTheme = resolve_theme('system');
+			if (read_theme() === 'system') paint(resolve_theme('system'));
 		});
 	} catch { /* no matchMedia */ }
 }

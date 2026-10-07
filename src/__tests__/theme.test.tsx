@@ -42,8 +42,14 @@ describe('theme', () => {
 
 	it('dark by default; apply_theme paints and remembers; system follows the OS', () => {
 		expect(read_theme()).toBe('dark');
+		document.documentElement.classList.add('dark');
 		apply_theme('light');
 		expect(document.documentElement.dataset.gTheme).toBe('light');
+		// The older pages' global `html.dark` rules must switch too (table headers, inputs).
+		expect(document.documentElement.classList.contains('dark')).toBe(false);
+		apply_theme('dark');
+		expect(document.documentElement.classList.contains('dark')).toBe(true);
+		apply_theme('light');
 		expect(read_theme()).toBe('light');
 		vi.stubGlobal('matchMedia', () => ({ matches: true }));
 		expect(resolve_theme('system')).toBe('light');
