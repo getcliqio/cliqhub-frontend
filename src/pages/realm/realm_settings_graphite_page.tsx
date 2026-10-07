@@ -367,7 +367,7 @@ export function Component() {
 							))}
 							<div className={head}>Set up in Manage</div>
 							<Link to={`${base}/agents`} className={link(false)}>Agents</Link>
-							<Link to={`/notifications?org=${encodeURIComponent(org)}`} className={link(false)}>Notifications <ArrowUpRight aria-hidden className="ml-auto h-3 w-3 opacity-60" /></Link>
+							<Link to={`/notifications?org=${encodeURIComponent(org)}&realm=${encodeURIComponent(data.realm.id)}`} className={link(false)}>Notifications <ArrowUpRight aria-hidden className="ml-auto h-3 w-3 opacity-60" /></Link>
 							<div className="mt-3" />
 							<button type="button" aria-current={section === 'danger' ? 'page' : undefined} onClick={() => go('danger')} className={`flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] ${section === 'danger' ? 'bg-[var(--g-bad-soft)] shadow-[inset_2px_0_0_var(--g-bad)]' : ''}`}>Danger zone</button>
 						</nav>

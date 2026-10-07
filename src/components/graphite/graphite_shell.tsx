@@ -299,6 +299,11 @@ function Side_link({ item }: { item: Nav_item }) {
 	);
 }
 
+/** Notifications page for the view: in a realm it opens filtered to that realm. */
+function notifications_path(scope: View_scope): string {
+	return scope.kind === 'realm' ? `/notifications?realm=${encodeURIComponent(scope.realm.id)}` : '/notifications';
+}
+
 /** In a view, only show notifications that belong to it (account-wide ones always show). */
 function in_view_item(i: Inbox_item, scope: View_scope): boolean {
 	// HUGs have their own page and nav badge; the bell is for system events.
@@ -362,7 +367,7 @@ function Bell_menu({ data, scope, multi_org }: { data: Overview_data | null; sco
 					)}
 					<div className="flex justify-between border-t border-[var(--g-line)] px-3.5 py-2.5 text-[12.5px]">
 						<Link to={view_href('/inbox?tab=all', scope, multi_org)} onClick={() => set_open(false)} className="font-semibold text-[var(--g-acc)] hover:underline">Open inbox →</Link>
-						<Link to={view_href('/notifications', scope, multi_org)} onClick={() => set_open(false)} className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Rules &amp; channels</Link>
+						<Link to={view_href(notifications_path(scope), scope, multi_org)} onClick={() => set_open(false)} className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Rules &amp; channels</Link>
 					</div>
 				</div>
 			) : null}
@@ -456,7 +461,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const org_admin: Nav_item[] = view_org ? [
 		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
-		{ to: view_href('/notifications', scope, multi_org), label: 'Events', icon: Zap },
+		{ to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap },
 		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Settings', icon: Settings },
 	] : [];
 

@@ -75,7 +75,7 @@ describe('Realm settings page', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/revoke', body: { invite_id: 'i1' } }));
 		const nav = screen.getByRole('navigation', { name: 'Settings sections' });
-		expect(within(nav).getByRole('link', { name: /Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone');
+		expect(within(nav).getByRole('link', { name: /Notifications/ })).toHaveAttribute('href', '/notifications?org=measureone&realm=r-prod');
 	});
 
 	it('picking an existing person sends them a realm invite (never a direct add)', async () => {

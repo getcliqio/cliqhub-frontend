@@ -37,7 +37,7 @@ function Legacy_live_redirect() {
 /** Old realm settings / channels URLs → `…/settings?section=` or the Notifications center. */
 function Realm_settings_redirect({ to }: { to: 'members' | 'tokens' | 'a2a' | 'danger' | 'notifications' }) {
   const { org = '', slug = '' } = useParams();
-  if (to === 'notifications') return <Navigate to={`/notifications?org=${encodeURIComponent(org)}`} replace />;
+  if (to === 'notifications') return <Navigate to={`/notifications?org=${encodeURIComponent(org)}&realm=${encodeURIComponent(slug)}`} replace />;
   const q = to === 'members' ? '' : `?section=${to}`;
   return <Navigate to={`/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/settings${q}`} replace />;
 }

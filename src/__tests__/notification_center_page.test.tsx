@@ -100,7 +100,7 @@ describe('Notifications page', () => {
 		render_page();
 		await screen.findByTestId('rule-rl-org');
 		expect(calls).toHaveLength(1);
-		expect(calls[0]).toMatchObject({ url: '/v1/notification_center/get', body: { realm_limit: 10, realm_offset: 0 } });
+		expect(calls[0]).toMatchObject({ url: '/v1/notification_center/get', body: { realm_limit: 50 } });
 	});
 
 	it('lists the org’s rules (not other orgs’), shows the replaces chip, and filters by level and search', async () => {
@@ -116,6 +116,26 @@ describe('Notifications page', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'All levels' }));
 		fireEvent.change(screen.getByLabelText('Search rules'), { target: { value: 'oncall' } });
 		expect(rule_ids()).toEqual(['rule-rl-org']);
+	});
+
+	it('opened from a realm (?realm=): the Realm filter is set to it, Events stays on it; clearing the filter shows all realms', async () => {
+		const { calls } = route_fetch();
+		render_page('/notifications?org=measureone&realm=r-prod');
+		await screen.findByTestId('rule-rl-realm');
+		const reads = () => calls.filter((c) => c.url === '/v1/notification_center/get');
+		expect(reads()[0]!.body).toEqual({ realm_id: 'r-prod' });
+		expect(screen.getByRole('button', { name: 'Realm: prod-us' })).toBeInTheDocument();
+		expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/notifications?realm=r-prod&org=measureone');
+		fireEvent.click(screen.getByRole('button', { name: 'Clear realm filter' }));
+		await waitFor(() => expect(screen.getByRole('button', { name: 'Realm: all realms' })).toBeInTheDocument());
+		await waitFor(() => expect(reads().at(-1)!.body).toEqual({ org_id: ORG_A, realm_limit: 50 }));
+	});
+
+	it('a realm slug works too (old realm notification URLs redirect with it)', async () => {
+		const { calls } = route_fetch();
+		render_page('/notifications?org=measureone&realm=prod-us');
+		await screen.findByRole('button', { name: 'Realm: prod-us' });
+		expect(calls.find((c) => c.url === '/v1/notification_center/get')!.body).toEqual({ realm_id: 'r-prod' });
 	});
 
 	it('follows the view switcher (?org=)', async () => {
@@ -499,22 +519,25 @@ describe('Notifications — pickers', () => {
 	});
 });
 
-describe('Notifications — realm paging', () => {
+describe('Notifications — realm filter', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('org view asks for that org; pages and searches realms through the BFF', async () => {
-		const { calls } = route_fetch({ center: () => ({ ...center(), realm_page: { offset: 0, limit: 10, total: 25, q: null, status: 'ok', error: null } }) });
+	it('one filter row: picking a realm from the Realm pill scopes the page; too many realms says so', async () => {
+		const { calls } = route_fetch({ center: () => ({ ...center(), realm_page: { offset: 0, limit: 50, total: 80, q: null, status: 'ok', error: null } }) });
 		render_page('/notifications?org=measureone');
 		await screen.findByTestId('rule-rl-org');
 		const reads = () => calls.filter((c) => c.url === '/v1/notification_center/get').map((c) => c.body);
-		expect(reads()[0]).toEqual({ org_id: ORG_A, realm_limit: 10, realm_offset: 0 });
-		expect(screen.getByTestId('realm-range')).toHaveTextContent('Realms 1–10 of 25');
-		// Realms on this page with their own rules show a count.
-		expect(within(screen.getByLabelText('Realms on this page')).getByText('prod-us').parentElement).toHaveTextContent('prod-us1');
-		fireEvent.click(screen.getByRole('button', { name: 'Next realms' }));
-		await waitFor(() => expect(reads().at(-1)).toEqual({ org_id: ORG_A, realm_limit: 10, realm_offset: 10 }));
-		fireEvent.change(screen.getByLabelText('Search realms'), { target: { value: 'pay' } });
-		await waitFor(() => expect(reads().at(-1)).toEqual({ org_id: ORG_A, realm_limit: 10, realm_offset: 0, realm_q: 'pay' }));
+		expect(reads()[0]).toEqual({ org_id: ORG_A, realm_limit: 50 });
+		expect(screen.queryByTestId('realm-pager')).toBeNull();
+		expect(screen.getByTestId('realms-capped')).toHaveTextContent('Realm rules are shown for 50 of 80 realms');
+		fireEvent.click(screen.getByRole('button', { name: 'Realm: all realms' }));
+		const list = screen.getByRole('listbox', { name: 'Realms' });
+		fireEvent.change(screen.getByLabelText('Find a realm'), { target: { value: 'stag' } });
+		expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual(['All realms', 'staging']);
+		fireEvent.click(within(list).getByRole('option', { name: 'staging' }));
+		await waitFor(() => expect(reads().at(-1)).toEqual({ realm_id: 'r-stage' }));
+		expect(screen.getByRole('button', { name: 'Realm: staging' })).toBeInTheDocument();
+		expect(screen.queryByTestId('realms-capped')).toBeNull();
 	});
 });
 

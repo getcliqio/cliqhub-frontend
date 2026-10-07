@@ -12,13 +12,13 @@
  * show a lock and the reason, with no edit controls; seeded defaults carry a
  * "Default" tag and stay editable. Rule recipients show as chips.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { AlertTriangle, Bell, Lock, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Bell, ChevronDown, Lock, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
-import { use_overview } from '@/lib/overview';
+import { realm_label, use_overview, type Overview_data, type Overview_realm } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
-import { use_view_scope, type View_scope } from '@/lib/view_scope';
+import { realms_in_view, sort_realms, use_view_scope, type View_scope } from '@/lib/view_scope';
 import {
 	can_edit_channel,
 	can_edit_org,
@@ -139,7 +139,7 @@ export function in_view_channel(c: Notif_channel, scope: View_scope): boolean {
 /* ------------------------------------------------------------------ */
 /* Rules                                                               */
 
-function Rules_tab({ data, scope, reload }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void> }) {
+function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
 	const post = use_post();
 	const [q, set_q] = useState('');
 	const [kind, set_kind] = useState<'all' | Notif_scope_kind>('all');
@@ -176,6 +176,7 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 		<div className="flex flex-col gap-4">
 			<div className="flex flex-wrap items-center gap-2">
 				<input value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search event or channel…" aria-label="Search rules" className={`${INPUT} max-w-[260px]`} />
+				{realm_filter}
 				<div role="group" aria-label="Applies to" className="flex gap-1">
 					{(['all', 'org', 'realm', 'team'] as const).map((k) => (
 						<button
@@ -472,7 +473,7 @@ export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 	return { type: 'cliqhub' };
 }
 
-function Channels_tab({ data, scope, reload }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void> }) {
+function Channels_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
 	const post = use_post();
 	const [search] = useSearchParams();
 	// Deep link from the inbox ("Fix channel").
@@ -502,7 +503,8 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 	return (
 		<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
 			<div className="flex min-w-0 flex-col gap-4">
-				<div className="flex items-center">
+				<div className="flex flex-wrap items-center gap-2">
+					{realm_filter}
 					<p className="text-[13px] text-[var(--g-ink-3)]">Named places messages go. One channel can fan out to several destinations.</p>
 					{data.orgs.some((o) => o.status === 'ok' && can_edit_org_channels(data, o.id)) || data.realms.some((r) => can_edit_realm(data, r.id))
 						? <button type="button" onClick={() => set_creating(true)} className={`${PRIMARY} ml-auto inline-flex items-center gap-1.5`}><Plus className="h-3.5 w-3.5" aria-hidden />New channel</button>
@@ -785,45 +787,8 @@ function Custom_tab({ data, scope }: { data: Notification_center_data; scope: Vi
 
 /* ------------------------------------------------------------------ */
 
-type Realm_paging = { q: string; set_q: (q: string) => void; offset: number; set_offset: (n: number) => void };
-
-/**
- * Realm rules are shown one page of realms at a time: search realms, page
- * through them, see which realms on this page have rules of their own.
- */
-function Realm_pager({ data, paging }: { data: Notification_center_data; paging: Realm_paging }) {
-	const page = data.realm_page;
-	const [draft, set_draft] = useState(paging.q);
-	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== paging.q) paging.set_q(draft.trim()); }, 300); return () => clearTimeout(t); }, [draft, paging]);
-	const from = page.total ? page.offset + 1 : 0;
-	const to = Math.min(page.offset + page.limit, page.total);
-	const own = (id: string) => data.rules.filter((r) => r.scope.realm_id === id).length;
-	return (
-		<div className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-head)] px-3.5 py-2.5" data-testid="realm-pager">
-			<div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]">
-				<span>Org-wide rules, plus realm and team rules for</span>
-				<input aria-label="Search realms" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search realms…" className="h-7 w-[180px] rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]" />
-				<span className="ml-auto whitespace-nowrap" data-testid="realm-range">{page.status === 'error' ? 'Realms couldn’t be loaded' : page.total ? `Realms ${from}–${to} of ${page.total}` : paging.q ? 'No realms match' : 'No realms'}</span>
-				<button type="button" aria-label="Previous realms" disabled={page.offset === 0} onClick={() => paging.set_offset(Math.max(0, page.offset - page.limit))} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] disabled:opacity-40">‹</button>
-				<button type="button" aria-label="Next realms" disabled={to >= page.total} onClick={() => paging.set_offset(page.offset + page.limit)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] disabled:opacity-40">›</button>
-			</div>
-			{data.realms.length ? (
-				<div className="flex flex-wrap gap-1.5" aria-label="Realms on this page">
-					{data.realms.map((r) => {
-						const n = own(r.id);
-						return (
-							<span key={r.id} className={`inline-flex items-center gap-1.5 rounded-md border border-[var(--g-line-2)] px-2 py-0.5 text-[11.5px] ${n ? 'text-[var(--g-ink-2)]' : 'text-[var(--g-ink-3)] opacity-70'}`} title={n ? `${n} rule${n === 1 ? '' : 's'} of its own` : 'Only org-wide rules apply'}>
-								<span className="g-mono">{r.slug}</span>{n ? <span className="g-mono text-[var(--g-acc)]">{n}</span> : null}
-							</span>
-						);
-					})}
-				</div>
-			) : null}
-		</div>
-	);
-}
-
-function Notifications_inner({ data, reload, tab, scope, on_tab, paging = null }: { data: Notification_center_data; reload: () => Promise<void>; tab: Tab; scope: View_scope; on_tab: (t: Tab) => void; paging?: Realm_paging | null }) {
+function Notifications_inner({ data, reload, tab, scope, on_tab, realm_filter }: { data: Notification_center_data; reload: () => Promise<void>; tab: Tab; scope: View_scope; on_tab: (t: Tab) => void; realm_filter?: React.ReactNode }) {
+	const capped = scope.kind !== 'realm' && data.realm_page.total > data.realm_page.limit;
 	const failed = [...data.orgs.filter((o) => o.status === 'error').map((o) => o.display_name), ...data.realms.filter((r) => r.status === 'error').map((r) => r.slug)];
 	return (
 		<div className="flex flex-col gap-[18px]">
@@ -844,45 +809,103 @@ function Notifications_inner({ data, reload, tab, scope, on_tab, paging = null }
 					</button>
 				))}
 			</div>
-			{paging && tab !== 'check' && tab !== 'custom' ? <Realm_pager data={data} paging={paging} /> : null}
-			{tab === 'rules' ? <Rules_tab data={data} scope={scope} reload={reload} /> : null}
-			{tab === 'channels' ? <Channels_tab data={data} scope={scope} reload={reload} /> : null}
+			{tab === 'rules' ? <Rules_tab data={data} scope={scope} reload={reload} realm_filter={realm_filter} /> : null}
+			{tab === 'channels' ? <Channels_tab data={data} scope={scope} reload={reload} realm_filter={realm_filter} /> : null}
+			{capped && (tab === 'rules' || tab === 'channels') ? (
+				<p className="text-[12px] text-[var(--g-ink-3)]" data-testid="realms-capped">Realm rules are shown for {data.realm_page.limit} of {data.realm_page.total} realms. Pick a realm to see its rules.</p>
+			) : null}
 			{tab === 'check' ? <Check_tab data={data} scope={scope} /> : null}
 			{tab === 'custom' ? <Custom_tab data={data} scope={scope} /> : null}
 		</div>
 	);
 }
 
-export const REALMS_PER_PAGE = 10;
+export const REALMS_PER_PAGE = 50;
+
+/** Realm filter: a pill like the others — "All realms" or the picked realm with a clear button; opens a searchable list. */
+function Realm_filter({ realms, current, on_pick }: { realms: Overview_realm[]; current: Overview_realm | null; on_pick: (id: string | null) => void }) {
+	const [open, set_open] = useState(false);
+	const [q, set_q] = useState('');
+	const ref = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!open) return;
+		const on_click = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) set_open(false); };
+		const on_key = (e: KeyboardEvent) => { if (e.key === 'Escape') set_open(false); };
+		document.addEventListener('mousedown', on_click);
+		document.addEventListener('keydown', on_key);
+		return () => { document.removeEventListener('mousedown', on_click); document.removeEventListener('keydown', on_key); };
+	}, [open]);
+	const s = q.trim().toLowerCase();
+	const shown = realms.filter((r) => !s || r.slug.includes(s) || realm_label(r).toLowerCase().includes(s));
+	const pick = (id: string | null) => { on_pick(id); set_open(false); set_q(''); };
+	const on = Boolean(current);
+	return (
+		<div ref={ref} className="relative" data-testid="realm-filter">
+			<span className={`inline-flex h-8 items-center rounded-full border text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)]'}`}>
+				<button type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={on ? `Realm: ${realm_label(current!)}` : 'Realm: all realms'} onClick={() => set_open((v) => !v)} className="inline-flex h-full items-center gap-1.5 pl-3 pr-2 hover:text-[var(--g-ink)]">
+					<span className="text-[var(--g-ink-3)]">Realm:</span>{on ? <b className="font-semibold">{realm_label(current!)}</b> : 'All realms'}
+					<ChevronDown aria-hidden className="h-3.5 w-3.5 opacity-60" />
+				</button>
+				{on ? <button type="button" aria-label="Clear realm filter" title="Show all realms" onClick={() => pick(null)} className="grid h-full place-items-center pr-2.5 pl-0.5 text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-3.5 w-3.5" aria-hidden /></button> : null}
+			</span>
+			{open ? (
+				<div className="absolute left-0 top-10 z-40 w-[260px] overflow-hidden rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] shadow-[var(--g-pop-shadow)]">
+					<input autoFocus aria-label="Find a realm" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Find a realm…" className="h-9 w-full border-b border-[var(--g-line)] bg-transparent px-3 text-[12.5px] text-[var(--g-ink)] outline-none" />
+					<ul role="listbox" aria-label="Realms" className="max-h-[280px] overflow-y-auto p-1">
+						<li><button type="button" role="option" aria-selected={!on} onClick={() => pick(null)} className="w-full rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-[var(--g-hover)]">All realms</button></li>
+						{shown.map((r) => (
+							<li key={r.id}><button type="button" role="option" aria-selected={current?.id === r.id} onClick={() => pick(r.id)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] hover:bg-[var(--g-hover)] ${current?.id === r.id ? 'font-semibold' : ''}`}>{realm_label(r)}{realm_label(r) !== r.slug ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{r.slug}</span> : null}</button></li>
+						))}
+						{shown.length === 0 ? <li className="px-2.5 py-2 text-[12px] text-[var(--g-ink-3)]">No realm matches.</li> : null}
+					</ul>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/** `?realm=` (id, or slug within `?org=`) → the realm's id, so the page opens filtered to that realm. */
+function realm_from_param(data: Overview_data | null, realm: string | null, org: string | null): string | null {
+	if (!data || !realm) return null;
+	const realms = data.orgs.flatMap((o) => o.realms);
+	return (realms.find((r) => r.id === realm) ?? realms.find((r) => r.slug === realm && (!org || r.org_slug === org)))?.id ?? null;
+}
 
 export function Component() {
 	const overview = use_overview();
-	const scope = use_view_scope(overview.data);
-	// Org-wide rules always load; realm rules load one page of realms at a time (BFF pages Core's realm search).
-	const [realm_q, set_realm_q] = useState('');
-	const [realm_offset, set_realm_offset] = useState(0);
-	const view_key = scope.kind === 'all' ? 'all' : scope.kind === 'org' ? `o:${scope.org.id}` : `r:${scope.realm.id}`;
-	useEffect(() => { set_realm_offset(0); }, [view_key, realm_q]);
+	const [params] = useSearchParams();
+	const realm_param = params.get('realm');
+	const scope = use_view_scope(overview.data, realm_from_param(overview.data, realm_param, params.get('org')));
 	const body = useMemo(() => {
 		// Wait for the view to resolve so the first request is already scoped.
 		if (overview.status === 'loading') return null;
 		const b: Record<string, unknown> = {};
 		if (scope.kind === 'org') b.org_id = scope.org.id;
+		// One realm, or every realm's rules (up to the BFF's page size; the realm filter reaches the rest).
 		if (scope.kind === 'realm') b.realm_id = scope.realm.id;
-		else { b.realm_limit = REALMS_PER_PAGE; b.realm_offset = realm_offset; if (realm_q) b.realm_q = realm_q; }
+		else b.realm_limit = REALMS_PER_PAGE;
 		return b;
-	}, [overview.status, scope, realm_q, realm_offset]);
+	}, [overview.status, scope]);
 	const center = use_bff_read<Notification_center_data>('/v1/notification_center/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load notifications.' });
-	const paging: Realm_paging | null = scope.kind === 'realm' ? null : { q: realm_q, set_q: set_realm_q, offset: realm_offset, set_offset: set_realm_offset };
 	const [search, set_search] = useSearchParams();
 	const raw = search.get('tab');
 	const tab: Tab = raw === 'channels' || raw === 'check' || raw === 'custom' ? raw : 'rules';
 	const on_tab = (t: Tab) => set_search((prev) => { const p = new URLSearchParams(prev); if (t === 'rules') p.delete('tab'); else p.set('tab', t); return p; }, { replace: true });
 	const view = center.data;
+	const pick_realm = (id: string | null) => set_search((prev) => {
+		const p = new URLSearchParams(prev);
+		if (id) p.set('realm', id); else p.delete('realm');
+		if (scope.org) p.set('org', scope.org.slug);
+		return p;
+	});
+	const realm_filter = scope.kind === 'all' ? null : (
+		<Realm_filter realms={sort_realms(realms_in_view(overview.data, scope))} current={scope.kind === 'realm' ? scope.realm : null} on_pick={pick_realm} />
+	);
 
 	return (
 		<Graphite_shell
 			data={overview.data}
+			current_realm_id={scope.kind === 'realm' ? scope.realm.id : null}
 			title="Notifications"
 			actions={
 				<button type="button" onClick={() => void center.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
@@ -899,7 +922,7 @@ export function Component() {
 						<button type="button" onClick={() => void center.reload()} className="mt-3 rounded-lg border border-[var(--g-line)] px-4 py-1.5 text-[13px] font-semibold">Try again</button>
 					</div>
 				) : null}
-				{view ? <Notifications_inner data={view} reload={center.reload} tab={tab} scope={scope} on_tab={on_tab} paging={paging} /> : null}
+				{view ? <Notifications_inner data={view} reload={center.reload} tab={tab} scope={scope} on_tab={on_tab} realm_filter={realm_filter} /> : null}
 			</div>
 		</Graphite_shell>
 	);
