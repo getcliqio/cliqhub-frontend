@@ -146,7 +146,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 		return (
 			<div className="grid h-full place-items-center px-6" data-testid="generating">
 				<div className="w-full max-w-[520px] text-center">
-					<div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-[var(--g-line)] border-t-[#9b8cff]" aria-hidden />
+					<div className="mx-auto mb-5 h-14 w-14 animate-spin rounded-full border-2 border-[var(--g-line)] border-t-[var(--g-acc)]" aria-hidden />
 					<h2 className="text-[20px] font-semibold tracking-tight">Building your team…</h2>
 					<p className="mt-1 line-clamp-2 text-[12.5px] text-[var(--g-ink-3)]">“{intent.trim()}”</p>
 					<ol className="mx-auto mt-6 grid max-w-[300px] gap-2 text-left" role="status" aria-live="polite">
@@ -154,7 +154,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 							const state = at === -1 ? 'todo' : i < at ? 'done' : i === at ? 'now' : 'todo';
 							return (
 								<li key={s.id} className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] ${state === 'now' ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)]'}`}>
-									<span aria-hidden className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${state === 'done' ? 'bg-[var(--g-ok)] text-black' : state === 'now' ? 'animate-pulse bg-[#9b8cff]' : 'border border-[var(--g-line)]'}`}>{state === 'done' ? '✓' : ''}</span>
+									<span aria-hidden className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${state === 'done' ? 'bg-[var(--g-ok)] text-[var(--g-on-color)]' : state === 'now' ? 'animate-pulse bg-[var(--g-acc)]' : 'border border-[var(--g-line)]'}`}>{state === 'done' ? '✓' : ''}</span>
 									{s.label}{state === 'done' ? <span className="sr-only"> done</span> : null}
 								</li>
 							);
@@ -172,13 +172,13 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 		<div className="h-full overflow-y-auto" data-testid="builder-start" style={{ background: 'radial-gradient(900px 380px at 50% -60px, rgba(124,108,255,.18), transparent 70%)' }}>
 			<div className="mx-auto max-w-[900px] px-6 pb-16 pt-12">
 				<div className="text-center">
-					<span className="inline-block rounded-full border border-[rgba(155,140,255,.4)] bg-[rgba(155,140,255,.1)] px-3 py-0.5 text-[12px] font-semibold text-[#cfc7ff]">✦ cliq builder</span>
+					<span className="inline-block rounded-full border border-[rgba(155,140,255,.4)] bg-[rgba(155,140,255,.1)] px-3 py-0.5 text-[12px] font-semibold text-[var(--g-acc-text)]">✦ cliq builder</span>
 					<h1 className="mt-4 text-[34px] font-semibold tracking-tight">What should your team do?</h1>
 					<p className="mt-2 text-[14px] text-[var(--g-ink-3)]">Describe the job. We’ll design the phases, write every role brief and validate it — then you shape it on the canvas.</p>
 				</div>
 				<form onSubmit={(e) => { e.preventDefault(); void generate(); }} className="mt-7 rounded-2xl p-px" style={{ background: 'linear-gradient(135deg,rgba(124,108,255,.8),rgba(255,122,217,.45),rgba(45,212,191,.55))' }}>
-					<div className="rounded-[15px] bg-[#121316] p-4">
-						<textarea aria-label="Describe your team" value={intent} onChange={(e) => set_intent(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }} rows={3} placeholder="e.g. Take a Jira ticket to a reviewed pull request…" className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[var(--g-ink)] outline-none placeholder:text-[#5d616b]" />
+					<div className="rounded-[15px] bg-[var(--g-head)] p-4">
+						<textarea aria-label="Describe your team" value={intent} onChange={(e) => set_intent(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void generate(); } }} rows={3} placeholder="e.g. Take a Jira ticket to a reviewed pull request…" className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)]" />
 						<div className="mt-2 flex items-center gap-2">
 							<span className="text-[11.5px] text-[var(--g-ink-3)]">Mention reviews, retries, parallel steps, tools — the more concrete, the better.</span>
 							<span className="ml-auto g-mono text-[11px] text-[var(--g-ink-3)]">⌘↵</span>
@@ -195,23 +195,23 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 
 				<p className="mb-2 mt-10 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Or start another way</p>
 				<div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-					<button type="button" onClick={() => on_team(empty_builder_team(), 'blank')} className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-4 text-left hover:border-[var(--g-acc-line)]">
-						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(155,140,255,.14)] text-[#9b8cff]">✥</span>
+					<button type="button" onClick={() => on_team(empty_builder_team(), 'blank')} className="rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] p-4 text-left hover:border-[var(--g-acc-line)]">
+						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(155,140,255,.14)] text-[var(--g-acc-text)]">✥</span>
 						<b className="mt-3 block text-[14px]">Blank canvas</b>
 						<span className="mt-1 block text-[12px] text-[var(--g-ink-3)]">Drag phases onto the canvas and wire them up.</span>
-						<span className="mt-2 block text-[12.5px] font-semibold text-[#9b8cff]">Open canvas →</span>
+						<span className="mt-2 block text-[12.5px] font-semibold text-[var(--g-acc-text)]">Open canvas →</span>
 					</button>
-					<button type="button" onClick={() => templates_ref.current?.scrollIntoView?.({ behavior: 'smooth' })} className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-4 text-left hover:border-[var(--g-acc-line)]">
-						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(45,212,191,.14)] text-[#2dd4bf]">▤</span>
+					<button type="button" onClick={() => templates_ref.current?.scrollIntoView?.({ behavior: 'smooth' })} className="rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] p-4 text-left hover:border-[var(--g-acc-line)]">
+						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(45,212,191,.14)] text-[var(--g-t-conn)]">▤</span>
 						<b className="mt-3 block text-[14px]">From a template</b>
 						<span className="mt-1 block text-[12px] text-[var(--g-ink-3)]">Proven shapes: gates, pipelines, fan-out.</span>
-						<span className="mt-2 block text-[12.5px] font-semibold text-[#2dd4bf]">Browse templates →</span>
+						<span className="mt-2 block text-[12.5px] font-semibold text-[var(--g-t-conn)]">Browse templates →</span>
 					</button>
-					<Link to="/browse" className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-4 text-left hover:border-[var(--g-acc-line)]">
-						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(91,157,255,.14)] text-[#5b9dff]">⑂</span>
+					<Link to="/browse" className="rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] p-4 text-left hover:border-[var(--g-acc-line)]">
+						<span className="grid h-9 w-9 place-items-center rounded-lg bg-[rgba(91,157,255,.14)] text-[var(--g-run)]">⑂</span>
 						<b className="mt-3 block text-[14px]">Fork a team</b>
 						<span className="mt-1 block text-[12px] text-[var(--g-ink-3)]">Start from any team in the Marketplace, then make it yours.</span>
-						<span className="mt-2 block text-[12.5px] font-semibold text-[#5b9dff]">Pick a team →</span>
+						<span className="mt-2 block text-[12.5px] font-semibold text-[var(--g-run)]">Pick a team →</span>
 					</Link>
 					<div
 						data-testid="import-drop"
@@ -233,8 +233,8 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 				</div>
 				{import_err && paste === null ? <p role="alert" className="mt-2 text-[12.5px] text-[var(--g-bad)]">{import_err}</p> : null}
 				{paste !== null ? (
-					<div className="mt-3 rounded-xl border border-[var(--g-line)] bg-[#121316] p-3" data-testid="paste-box">
-						<textarea aria-label="Paste team.yml" autoFocus value={paste} onChange={(e) => set_paste(e.target.value)} rows={9} placeholder={'name: my-team\nphases:\n  - name: design\n    type: standard'} className="g-mono w-full resize-y bg-transparent text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[#5d616b]" />
+					<div className="mt-3 rounded-xl border border-[var(--g-line)] bg-[var(--g-head)] p-3" data-testid="paste-box">
+						<textarea aria-label="Paste team.yml" autoFocus value={paste} onChange={(e) => set_paste(e.target.value)} rows={9} placeholder={'name: my-team\nphases:\n  - name: design\n    type: standard'} className="g-mono w-full resize-y bg-transparent text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)]" />
 						{import_err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{import_err}</p> : null}
 						<div className="mt-2 flex justify-end gap-2">
 							<button type="button" onClick={() => { set_paste(null); set_import_err(null); }} className="rounded-md border border-[var(--g-line)] px-3 py-1 text-[12.5px]">Cancel</button>
@@ -250,7 +250,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 							{SAMPLE_TEAMS.map((t, i) => {
 								const team = template_team(i);
 								return (
-									<button key={t.label} type="button" disabled={!team} onClick={() => team && on_team(team, 'template')} className="rounded-xl border border-[var(--g-line)] bg-[#141518] p-3 text-left hover:border-[var(--g-acc-line)] disabled:opacity-40" data-testid="template">
+									<button key={t.label} type="button" disabled={!team} onClick={() => team && on_team(team, 'template')} className="rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] p-3 text-left hover:border-[var(--g-acc-line)] disabled:opacity-40" data-testid="template">
 										<b className="block text-[13.5px]">{t.label}</b>
 										<span className="mt-0.5 block line-clamp-2 text-[12px] text-[var(--g-ink-3)]">{t.description}</span>
 										<Shape team={team} />
@@ -268,7 +268,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 										: (
 											<div className="grid gap-2">
 												{draft_items.filter((d) => d.id).map((d) => (
-													<Link key={d.id} to={`/builder?draft=${encodeURIComponent(d.id!)}`} className="flex items-center gap-3 rounded-xl border border-[var(--g-line)] bg-[#141518] px-3 py-2.5 hover:border-[var(--g-acc-line)]" data-testid="draft-row">
+													<Link key={d.id} to={`/builder?draft=${encodeURIComponent(d.id!)}`} className="flex items-center gap-3 rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-2.5 hover:border-[var(--g-acc-line)]" data-testid="draft-row">
 														<Team_avatar name={d.name} size={32} />
 														<span className="min-w-0 flex-1"><b className="block truncate text-[13.5px]">{d.name}</b><span className="text-[12px] text-[var(--g-ink-3)]">{d.phase_types ? `${d.phase_types.length} phases` : 'draft'}{d.scope ? ` · @${d.scope}` : ''}</span></span>
 														<span aria-hidden className="text-[var(--g-ink-3)]">›</span>

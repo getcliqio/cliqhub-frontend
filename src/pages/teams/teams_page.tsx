@@ -52,7 +52,7 @@ export function Market_card({ team, href }: { team: TeamListItem; href: string }
 	return (
 		<Link
 			to={href}
-			className="group flex flex-col rounded-[12px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4 transition-colors hover:border-[#34373e] hover:bg-[var(--g-soft)]"
+			className="group flex flex-col rounded-[12px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4 transition-colors hover:border-[var(--g-line-strong)] hover:bg-[var(--g-soft)]"
 			data-testid={`market-${team.scope ?? '_'}/${team.name}`}
 		>
 			<div className="flex items-start gap-3">

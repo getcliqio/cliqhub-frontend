@@ -18,7 +18,7 @@ export function GraphiteLayout() {
 
 	if (loading || !user) {
 		return (
-			<div className="theme-graphite flex min-h-screen items-center justify-center" role="status">
+			<div className="theme-graphite g-app flex min-h-screen items-center justify-center" role="status">
 				<p className="text-[13px] text-[var(--g-ink-3)]">Loading…</p>
 			</div>
 		);

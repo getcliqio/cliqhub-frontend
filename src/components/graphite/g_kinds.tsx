@@ -29,7 +29,7 @@ export const KIND_STRIPE: Record<G_kind | 'attention', string> = {
 	attention: 'var(--g-warn)',
 };
 
-export const ROW_ACTION_CLS = 'shrink-0 rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12px] font-semibold hover:border-[#3a3d44] hover:bg-[var(--g-soft)]';
+export const ROW_ACTION_CLS = 'shrink-0 rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12px] font-semibold hover:border-[var(--g-line-strong)] hover:bg-[var(--g-soft)]';
 
 export function Kind_icon({ kind }: { kind: G_kind }) {
 	const k = KIND_STYLE[kind];

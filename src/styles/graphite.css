@@ -61,6 +61,34 @@
 	--g-t-exec: #8b93a1;
 	--g-t-team: #b69cff;
 
+	/* Popovers, header bands, inputs, stronger borders, faint text */
+	--g-pop: #16171a;
+	--g-head: #121316;
+	--g-input: #0e0f11;
+	--g-line-strong: #33363c;
+	--g-ink-4: #5d616b;
+	/* Readable text tints of the status colours */
+	--g-acc-text: #cfc7ff;
+	--g-run-text: #8fb8ff;
+	--g-bad-text: #ff8b8b;
+	--g-warn-line: #3a2a1d;
+	--g-orange: #ff9f5a;
+	--g-lime: #b5e27a;
+	/* Elevation */
+	--g-pop-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+	--g-drawer-shadow: -20px 0 60px rgba(0, 0, 0, 0.5);
+	--g-card-lift: 0 8px 18px rgba(0, 0, 0, 0.5);
+	--g-card-shadow: none;
+	--g-backdrop: rgba(0, 0, 0, 0.55);
+	/* Workflow graph + builder canvas */
+	--g-graph-dot: #1f2226;
+	--g-node-top: #1b1d22;
+	--g-node-bot: #131417;
+	--g-node-shadow: #000000;
+	--g-node-shadow-op: 0.55;
+	--g-warn-chip: #221a0b;
+	--g-hug-chip: #2a1424;
+
 	--g-font: 'Geist', ui-sans-serif, system-ui, sans-serif;
 	--g-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
@@ -70,6 +98,75 @@
 	color-scheme: dark;
 	-webkit-font-smoothing: antialiased;
 }
+
+
+/*
+ * Light (variant C: white content, lavender sidebar). Signed-in app only
+ * (`.g-app`); landing, sign-in and the public marketplace stay dark.
+ * `lib/theme.ts` sets `data-g-theme` on <html> from the person's choice.
+ */
+:root[data-g-theme='light'] .theme-graphite.g-app {
+	--g-bg: #ffffff;
+	--g-side: #f6f3ff;
+	--g-panel: #ffffff;
+	--g-soft: #f4f2fb;
+	--g-hover: #ece8fb;
+	--g-line: #e6e3f0;
+	--g-line-2: #f0eef6;
+	--g-pop: #ffffff;
+	--g-head: #faf8ff;
+	--g-input: #ffffff;
+	--g-line-strong: #d8d4e6;
+	--g-ink: #18181b;
+	--g-ink-2: #3f3f46;
+	--g-ink-3: #6e6b7b;
+	--g-ink-4: #a09cae;
+	--g-acc: #7c3aed;
+	--g-acc-hover: #6d28d9;
+	--g-acc-soft: rgba(124, 58, 237, 0.08);
+	--g-acc-line: rgba(124, 58, 237, 0.35);
+	--g-acc-text: #6d28d9;
+	--g-on-acc: #ffffff;
+	--g-on-color: #ffffff;
+	--g-ok: #15803d;
+	--g-ok-soft: rgba(21, 128, 61, 0.09);
+	--g-run: #2563eb;
+	--g-run-soft: rgba(37, 99, 235, 0.09);
+	--g-run-text: #1d4ed8;
+	--g-warn: #d97706;
+	--g-warn-text: #b45309;
+	--g-warn-soft: rgba(217, 119, 6, 0.1);
+	--g-warn-line: rgba(217, 119, 6, 0.35);
+	--g-bad: #dc2626;
+	--g-bad-text: #b91c1c;
+	--g-bad-soft: rgba(220, 38, 38, 0.07);
+	--g-bad-line: rgba(220, 38, 38, 0.3);
+	--g-orange: #c2410c;
+	--g-lime: #4d7c0f;
+	--g-hug: #db2777;
+	--g-t-llm: #4f46e5;
+	--g-t-gate: #d97706;
+	--g-t-hug: #db2777;
+	--g-t-conn: #0d9488;
+	--g-t-exec: #64748b;
+	--g-t-team: #7c3aed;
+	--g-pop-shadow: 0 12px 32px rgba(40, 30, 80, 0.14), 0 0 0 1px rgba(40, 30, 80, 0.04);
+	--g-drawer-shadow: -12px 0 40px rgba(40, 30, 80, 0.12);
+	--g-card-lift: 0 4px 12px rgba(40, 30, 80, 0.12);
+	--g-card-shadow: 0 1px 2px rgba(40, 30, 80, 0.05);
+	--g-backdrop: rgba(30, 20, 60, 0.25);
+	--g-graph-dot: #e3dff0;
+	--g-node-top: #ffffff;
+	--g-node-bot: #fbfaff;
+	--g-node-shadow: #3b2f6b;
+	--g-node-shadow-op: 0.1;
+	--g-warn-chip: #fff7e6;
+	--g-hug-chip: #fdf0f7;
+	color-scheme: light;
+}
+/* On white, cards need a hint of lift. */
+:root[data-g-theme='light'] .theme-graphite.g-app [class*='bg-[var(--g-panel)]'] { box-shadow: var(--g-card-shadow); }
+:root[data-g-theme='light'] .theme-graphite.g-app select { color-scheme: light; }
 
 .theme-graphite ::selection {
 	background: var(--g-acc);
@@ -101,7 +198,7 @@
 }
 .theme-graphite select:disabled { opacity: 0.5; cursor: not-allowed; }
 .theme-graphite select option,
-.theme-graphite select optgroup { background: #16171a; color: var(--g-ink); }
+.theme-graphite select optgroup { background: var(--g-pop); color: var(--g-ink); }
 .theme-graphite select option:disabled { color: var(--g-ink-3); }
 .theme-graphite input[type='checkbox'] { accent-color: var(--g-acc); }
 

@@ -87,7 +87,7 @@ export function Component() {
 								<tr onClick={() => set_open(open === e.id ? null : e.id)} aria-expanded={open === e.id} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${open === e.id ? 'bg-[var(--g-soft)]' : ''}`} data-testid={`audit-${e.id}`}>
 									<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-3)]">{when(e.created_at)}</td>
 									<td className="px-4"><div className="flex items-center gap-2"><Avatar name={e.admin_username ?? '?'} size={22} />{e.admin_username ?? <span className="text-[var(--g-ink-3)]">deleted user</span>}</div></td>
-									<td className={`g-mono px-4 ${audit_is_sensitive(e.action) ? 'text-[#ff9f5a]' : ''}`}>{e.action}</td>
+									<td className={`g-mono px-4 ${audit_is_sensitive(e.action) ? 'text-[var(--g-orange)]' : ''}`}>{e.action}</td>
 									<td className="px-4"><span className="text-[var(--g-ink-3)]">{e.target_type}</span> <span className="g-mono">{e.target_id.length > 24 ? `${e.target_id.slice(0, 8)}…` : e.target_id}</span></td>
 									<td className="max-w-[360px] truncate px-4 text-[var(--g-ink-2)]">{audit_summary(e.details)}</td>
 								</tr>

@@ -296,7 +296,7 @@ export function Component() {
 							{d?.items.map((u) => (
 								<tr key={u.id} onClick={() => { set_creating(false); set({ u: u.id }); }} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${u.deleted_at ? 'opacity-60' : ''} ${selected === u.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`acct-${u.username ?? u.id}`}>
 									<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(u)} /><div className="min-w-0"><b className="font-semibold">{person_name(u)}</b> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{handle(u.username)}</span><div className="truncate text-[12px] text-[var(--g-ink-3)]">{u.email}</div></div></div></td>
-									<td className="px-4">{u.role === 'admin' ? <span className="text-[11.5px] font-bold uppercase tracking-[0.04em] text-[#ff9f5a]">Site admin</span> : <span className="text-[var(--g-ink-3)]">user</span>}</td>
+									<td className="px-4">{u.role === 'admin' ? <span className="text-[11.5px] font-bold uppercase tracking-[0.04em] text-[var(--g-orange)]">Site admin</span> : <span className="text-[var(--g-ink-3)]">user</span>}</td>
 									<td className="px-4 text-[var(--g-ink-3)]">{month_year(u.created_at)}</td>
 									<td className="px-4"><Account_status_pill status={u.deleted_at ? 'deleted' : u.status} /></td>
 								</tr>

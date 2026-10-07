@@ -14,9 +14,9 @@ import { change_kind, connect, disconnect, duplicate_phase, remove_bridged, rena
 import type { Problem } from '@/lib/builder/checks';
 import { Kind_tile } from '@/components/gbuilder/gb_canvas';
 
-export const IN = 'w-full rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[#5d616b] focus:border-[var(--g-acc-line)]';
+export const IN = 'w-full rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)] focus:border-[var(--g-acc-line)]';
 const BTN = 'rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold hover:bg-[var(--g-soft)] disabled:opacity-50';
-const AI_BTN = 'inline-flex items-center gap-1.5 rounded-lg border border-[rgba(155,140,255,.5)] bg-[linear-gradient(135deg,rgba(124,108,255,.35),rgba(255,122,217,.22))] px-2.5 py-1 text-[11.5px] font-semibold text-[#e9e3ff] disabled:opacity-50';
+const AI_BTN = 'inline-flex items-center gap-1.5 rounded-lg border border-[rgba(155,140,255,.5)] bg-[linear-gradient(135deg,rgba(124,108,255,.35),rgba(255,122,217,.22))] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--g-acc-text)] disabled:opacity-50';
 
 export function Section({ title, right, children, id }: { title: string; right?: ReactNode; children: ReactNode; id?: string }) {
 	return (
@@ -46,7 +46,7 @@ function Problems({ items, team, on_change }: { items: Problem[]; team: Generate
 	return (
 		<div className="grid gap-1.5 border-b border-[var(--g-line)] px-4 py-3" data-testid="panel-problems">
 			{items.map((p) => (
-				<div key={p.id} className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${p.level === 'error' ? 'border-[var(--g-bad-line)] text-[#ffb3b3]' : 'border-[rgba(255,178,36,.35)] text-[var(--g-warn-text)]'}`}>
+				<div key={p.id} className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${p.level === 'error' ? 'border-[var(--g-bad-line)] text-[var(--g-bad-text)]' : 'border-[rgba(255,178,36,.35)] text-[var(--g-warn-text)]'}`}>
 					<span aria-hidden>{p.level === 'error' ? '●' : '!'}</span>
 					<span className="flex-1">{p.message}</span>
 					{p.fix ? <button type="button" onClick={() => on_change(p.fix!.apply(team))} className="shrink-0 font-semibold text-[var(--g-acc)]">{p.fix.label}</button> : null}
@@ -86,7 +86,7 @@ function Role_editor({ team, phase, need, label, on_role }: { team: GeneratedTea
 			{proposal !== null ? (
 				<div data-testid="role-proposal">
 					<pre className="max-h-[260px] overflow-auto whitespace-pre-wrap rounded-lg border border-[rgba(62,207,142,.4)] bg-[rgba(62,207,142,.06)] p-2.5 font-[inherit] text-[12px] leading-relaxed text-[var(--g-ink-2)]">{proposal}</pre>
-					<div className="mt-2 flex items-center gap-1.5"><span className="text-[11.5px] text-[#cfc7ff]">✦ suggested brief</span><button type="button" onClick={() => set_proposal(null)} className={`${BTN} ml-auto`}>Discard</button><button type="button" onClick={() => { on_role(proposal); set_proposal(null); }} className="rounded-md bg-[var(--g-acc)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-acc)]">Keep</button></div>
+					<div className="mt-2 flex items-center gap-1.5"><span className="text-[11.5px] text-[var(--g-acc-text)]">✦ suggested brief</span><button type="button" onClick={() => set_proposal(null)} className={`${BTN} ml-auto`}>Discard</button><button type="button" onClick={() => { on_role(proposal); set_proposal(null); }} className="rounded-md bg-[var(--g-acc)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-acc)]">Keep</button></div>
 				</div>
 			) : (
 				<textarea aria-label={label} value={role?.content ?? ''} onChange={(e) => on_role(e.target.value)} rows={9} placeholder={need === 'required' ? 'What this agent should do, produce and avoid…' : 'Optional'} className={`${IN} font-[inherit] leading-relaxed`} />
@@ -185,7 +185,7 @@ export function Phase_panel({ team, name, problems, on_change, on_select }: { te
 				<div className="relative">
 					<button type="button" aria-label="Phase actions" aria-expanded={menu} onClick={() => set_menu(!menu)} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-soft)]"><MoreHorizontal className="h-4 w-4" /></button>
 					{menu ? (
-						<div role="menu" className="absolute right-0 top-8 z-20 w-[190px] rounded-lg border border-[#33363c] bg-[#16171a] p-1 shadow-lg">
+						<div role="menu" className="absolute right-0 top-8 z-20 w-[190px] rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-1 shadow-lg">
 							<button type="button" role="menuitem" onClick={() => run(duplicate_phase(team, name))} className="block w-full rounded px-2 py-1.5 text-left text-[12.5px] hover:bg-[var(--g-soft)]">Duplicate <span className="float-right text-[var(--g-ink-3)]">⌘D</span></button>
 							<button type="button" role="menuitem" onClick={toggle_support} className="block w-full rounded px-2 py-1.5 text-left text-[12.5px] hover:bg-[var(--g-soft)]">{phase.is_support ? 'Move into the flow' : 'Make it a support phase'}</button>
 							<button type="button" role="menuitem" onClick={() => { const r = remove_bridged(team, name); if (r.ok) on_change(r.team, null); }} className="block w-full rounded px-2 py-1.5 text-left text-[12.5px] text-[var(--g-bad)] hover:bg-[var(--g-soft)]">Delete <span className="float-right text-[var(--g-ink-3)]">⌫</span></button>

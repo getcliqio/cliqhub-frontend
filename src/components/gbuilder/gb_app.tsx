@@ -186,7 +186,7 @@ function Changes_view({ baseline, team, on_revert }: { baseline: GeneratedTeam |
 				{!changes.length ? <p className="rounded-xl border border-[var(--g-line)] p-6 text-center text-[13px] text-[var(--g-ink-3)]">No changes yet.</p> : (
 					<ul className="grid gap-1.5">
 						{changes.map((c, i) => (
-							<li key={i} className="flex items-start gap-3 rounded-lg border border-[var(--g-line)] bg-[#121316] px-3 py-2 text-[13px]">
+							<li key={i} className="flex items-start gap-3 rounded-lg border border-[var(--g-line)] bg-[var(--g-head)] px-3 py-2 text-[13px]">
 								<span className="g-mono w-3 font-bold" style={{ color: SIGN[c.kind][1] }}>{SIGN[c.kind][0]}</span>
 								<span className="g-mono w-12 shrink-0 text-[11px] uppercase text-[var(--g-ink-3)]">{c.target}</span>
 								<span><b>{c.name}</b> <span className="text-[var(--g-ink-3)]">{c.detail}</span></span>
@@ -335,7 +335,7 @@ export function Gb_app() {
 			{cancel ? (
 				<span className="inline-flex items-center gap-1.5" role="group" aria-label="Cancel editing" data-testid="cancel-confirm">
 					<span className={`text-[12px] ${cancel.step === 'error' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ink-2)]'}`} role={cancel.step === 'error' ? 'alert' : undefined}>{cancel.step === 'error' ? cancel.message : cancel_question}</span>
-					<button type="button" disabled={cancel.step === 'busy'} onClick={() => void leave()} className="inline-flex h-8 items-center rounded-md bg-[var(--g-bad)] px-2.5 text-[12.5px] font-semibold text-[#160606] disabled:opacity-50">{cancel.step === 'busy' ? 'Discarding…' : cancel.step === 'error' ? 'Try again' : 'Discard'}</button>
+					<button type="button" disabled={cancel.step === 'busy'} onClick={() => void leave()} className="inline-flex h-8 items-center rounded-md bg-[var(--g-bad)] px-2.5 text-[12.5px] font-semibold text-[var(--g-on-color)] disabled:opacity-50">{cancel.step === 'busy' ? 'Discarding…' : cancel.step === 'error' ? 'Try again' : 'Discard'}</button>
 					<button type="button" disabled={cancel.step === 'busy'} onClick={() => set_cancel(null)} className={GHOST}>Keep editing</button>
 				</span>
 			) : (
@@ -347,11 +347,11 @@ export function Gb_app() {
 
 	return (
 		<Graphite_shell data={overview.data} title={title} actions={actions}>
-			<div className="theme-graphite h-full min-h-0" data-testid="builder">
+			<div className="theme-graphite g-app h-full min-h-0" data-testid="builder">
 				{!team ? <Gb_start on_team={start} /> : (
 					<div className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)_340px]">
 						{/* left: build / AI */}
-						<aside className="flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[#101113]">
+						<aside className="flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-input)]">
 							<div className="grid grid-cols-2 border-b border-[var(--g-line)]" role="tablist" aria-label="Build or AI">
 								<button type="button" role="tab" aria-selected={left === 'build'} onClick={() => set_left('build')} className={`py-2.5 text-[13px] ${left === 'build' ? 'border-b-2 border-[var(--g-acc)] font-semibold' : 'text-[var(--g-ink-3)]'}`}>Build</button>
 								<button type="button" role="tab" aria-selected={left === 'ai'} onClick={() => set_left('ai')} className={`py-2.5 text-[13px] ${left === 'ai' ? 'border-b-2 border-[var(--g-acc)] font-semibold' : 'text-[var(--g-ink-3)]'}`}>✦ AI</button>
@@ -370,7 +370,7 @@ export function Gb_app() {
 												onDragStart={(e) => { e.dataTransfer.setData(KIND_MIME, k); e.dataTransfer.setData('text/plain', k); e.dataTransfer.effectAllowed = 'copy'; }}
 												onClick={() => add_kind(k)}
 												title={selected ? `Add after ${selected}` : 'Add to the canvas'}
-												className="flex cursor-grab items-center gap-2.5 rounded-lg border border-[var(--g-line)] bg-[#141518] px-2.5 py-2 text-left hover:border-[var(--g-acc-line)] active:cursor-grabbing"
+												className="flex cursor-grab items-center gap-2.5 rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] px-2.5 py-2 text-left hover:border-[var(--g-acc-line)] active:cursor-grabbing"
 												data-testid={`tile-${k}`}
 											>
 												<Kind_tile kind={k} size={26} />
@@ -421,14 +421,14 @@ export function Gb_app() {
 								)}
 							</div>
 							{center === 'canvas' && left !== 'ai' ? (
-								<button type="button" onClick={() => set_left('ai')} className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full p-px shadow-[0_10px_30px_rgba(0,0,0,.5)]" style={{ background: 'linear-gradient(135deg,rgba(124,108,255,.9),rgba(255,122,217,.6),rgba(45,212,191,.6))' }}>
-									<span className="flex items-center gap-2 rounded-full bg-[#131417] px-4 py-2 text-[12.5px] text-[var(--g-ink-2)]"><span className="text-[#cfc7ff]">✦</span> Ask AI to change anything <span className="g-mono text-[10.5px] text-[var(--g-ink-3)]">⌘K</span></span>
+								<button type="button" onClick={() => set_left('ai')} className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full p-px shadow-[var(--g-pop-shadow)]" style={{ background: 'linear-gradient(135deg,rgba(124,108,255,.9),rgba(255,122,217,.6),rgba(45,212,191,.6))' }}>
+									<span className="flex items-center gap-2 rounded-full bg-[var(--g-input)] px-4 py-2 text-[12.5px] text-[var(--g-ink-2)]"><span className="text-[var(--g-acc-text)]">✦</span> Ask AI to change anything <span className="g-mono text-[10.5px] text-[var(--g-ink-3)]">⌘K</span></span>
 								</button>
 							) : null}
 						</section>
 
 						{/* right: inspector */}
-						<aside className="min-h-0 overflow-y-auto border-l border-[var(--g-line)] bg-[#101113]" data-testid="inspector">
+						<aside className="min-h-0 overflow-y-auto border-l border-[var(--g-line)] bg-[var(--g-input)]" data-testid="inspector">
 							{selected && team.phases.some((p) => p.name === selected)
 								? <Phase_panel team={team} name={selected} problems={problems.filter((p) => p.phase === selected)} on_change={change} on_select={select} />
 								: <Team_panel team={team} problems={problems.filter((p) => !p.phase)} on_change={(t) => change(t)} on_ask_ai={ask_ai} focus_inputs={focus_inputs} />}

@@ -35,7 +35,7 @@ export const ADMIN_GROUPS: Array<{ label: string; items: Array<{ to: string; lab
 	] },
 ];
 
-const ADMIN_ACCENT = '#ff9f5a';
+const ADMIN_ACCENT = 'var(--g-orange)';
 
 
 function read_return(): string {
@@ -59,7 +59,7 @@ export function GraphiteAdminLayout() {
 
 	if (loading || !user || user.role !== 'admin') {
 		return (
-			<div className="theme-graphite flex min-h-screen items-center justify-center" role="status">
+			<div className="theme-graphite g-app flex min-h-screen items-center justify-center" role="status">
 				<p className="text-[13px] text-[var(--g-ink-3)]">Loading…</p>
 			</div>
 		);
@@ -68,10 +68,10 @@ export function GraphiteAdminLayout() {
 	const current = ADMIN_GROUPS.flatMap((g) => g.items).find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`));
 
 	return (
-		<div className="theme-graphite flex h-screen flex-col overflow-hidden" data-admin-mode>
+		<div className="theme-graphite g-app flex h-screen flex-col overflow-hidden" data-admin-mode>
 			<ImpersonationRibbon />
 			<div className="grid min-h-0 flex-1 grid-cols-[252px_minmax(0,1fr)]">
-				<aside className="flex min-h-0 flex-col border-r border-[#3a2a1d] bg-[#0d0b0a] px-3 py-4" aria-label="Admin">
+				<aside className="flex min-h-0 flex-col border-r border-[var(--g-warn-line)] bg-[var(--g-input)] px-3 py-4" aria-label="Admin">
 					<div className="mb-4 flex items-center gap-2.5 px-2 text-[14.5px] font-semibold tracking-tight">
 						<Cliq_mark class_name="h-6 w-6" title="CliqHub" />
 						CliqHub
@@ -80,7 +80,7 @@ export function GraphiteAdminLayout() {
 
 					<Link
 						to={back_to}
-						className="mb-3 flex items-center gap-2.5 rounded-[10px] border border-[#3a2a1d] bg-[var(--g-panel)] px-2.5 py-2 hover:border-[#5a3f2a]"
+						className="mb-3 flex items-center gap-2.5 rounded-[10px] border border-[var(--g-warn-line)] bg-[var(--g-panel)] px-2.5 py-2 hover:border-[var(--g-warn-line)]"
 						data-testid="admin-back"
 					>
 						<span className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)]"><ArrowLeft className="h-4 w-4" aria-hidden /></span>
@@ -94,7 +94,7 @@ export function GraphiteAdminLayout() {
 						<NavLink
 							to="/admin"
 							end
-							className={({ isActive }) => `mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium ${isActive ? 'bg-[var(--g-hover)] text-white' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
+							className={({ isActive }) => `mb-1 flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium ${isActive ? 'bg-[var(--g-hover)] text-[var(--g-ink)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
 							style={({ isActive }) => (isActive ? { boxShadow: `inset 2px 0 0 ${ADMIN_ACCENT}` } : undefined)}
 						>
 							<Gauge aria-hidden className="h-4 w-4 opacity-70" strokeWidth={1.8} />
@@ -109,7 +109,7 @@ export function GraphiteAdminLayout() {
 										<NavLink
 											key={it.to}
 											to={it.to}
-											className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium ${isActive ? 'bg-[var(--g-hover)] text-white' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
+											className={({ isActive }) => `flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium ${isActive ? 'bg-[var(--g-hover)] text-[var(--g-ink)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
 											style={({ isActive }) => (isActive ? { boxShadow: `inset 2px 0 0 ${ADMIN_ACCENT}` } : undefined)}
 										>
 											<Icon aria-hidden className="h-4 w-4 opacity-70" strokeWidth={1.8} />
@@ -121,16 +121,16 @@ export function GraphiteAdminLayout() {
 						))}
 					</nav>
 
-					<p className="border-t border-[#3a2a1d] px-2.5 pt-2.5 text-[11.5px] text-[var(--g-ink-3)]">
+					<p className="border-t border-[var(--g-warn-line)] px-2.5 pt-2.5 text-[11.5px] text-[var(--g-ink-3)]">
 						Signed in as <b className="text-[var(--g-ink)]">{user.username}</b> · site admin
 					</p>
 				</aside>
 
 				<div className="flex min-h-0 flex-col">
-					<header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-[#3a2a1d] px-7 text-[13px]">
+					<header className="flex h-14 shrink-0 items-center gap-1.5 border-b border-[var(--g-warn-line)] px-7 text-[13px]">
 						<nav aria-label="Breadcrumb" className="flex items-center gap-1.5">
 							<Link to="/admin" className="font-medium text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Admin</Link>
-							{current ? <><span aria-hidden className="text-[#4a4d55]">›</span><span className="font-semibold" aria-current="page">{current.label}</span></> : null}
+							{current ? <><span aria-hidden className="text-[var(--g-ink-4)]">›</span><span className="font-semibold" aria-current="page">{current.label}</span></> : null}
 						</nav>
 					</header>
 					<main className="min-h-0 flex-1 overflow-y-auto">

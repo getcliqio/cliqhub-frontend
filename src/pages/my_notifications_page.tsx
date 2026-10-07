@@ -109,7 +109,7 @@ export function Component() {
 									</thead>
 									{groups.map((g) => (
 										<tbody key={g.family}>
-											<tr><td colSpan={4} className="border-b border-[var(--g-line-2)] bg-[#121316] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.family}</td></tr>
+											<tr><td colSpan={4} className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.family}</td></tr>
 											{g.rows.map((r) => (
 												<tr key={r.rule.id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`my-rule-${r.rule.id}`}>
 													<td className="px-4 py-2.5">

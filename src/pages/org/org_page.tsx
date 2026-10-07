@@ -235,7 +235,7 @@ function Roles({ data, can_manage, reload }: { data: Org_page_data; can_manage: 
 											const can = editable(r) && !owner_only.has(p);
 											return (
 												<td key={r.id} className="px-2 text-center">
-													<button type="button" aria-label={`${r.name}: ${p}`} aria-pressed={on} disabled={!can} onClick={() => toggle(r, p)} className={`h-6 w-6 rounded ${can ? 'hover:bg-[var(--g-soft)]' : 'cursor-default'} ${on ? (r.is_system ? 'text-[var(--g-ok)]' : 'text-[var(--g-acc)]') : 'text-[#3a3d44]'}`}>{on ? '✓' : '—'}</button>
+													<button type="button" aria-label={`${r.name}: ${p}`} aria-pressed={on} disabled={!can} onClick={() => toggle(r, p)} className={`h-6 w-6 rounded ${can ? 'hover:bg-[var(--g-soft)]' : 'cursor-default'} ${on ? (r.is_system ? 'text-[var(--g-ok)]' : 'text-[var(--g-acc)]') : 'text-[var(--g-ink-4)]'}`}>{on ? '✓' : '—'}</button>
 												</td>
 											);
 										})}
@@ -266,7 +266,7 @@ function Roles({ data, can_manage, reload }: { data: Org_page_data; can_manage: 
 function FragmentGroup({ label, cols, children }: { label: string; cols: number; children: React.ReactNode }) {
 	return (
 		<>
-			<tr><td colSpan={cols} className="bg-[#0f1012] px-4 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{label}</td></tr>
+			<tr><td colSpan={cols} className="bg-[var(--g-input)] px-4 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{label}</td></tr>
 			{children}
 		</>
 	);

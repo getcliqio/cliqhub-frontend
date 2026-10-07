@@ -109,8 +109,8 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-[2px]" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) on_close(); }}>
-			<div role="dialog" aria-modal="true" aria-label="Publish team" className="w-full max-w-[640px] rounded-2xl border border-[var(--g-line)] bg-[#141518] shadow-[0_30px_80px_rgba(0,0,0,.6)]">
+		<div className="fixed inset-0 z-50 grid place-items-center bg-[var(--g-backdrop)] p-4 backdrop-blur-[2px]" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) on_close(); }}>
+			<div role="dialog" aria-modal="true" aria-label="Publish team" className="w-full max-w-[640px] rounded-2xl border border-[var(--g-line)] bg-[var(--g-panel)] shadow-[var(--g-pop-shadow)]">
 				<div className="flex items-center gap-3 border-b border-[var(--g-line)] px-5 py-3.5">
 					<b className="text-[16px]">Publish</b>
 					<span className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5 text-[12px] text-[var(--g-ink-2)]">@{scope}/{slug}</span>
@@ -153,7 +153,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 							</div>
 							<div>
 								<div className="mb-2 flex items-center"><p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Release notes</p>
-									{changes.length ? <button type="button" onClick={() => set_notes(release_notes(changes))} className="ml-auto rounded-full bg-[rgba(155,140,255,.14)] px-2.5 py-0.5 text-[11.5px] text-[#cfc7ff]">✦ Draft from your changes</button> : null}</div>
+									{changes.length ? <button type="button" onClick={() => set_notes(release_notes(changes))} className="ml-auto rounded-full bg-[rgba(155,140,255,.14)] px-2.5 py-0.5 text-[11.5px] text-[var(--g-acc-text)]">✦ Draft from your changes</button> : null}</div>
 								<textarea aria-label="Release notes" value={notes} onChange={(e) => set_notes(e.target.value)} rows={4} placeholder="What’s new in this version…" className="w-full resize-y rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-2 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]" />
 							</div>
 							<div>

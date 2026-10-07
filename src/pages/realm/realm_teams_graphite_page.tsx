@@ -65,7 +65,7 @@ function Row_menu({ row, base, on_remove, on_add }: { row: Realm_team_row; base:
 				<MoreHorizontal className="h-4 w-4" />
 			</button>
 			{open ? (
-				<div role="menu" className="absolute right-0 top-8 z-40 w-[200px] overflow-hidden rounded-lg border border-[#33363c] bg-[#16171a] py-1 shadow-[0_16px_40px_rgba(0,0,0,.55)]">
+				<div role="menu" className="absolute right-0 top-8 z-40 w-[200px] overflow-hidden rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] py-1 shadow-[var(--g-pop-shadow)]">
 					{row.scope ? <Link role="menuitem" to={`${base}/teams/${encodeURIComponent(row.scope)}/${encodeURIComponent(row.slug)}`} className={item}>View team</Link> : null}
 					<Link role="menuitem" to={`${base}/runs?team=${encodeURIComponent(row.scope ? `${row.scope}/${row.slug}` : row.slug)}`} className={item}>Runs of this team</Link>
 					{row.in_team_list
@@ -120,8 +120,8 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-label="Install a team" onMouseDown={(e) => { if (e.target === e.currentTarget) on_close(); }}>
-			<div className="flex h-full w-[560px] max-w-full flex-col gap-4 overflow-y-auto border-l border-[#33363c] bg-[#141518] px-7 py-6 shadow-[-20px_0_60px_rgba(0,0,0,.5)]">
+		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label="Install a team" onMouseDown={(e) => { if (e.target === e.currentTarget) on_close(); }}>
+			<div className="flex h-full w-[560px] max-w-full flex-col gap-4 overflow-y-auto border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] px-7 py-6 shadow-[var(--g-drawer-shadow)]">
 				<div className="flex items-center">
 					<h2 className="text-[18px] font-semibold">Install a team</h2>
 					<button type="button" onClick={on_close} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-4 w-4" /></button>
@@ -278,7 +278,7 @@ export function Component() {
 													<td className="px-4 py-2.5 text-right">
 														{confirm_remove === r.label ? (
 															<span className="inline-flex gap-1.5">
-																<button type="button" disabled={busy !== null} onClick={() => void act(r, 'remove')} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Remove</button>
+																<button type="button" disabled={busy !== null} onClick={() => void act(r, 'remove')} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Remove</button>
 																<button type="button" onClick={() => set_confirm_remove(null)} className={ROW_ACTION_CLS}>Keep</button>
 															</span>
 														) : (

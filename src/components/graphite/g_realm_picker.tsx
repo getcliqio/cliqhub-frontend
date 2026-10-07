@@ -107,7 +107,7 @@ export function Realm_picker({ org_id, value, on_change, blocked, label = 'Realm
 				<ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--g-ink-3)]" />
 			</button>
 			{open ? (
-				<div className="absolute left-0 right-0 top-10 z-[60] overflow-hidden rounded-lg border border-[#33363c] bg-[#16171a] shadow-[0_16px_40px_rgba(0,0,0,.55)]">
+				<div className="absolute left-0 right-0 top-10 z-[60] overflow-hidden rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] shadow-[var(--g-pop-shadow)]">
 					<div className="flex items-center gap-2 border-b border-[var(--g-line)] px-2.5">
 						<Search aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
 						<input

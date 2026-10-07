@@ -340,7 +340,7 @@ function Cancel_panel({ busy, on_confirm, on_cancel }: { busy: boolean; on_confi
 			<p className="text-[13px] font-semibold">Cancel this run?</p>
 			<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">The daemon stops the current phase. If the daemon is unreachable the Hub marks the run cancelled.</p>
 			<div className="mt-3 flex gap-2">
-				<button type="button" disabled={busy} onClick={on_confirm} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[#160606] disabled:opacity-50">
+				<button type="button" disabled={busy} onClick={on_confirm} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-color)] disabled:opacity-50">
 					{busy ? 'Cancelling…' : 'Confirm cancel'}
 				</button>
 				<button type="button" onClick={on_cancel} className="rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px]">Keep running</button>

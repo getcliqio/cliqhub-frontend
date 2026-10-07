@@ -61,8 +61,8 @@ const LABEL = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.07em
 
 const TAG_STYLE: Record<Notif_scope_kind | 'personal', { fg: string; bg: string; word: string }> = {
 	org: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'org' },
-	realm: { fg: '#7cc4ff', bg: 'rgba(91,157,255,.12)', word: 'realm' },
-	team: { fg: '#c9b6ff', bg: 'rgba(182,156,255,.13)', word: 'team in realm' },
+	realm: { fg: 'var(--g-run-text)', bg: 'rgba(91,157,255,.12)', word: 'realm' },
+	team: { fg: 'var(--g-acc-text)', bg: 'rgba(182,156,255,.13)', word: 'team in realm' },
 	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'only you' },
 };
 
@@ -261,7 +261,7 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 												</span>
 											) : confirm === r.id ? (
 												<span className="inline-flex gap-1.5">
-													<button type="button" onClick={() => void remove(r)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Delete</button>
+													<button type="button" onClick={() => void remove(r)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Delete</button>
 													<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 												</span>
 											) : (
@@ -285,8 +285,8 @@ function Rules_tab({ data, scope, reload }: { data: Notification_center_data; sc
 
 function Drawer({ title, on_close, children, label }: { title: string; on_close: () => void; children: React.ReactNode; label: string }) {
 	return (
-		<div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-label={label} onMouseDown={(e) => { if (e.target === e.currentTarget) on_close(); }}>
-			<div className="flex h-full w-[560px] max-w-full flex-col gap-5 overflow-y-auto border-l border-[#33363c] bg-[#141518] px-7 py-6 shadow-[-20px_0_60px_rgba(0,0,0,.5)]">
+		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label={label} onMouseDown={(e) => { if (e.target === e.currentTarget) on_close(); }}>
+			<div className="flex h-full w-[560px] max-w-full flex-col gap-5 overflow-y-auto border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] px-7 py-6 shadow-[var(--g-drawer-shadow)]">
 				<div className="flex items-center">
 					<h2 className="text-[18px] font-semibold">{title}</h2>
 					<button type="button" onClick={on_close} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-4 w-4" /></button>
@@ -389,7 +389,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 							disabled={k === 'org' && !can_edit_org(data, org_id)}
 							title={k === 'org' && !can_edit_org(data, org_id) ? 'Needs org owner' : undefined}
 							onClick={() => { set_kind(k); set_channel_id(''); }}
-							className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold ${kind === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)] hover:border-[#3a3d44]'} disabled:cursor-not-allowed disabled:opacity-40`}
+							className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold ${kind === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)] hover:border-[var(--g-line-strong)]'} disabled:cursor-not-allowed disabled:opacity-40`}
 						>
 							{l}
 						</button>
@@ -547,7 +547,7 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 				</div>
 			</div>
 
-			<aside className="rounded-[10px] border border-[var(--g-line)] bg-[#121316] p-5" aria-label="Channel details">
+			<aside className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-head)] p-5" aria-label="Channel details">
 				{open ? (
 					<div className="flex flex-col gap-3.5">
 						<div className="flex items-start">
@@ -581,7 +581,7 @@ function Channels_tab({ data, scope, reload }: { data: Notification_center_data;
 							<button type="button" onClick={() => void act('/v1/notification_channels/update', { id: open.id, enabled: !open.enabled }, open.enabled ? 'Channel disabled.' : 'Channel enabled.')} className={ROW_ACTION_CLS}>{open.enabled ? 'Disable' : 'Enable'}</button>
 							{confirm_delete ? (
 								<>
-									<button type="button" onClick={async () => { if (await act('/v1/notification_channels/remove', { id: open.id }, 'Channel deleted.')) set_open_id(null); }} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[#160606]">Delete channel</button>
+									<button type="button" onClick={async () => { if (await act('/v1/notification_channels/remove', { id: open.id }, 'Channel deleted.')) set_open_id(null); }} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-color)]">Delete channel</button>
 									<button type="button" onClick={() => set_confirm_delete(false)} className={ROW_ACTION_CLS}>Keep</button>
 								</>
 							) : (
@@ -799,7 +799,7 @@ function Realm_pager({ data, paging }: { data: Notification_center_data; paging:
 	const to = Math.min(page.offset + page.limit, page.total);
 	const own = (id: string) => data.rules.filter((r) => r.scope.realm_id === id).length;
 	return (
-		<div className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[#121316] px-3.5 py-2.5" data-testid="realm-pager">
+		<div className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-head)] px-3.5 py-2.5" data-testid="realm-pager">
 			<div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]">
 				<span>Org-wide rules, plus realm and team rules for</span>
 				<input aria-label="Search realms" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search realms…" className="h-7 w-[180px] rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]" />

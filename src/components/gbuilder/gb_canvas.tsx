@@ -37,7 +37,7 @@ export function Kind_tile({ kind, size = 28 }: { kind: Kind_id; size?: number })
 
 export function Kind_menu({ label, on_pick, on_close }: { label: string; on_pick: (k: Kind_id) => void; on_close: () => void }) {
 	return (
-		<div role="menu" aria-label={label} className="z-30 w-[220px] rounded-[10px] border border-[#33363c] bg-[#16171a] p-1.5 shadow-[0_20px_50px_rgba(0,0,0,.6)]" onPointerDown={(e) => e.stopPropagation()}>
+		<div role="menu" aria-label={label} className="z-30 w-[220px] rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-1.5 shadow-[var(--g-pop-shadow)]" onPointerDown={(e) => e.stopPropagation()}>
 			<p className="px-2 pb-1 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{label}</p>
 			{PALETTE.map((k) => (
 				<button key={k} type="button" role="menuitem" onClick={() => { on_pick(k); on_close(); }} className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-[var(--g-soft)]">
@@ -214,12 +214,12 @@ export function Gb_canvas({
 		paths.push(
 			<g key={key} data-edge={key} onMouseEnter={() => set_hover_edge(key)}>
 				<path d={d} stroke="transparent" strokeWidth={22} fill="none" />
-				{is_new ? <path d={d} stroke="#3ecf8e" strokeWidth={1.7} strokeDasharray="5 4" fill="none" /> : <>
+				{is_new ? <path d={d} strokeWidth={1.7} strokeDasharray="5 4" fill="none" style={{ stroke: 'var(--g-ok)' }} /> : <>
 					<path d={d} stroke={ca} strokeOpacity={hover_edge === key ? 0.28 : 0.1} strokeWidth={7} fill="none" />
 					<path d={d} stroke={`url(#${id})`} strokeWidth={1.7} fill="none" />
 					<circle className="g-flow" r={2.6} fill="#fff" opacity={0.9}><animateMotion dur="2.4s" repeatCount="indefinite" begin={`-${(i * 0.6) % 2.4}s`} path={d} /></circle>
 				</>}
-				<path d={`M${x2 - 4} ${y2 - 6} L${x2} ${y2} L${x2 + 4} ${y2 - 6}`} stroke={is_new ? '#3ecf8e' : cb} strokeWidth={1.7} fill="none" strokeLinecap="round" />
+				<path d={`M${x2 - 4} ${y2 - 6} L${x2} ${y2} L${x2 + 4} ${y2 - 6}`} strokeWidth={1.7} fill="none" strokeLinecap="round" style={{ stroke: is_new ? 'var(--g-ok)' : cb }} />
 			</g>,
 		);
 	});
@@ -232,9 +232,9 @@ export function Gb_canvas({
 		const gy = g.y + H / 2; const ty = t.y + H / 2; const left = Math.min(g.x, t.x) - 64;
 		paths.push(
 			<g key={`loop-${p.name}`} data-loop={`${p.name}->${target}`}>
-				<path className="g-march" d={`M${g.x - 2} ${gy} C${left} ${gy}, ${left} ${ty}, ${t.x - 3} ${ty}`} stroke="#f5a524" strokeWidth={1.5} strokeDasharray="5 5" fill="none" style={{ animation: 'g-march 1.2s linear infinite' }} />
-				<path d={`M${t.x - 10} ${ty - 4} L${t.x - 3} ${ty} L${t.x - 10} ${ty + 4}`} stroke="#f5a524" strokeWidth={1.6} fill="none" strokeLinecap="round" />
-				<g transform={`translate(${left - 44},${(gy + ty) / 2 - 11})`}><rect width={96} height={22} rx={11} fill="#221a0b" stroke="#f5a524" strokeOpacity={0.55} /><text x={48} y={15} textAnchor="middle" fontSize={10.5} fill="#ffc766" fontWeight={600} fontFamily="var(--g-font)">↺ route · ≤ {p.max_iterations}</text></g>
+				<path className="g-march" d={`M${g.x - 2} ${gy} C${left} ${gy}, ${left} ${ty}, ${t.x - 3} ${ty}`} strokeWidth={1.5} strokeDasharray="5 5" fill="none" style={{ stroke: 'var(--g-warn)', animation: 'g-march 1.2s linear infinite' }} />
+				<path d={`M${t.x - 10} ${ty - 4} L${t.x - 3} ${ty} L${t.x - 10} ${ty + 4}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-warn)' }} />
+				<g transform={`translate(${left - 44},${(gy + ty) / 2 - 11})`}><rect width={96} height={22} rx={11} strokeOpacity={0.55} style={{ fill: 'var(--g-warn-chip)', stroke: 'var(--g-warn)' }} /><text x={48} y={15} textAnchor="middle" fontSize={10.5} style={{ fill: 'var(--g-warn-text)' }} fontWeight={600} fontFamily="var(--g-font)">↺ route · ≤ {p.max_iterations}</text></g>
 			</g>,
 		);
 	}
@@ -244,8 +244,8 @@ export function Gb_canvas({
 	const inputs = shown.inputs ?? [];
 
 	return (
-		<div className="relative h-full min-h-0 bg-[#0b0c0e]" data-testid="canvas">
-		<div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(#1d2024 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
+		<div className="relative h-full min-h-0 bg-[var(--g-input)]" data-testid="canvas">
+		<div className="pointer-events-none absolute inset-0" style={{ backgroundImage: 'radial-gradient(var(--g-graph-dot) 1px, transparent 1px)', backgroundSize: '18px 18px' }} />
 		<div ref={wrap} className="relative h-full overflow-auto" onPointerDown={() => { set_menu(null); }}>
 			<div
 				ref={inner}
@@ -266,19 +266,19 @@ export function Gb_canvas({
 					<style>{'@media (prefers-reduced-motion: reduce){.g-flow{display:none}.g-march{animation:none!important}}'}</style>
 					<ellipse cx={content_w / 2} cy={content_h * 0.45} rx={content_w * 0.5} ry={content_h * 0.5} fill="url(#gb-aura)" />
 					{/* inputs → roots */}
-					{main.filter((p) => !p.depends_on.some((d) => L.pos.has(d))).map((p) => { const b = at(p.name); return <path key={`in-${p.name}`} d={`M${content_w / 2} 84 C${content_w / 2} 100, ${b.x + W / 2} ${b.y - 26}, ${b.x + W / 2} ${b.y - 3}`} stroke="#3a3d44" strokeWidth={1.4} strokeDasharray="3 4" fill="none" />; })}
+					{main.filter((p) => !p.depends_on.some((d) => L.pos.has(d))).map((p) => { const b = at(p.name); return <path key={`in-${p.name}`} d={`M${content_w / 2} 84 C${content_w / 2} 100, ${b.x + W / 2} ${b.y - 26}, ${b.x + W / 2} ${b.y - 3}`} strokeWidth={1.4} strokeDasharray="3 4" fill="none" style={{ stroke: 'var(--g-line-strong)' }} />; })}
 					<g style={{ pointerEvents: 'auto' }}>{paths}</g>
 					{wire ? (() => { const a = at(wire.from); const x1 = a.x + W / 2; const y1 = a.y + H; return <path d={`M${x1} ${y1} C${x1} ${y1 + 60}, ${wire.x} ${wire.y - 60}, ${wire.x} ${wire.y}`} stroke="var(--g-acc)" strokeWidth={2} strokeDasharray="6 5" fill="none" data-testid="wire" />; })() : null}
 				</svg>
 
 				{/* run inputs */}
-				<button type="button" onClick={(e) => { e.stopPropagation(); on_inputs(); }} data-testid="inputs-node" className="absolute rounded-[14px] border-[1.5px] border-[var(--g-acc-line)] bg-[#141518] px-3 py-2 text-left shadow-[0_0_0_4px_var(--g-acc-soft)]" style={{ left: content_w / 2 - 160, top: 22, width: 320 }}>
+				<button type="button" onClick={(e) => { e.stopPropagation(); on_inputs(); }} data-testid="inputs-node" className="absolute rounded-[14px] border-[1.5px] border-[var(--g-acc-line)] bg-[var(--g-panel)] px-3 py-2 text-left shadow-[0_0_0_4px_var(--g-acc-soft)]" style={{ left: content_w / 2 - 160, top: 22, width: 320 }}>
 					<span className="flex items-center gap-2 text-[12.5px] font-semibold"><span aria-hidden className="grid h-[18px] w-[18px] place-items-center rounded-full border-2 border-[var(--g-acc)]"><i className="block h-1.5 w-1.5 rounded-full bg-[var(--g-acc)]" /></span>Run inputs<span className="ml-auto text-[11px] font-normal text-[var(--g-ink-3)]">click to edit</span></span>
 					<span className="mt-1.5 flex flex-wrap gap-1">{inputs.length ? inputs.map((i) => <span key={i.name} className="g-mono rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] px-1.5 text-[11px]">{i.name}</span>) : <span className="text-[11.5px] text-[var(--g-ink-3)]">none — runs start straight away</span>}</span>
 				</button>
 
 				{!main.length ? (
-					<div className={`absolute grid place-items-center rounded-2xl border-2 border-dashed text-center ${drop ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[#2c2f35]'}`} style={{ left: content_w / 2 - 230, top: TOP + 10, width: 460, height: 200 }}>
+					<div className={`absolute grid place-items-center rounded-2xl border-2 border-dashed text-center ${drop ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line-strong)]'}`} style={{ left: content_w / 2 - 230, top: TOP + 10, width: 460, height: 200 }}>
 						<div>
 							<p className="text-[14px] font-semibold">Drag a phase here to start</p>
 							<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">or click a tile on the left, or ask AI on the right tab</p>
@@ -310,9 +310,9 @@ export function Gb_canvas({
 							style={{ left: x + dx, top: y, width: W, height: H, zIndex: dx ? 20 : 2, transition: dx ? 'none' : 'left .25s ease, top .25s ease' }}
 						>
 							<div className="relative flex h-full items-center gap-2.5 rounded-xl px-3" style={{
-								background: 'linear-gradient(180deg,#1c1e23,#131417)',
-								border: `${sel || mark || is_drop ? 1.5 : 1}px ${mark === 'new' ? 'dashed' : 'solid'} ${mark === 'new' ? '#3ecf8e' : mark === 'changed' ? '#f5a524' : is_drop ? 'var(--g-acc)' : sel ? k.color : hexa(k.color, 0.38)}`,
-								boxShadow: sel ? `0 0 0 4px ${hexa(k.color, 0.14)}, 0 0 24px ${hexa(k.color, 0.35)}` : '0 8px 18px rgba(0,0,0,.5)',
+								background: 'linear-gradient(180deg,var(--g-node-top),var(--g-node-bot))',
+								border: `${sel || mark || is_drop ? 1.5 : 1}px ${mark === 'new' ? 'dashed' : 'solid'} ${mark === 'new' ? 'var(--g-ok)' : mark === 'changed' ? 'var(--g-warn)' : is_drop ? 'var(--g-acc)' : sel ? k.color : hexa(k.color, 0.38)}`,
+								boxShadow: sel ? `0 0 0 4px ${hexa(k.color, 0.14)}, 0 0 24px ${hexa(k.color, 0.35)}` : 'var(--g-card-lift)',
 							}}>
 								<Kind_tile kind={kind} />
 								<span className="min-w-0 flex-1">
@@ -320,8 +320,8 @@ export function Gb_canvas({
 									<span className="g-mono block truncate text-[10.5px] text-[var(--g-ink-3)]">{subtitle(shown, p.name)}</span>
 								</span>
 								{prob ? <span title={prob === 'error' ? 'Has problems' : 'Has warnings'} className="h-2 w-2 shrink-0 rounded-full" style={{ background: prob === 'error' ? 'var(--g-bad)' : 'var(--g-warn)' }} data-testid={`problem-${p.name}`} /> : null}
-								{kind === 'gate' && p.max_iterations ? <span className="g-mono absolute -top-2.5 right-3 rounded-full border border-[rgba(245,165,36,.6)] bg-[#221a0b] px-2 text-[10px] font-bold text-[#ffc766]">×{p.max_iterations}</span> : null}
-								{mark ? <span className={`absolute -left-2 -top-2.5 rounded-full border px-2 text-[9.5px] font-bold ${mark === 'new' ? 'border-[#3ecf8e] bg-[#0f2a1f] text-[#3ecf8e]' : 'border-[#f5a524] bg-[#221a0b] text-[#ffc766]'}`}>{mark === 'new' ? 'NEW' : 'CHANGED'}</span> : null}
+								{kind === 'gate' && p.max_iterations ? <span className="g-mono absolute -top-2.5 right-3 rounded-full border border-[rgba(245,165,36,.6)] bg-[var(--g-warn-soft)] px-2 text-[10px] font-bold text-[var(--g-warn-text)]">×{p.max_iterations}</span> : null}
+								{mark ? <span className={`absolute -left-2 -top-2.5 rounded-full border px-2 text-[9.5px] font-bold ${mark === 'new' ? 'border-[var(--g-ok)] bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : 'border-[var(--g-warn)] bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]'}`}>{mark === 'new' ? 'NEW' : 'CHANGED'}</span> : null}
 							</div>
 							{!locked ? (
 								<span
@@ -329,7 +329,7 @@ export function Gb_canvas({
 									aria-label={`Connect ${p.name} to a phase that runs after it`}
 									title="Drag onto a phase that should run after this one"
 									onPointerDown={(e) => start_wire(e, p.name)}
-									className={`absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-[1.5px] bg-[#0b0c0e] ${sel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+									className={`absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-[1.5px] bg-[var(--g-input)] ${sel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
 									style={{ borderColor: k.color }}
 									data-testid={`handle-${p.name}`}
 								/>
@@ -340,14 +340,14 @@ export function Gb_canvas({
 
 				{/* + under leaves */}
 				{!locked ? leaves.map((p) => { const { x, y } = at(p.name); return (
-					<button key={`plus-${p.name}`} type="button" aria-label={`Add a phase after ${p.name}`} onClick={(e) => { e.stopPropagation(); set_menu({ kind: 'after', name: p.name, x: x + W / 2 - 110, y: y + H + 44 }); }} className="absolute grid h-7 w-7 place-items-center rounded-full border border-dashed border-[#3a3d44] bg-[#16171a] text-[15px] text-[var(--g-ink-3)] hover:border-[var(--g-acc)] hover:text-[var(--g-acc)]" style={{ left: x + W / 2 - 14, top: y + H + 14 }}>+</button>
+					<button key={`plus-${p.name}`} type="button" aria-label={`Add a phase after ${p.name}`} onClick={(e) => { e.stopPropagation(); set_menu({ kind: 'after', name: p.name, x: x + W / 2 - 110, y: y + H + 44 }); }} className="absolute grid h-7 w-7 place-items-center rounded-full border border-dashed border-[var(--g-line-strong)] bg-[var(--g-pop)] text-[15px] text-[var(--g-ink-3)] hover:border-[var(--g-acc)] hover:text-[var(--g-acc)]" style={{ left: x + W / 2 - 14, top: y + H + 14 }}>+</button>
 				); }) : null}
 
 				{/* hovered arrow: insert / remove */}
 				{hover && hover_mid && !locked ? (
 					<span className="absolute z-10 flex gap-1" style={{ left: hover_mid.x - 44, top: hover_mid.y - 12 }} onMouseLeave={() => set_hover_edge(null)}>
-						<button type="button" aria-label={`Insert a phase between ${hover.from} and ${hover.to}`} onClick={(e) => { e.stopPropagation(); set_menu({ kind: 'between', from: hover.from, to: hover.to, x: hover_mid.x - 110, y: hover_mid.y + 16 }); }} className="h-6 rounded-full border border-[#3a3d44] bg-[#16171a] px-2.5 text-[11px] text-[var(--g-ink)]">+ insert</button>
-						<button type="button" aria-label={`Remove link ${hover.from} → ${hover.to}`} onClick={(e) => { e.stopPropagation(); set_hover_edge(null); apply(disconnect(team, hover.from, hover.to)); }} className="h-6 rounded-full border border-[rgba(255,92,92,.6)] bg-[#2a1414] px-2 text-[11px] text-[#ff8b8b]">✕</button>
+						<button type="button" aria-label={`Insert a phase between ${hover.from} and ${hover.to}`} onClick={(e) => { e.stopPropagation(); set_menu({ kind: 'between', from: hover.from, to: hover.to, x: hover_mid.x - 110, y: hover_mid.y + 16 }); }} className="h-6 rounded-full border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 text-[11px] text-[var(--g-ink)]">+ insert</button>
+						<button type="button" aria-label={`Remove link ${hover.from} → ${hover.to}`} onClick={(e) => { e.stopPropagation(); set_hover_edge(null); apply(disconnect(team, hover.from, hover.to)); }} className="h-6 rounded-full border border-[rgba(255,92,92,.6)] bg-[var(--g-bad-soft)] px-2 text-[11px] text-[var(--g-bad-text)]">✕</button>
 					</span>
 				) : null}
 				{drop_mid ? <span className="pointer-events-none absolute z-10 whitespace-nowrap rounded-lg border-[1.5px] border-dashed border-[var(--g-acc)] bg-[var(--g-acc-soft)] px-3 py-1 text-[11.5px] text-[var(--g-acc)]" style={{ left: drop_mid.x - 90, top: drop_mid.y - 14 }}>insert here</span> : null}
@@ -355,7 +355,7 @@ export function Gb_canvas({
 
 				{/* support shelf */}
 				{L.support.length ? (
-					<div className="absolute flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[#2c2f35] px-3 py-2 text-[11.5px] text-[var(--g-ink-3)]" style={{ left: content_w / 2 - 260, top: TOP + Math.max(L.steps, 1) * ROW + 16, width: 520 }}>
+					<div className="absolute flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[var(--g-line-strong)] px-3 py-2 text-[11.5px] text-[var(--g-ink-3)]" style={{ left: content_w / 2 - 260, top: TOP + Math.max(L.steps, 1) * ROW + 16, width: 520 }}>
 						<span>Support · callable by any phase:</span>
 						{L.support.map((n) => <button key={n} type="button" data-node={n} onClick={(e) => { e.stopPropagation(); if (!locked) on_select(n); }} className={`g-mono rounded-md border px-2 py-0.5 text-[11.5px] ${selected === n ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{n}</button>)}
 					</div>
@@ -366,18 +366,18 @@ export function Gb_canvas({
 			{/* floating controls */}
 			<div className="absolute bottom-4 right-4 z-20 flex flex-col gap-1.5">
 				{[['+', 'Zoom in', () => set_zoom((z) => Math.min(1.4, +(z + 0.1).toFixed(2)))], [`${Math.round(zoom * 100)}%`, 'Reset zoom', () => set_zoom(1)], ['−', 'Zoom out', () => set_zoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))]].map(([t, l, f]) => (
-					<button key={l as string} type="button" aria-label={l as string} onClick={f as () => void} className="h-8 min-w-8 rounded-lg border border-[#2c2f35] bg-[rgba(22,23,26,.9)] px-2 text-[12px] text-[var(--g-ink-2)]">{t as string}</button>
+					<button key={l as string} type="button" aria-label={l as string} onClick={f as () => void} className="h-8 min-w-8 rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2 text-[12px] text-[var(--g-ink-2)]">{t as string}</button>
 				))}
 			</div>
 			{preview ? (
 				<div className="absolute bottom-4 left-4 z-20 flex flex-wrap gap-1.5" data-testid="preview-banner">
-					<span className="rounded-full border border-[rgba(124,108,255,.35)] bg-[rgba(124,108,255,.14)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[#cfc7ff]">✦ Previewing AI changes</span>
+					<span className="rounded-full border border-[rgba(124,108,255,.35)] bg-[rgba(124,108,255,.14)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[var(--g-acc-text)]">✦ Previewing AI changes</span>
 					{preview.added.size ? <span className="rounded-full bg-[var(--g-ok-soft)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[var(--g-ok)]">+{preview.added.size}</span> : null}
 					{preview.changed.size ? <span className="rounded-full bg-[var(--g-warn-soft)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]">~{preview.changed.size}</span> : null}
 					{preview.removed.length ? <span className="rounded-full bg-[var(--g-bad-soft)] px-2.5 py-0.5 text-[11.5px] font-semibold text-[var(--g-bad)]">−{preview.removed.join(', ')}</span> : null}
 				</div>
 			) : null}
-			{toast ? <p role="status" className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-[#33363c] bg-[#16171a] px-3 py-2 text-[12.5px] text-[var(--g-ink)] shadow-lg">{toast}</p> : null}
+			{toast ? <p role="status" className="absolute bottom-4 left-1/2 z-30 -translate-x-1/2 rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-3 py-2 text-[12.5px] text-[var(--g-ink)] shadow-lg">{toast}</p> : null}
 		</div>
 	);
 }

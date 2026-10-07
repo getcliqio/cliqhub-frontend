@@ -17,32 +17,32 @@ import type { Problem } from '@/lib/builder/checks';
 import { format_yaml, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
 
 const graphite_theme = EditorView.theme({
-	'&': { height: '100%', fontSize: '12.5px', backgroundColor: '#0d0e10', color: '#c3c2be' },
+	'&': { height: '100%', fontSize: '12.5px', backgroundColor: 'var(--g-input)', color: 'var(--g-ink-2)' },
 	'.cm-scroller': { overflow: 'auto', fontFamily: 'var(--g-mono)', lineHeight: '1.8' },
 	'.cm-content': { caretColor: 'var(--g-acc)', padding: '10px 0' },
-	'.cm-gutters': { backgroundColor: '#0d0e10', color: '#4a4d55', border: 'none' },
-	'.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#8a8c93' },
-	'.cm-activeLine': { backgroundColor: 'rgba(255,255,255,.025)' },
+	'.cm-gutters': { backgroundColor: 'var(--g-input)', color: 'var(--g-ink-4)', border: 'none' },
+	'.cm-activeLineGutter': { backgroundColor: 'transparent', color: 'var(--g-ink-3)' },
+	'.cm-activeLine': { backgroundColor: 'var(--g-soft)' },
 	'.cm-cursor': { borderLeftColor: 'var(--g-acc)' },
 	'&.cm-focused .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'rgba(155,140,255,.25)' },
-	'.cm-foldGutter .cm-gutterElement': { color: '#3a3d44' },
+	'.cm-foldGutter .cm-gutterElement': { color: 'var(--g-ink-4)' },
 	'.gb-sel-line': { backgroundColor: 'rgba(155,140,255,.08)', boxShadow: 'inset 2px 0 0 #9b8cff' },
 	'.cm-lintRange-error': { backgroundImage: 'none', textDecoration: 'underline wavy #ff5c5c', textUnderlineOffset: '3px' },
 	'.cm-lintRange-warning': { backgroundImage: 'none', textDecoration: 'underline wavy #ffb224', textUnderlineOffset: '3px' },
-	'.cm-tooltip': { backgroundColor: '#16171a', border: '1px solid #33363c', color: '#ecebe8' },
+	'.cm-tooltip': { backgroundColor: 'var(--g-pop)', border: '1px solid var(--g-line-strong)', color: 'var(--g-ink)' },
 }, { dark: true });
 
 const graphite_highlight = HighlightStyle.define([
-	{ tag: tags.propertyName, color: '#8fb4ff' },
-	{ tag: tags.definition(tags.propertyName), color: '#8fb4ff' },
-	{ tag: tags.string, color: '#b5e27a' },
-	{ tag: tags.number, color: '#f5a524' },
-	{ tag: tags.bool, color: '#f5a524' },
-	{ tag: tags.keyword, color: '#f5a524' },
-	{ tag: tags.atom, color: '#f5a524' },
-	{ tag: tags.comment, color: '#5d616b', fontStyle: 'italic' },
-	{ tag: tags.punctuation, color: '#5d616b' },
-	{ tag: tags.heading, color: '#ecebe8', fontWeight: '600' },
+	{ tag: tags.propertyName, color: 'var(--g-run-text)' },
+	{ tag: tags.definition(tags.propertyName), color: 'var(--g-run-text)' },
+	{ tag: tags.string, color: 'var(--g-lime)' },
+	{ tag: tags.number, color: 'var(--g-warn-text)' },
+	{ tag: tags.bool, color: 'var(--g-warn-text)' },
+	{ tag: tags.keyword, color: 'var(--g-warn-text)' },
+	{ tag: tags.atom, color: 'var(--g-warn-text)' },
+	{ tag: tags.comment, color: 'var(--g-ink-4)', fontStyle: 'italic' },
+	{ tag: tags.punctuation, color: 'var(--g-ink-4)' },
+	{ tag: tags.heading, color: 'var(--g-ink)', fontWeight: '600' },
 ]);
 
 const set_sel = StateEffect.define<{ from: number; to: number } | null>();
@@ -199,15 +199,15 @@ export function Gb_yaml({ team, selected, problems, on_team, on_select, on_role 
 	const n_warn = parse_err ? 0 : problems.filter((p) => p.level === 'warning').length;
 
 	return (
-		<div className="flex h-full min-h-0 flex-col bg-[#0d0e10]" data-testid="yaml-view">
+		<div className="flex h-full min-h-0 flex-col bg-[var(--g-input)]" data-testid="yaml-view">
 			<div className="flex items-center gap-2 border-b border-[var(--g-line)] px-3 py-2">
 				<div role="tablist" aria-label="Files" className="flex overflow-x-auto rounded-lg border border-[var(--g-line)]">
 					{['team.yml', ...role_names].map((t) => (
 						<button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => set_tab(t)} className={`g-mono whitespace-nowrap px-3 py-1 text-[12px] ${tab === t ? 'bg-[var(--g-soft)] text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>{t === 'team.yml' ? t : `roles/${t}.md`}</button>
 					))}
 				</div>
-				{is_yaml ? <button type="button" onClick={format} className="ml-auto rounded-lg border border-[#2c2f35] bg-[rgba(22,23,26,.9)] px-2.5 py-1 text-[12px] text-[var(--g-ink-2)]">Format</button> : <span className="ml-auto" />}
-				<button type="button" onClick={() => { void navigator.clipboard?.writeText(view.current?.state.doc.toString() ?? ''); set_note({ text: 'Copied' }); }} className="rounded-lg border border-[#2c2f35] bg-[rgba(22,23,26,.9)] px-2.5 py-1 text-[12px] text-[var(--g-ink-2)]">Copy</button>
+				{is_yaml ? <button type="button" onClick={format} className="ml-auto rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 py-1 text-[12px] text-[var(--g-ink-2)]">Format</button> : <span className="ml-auto" />}
+				<button type="button" onClick={() => { void navigator.clipboard?.writeText(view.current?.state.doc.toString() ?? ''); set_note({ text: 'Copied' }); }} className="rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 py-1 text-[12px] text-[var(--g-ink-2)]">Copy</button>
 			</div>
 			{note ? (
 				<div role="status" className="flex items-center gap-2 border-b border-[var(--g-line)] bg-[var(--g-acc-soft)] px-3 py-1.5 text-[12px] text-[var(--g-ink-2)]">
@@ -218,9 +218,9 @@ export function Gb_yaml({ team, selected, problems, on_team, on_select, on_role 
 			) : null}
 			<div ref={host} className="min-h-0 flex-1" data-testid="yaml-editor" />
 			<div className="flex items-center gap-2 border-t border-[var(--g-line)] px-3 py-1.5 text-[11.5px]">
-				{parse_err ? <span className="rounded-full bg-[var(--g-bad-soft)] px-2 font-semibold text-[#ff8b8b]" data-testid="yaml-status">● Can’t read this YAML{parse_err.line ? ` (line ${parse_err.line})` : ''} — the canvas keeps the last good version</span>
+				{parse_err ? <span className="rounded-full bg-[var(--g-bad-soft)] px-2 font-semibold text-[var(--g-bad-text)]" data-testid="yaml-status">● Can’t read this YAML{parse_err.line ? ` (line ${parse_err.line})` : ''} — the canvas keeps the last good version</span>
 					: <span className="rounded-full bg-[var(--g-ok-soft)] px-2 font-semibold text-[var(--g-ok)]" data-testid="yaml-status">✓ in sync with canvas</span>}
-				{n_err ? <span className="text-[#ff8b8b]">{n_err} error{n_err === 1 ? '' : 's'}</span> : null}
+				{n_err ? <span className="text-[var(--g-bad-text)]">{n_err} error{n_err === 1 ? '' : 's'}</span> : null}
 				{n_warn ? <span className="text-[var(--g-warn-text)]">{n_warn} warning{n_warn === 1 ? '' : 's'}</span> : null}
 				<span className="ml-auto text-[var(--g-ink-3)]">Ln {pos.line}, Col {pos.col} · {is_yaml ? 'YAML' : 'Markdown'} · spaces: 2</span>
 			</div>

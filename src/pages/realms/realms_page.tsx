@@ -200,7 +200,7 @@ function New_realm({ orgs, initial_org, on_close }: { orgs: Overview_org[]; init
 								<select aria-label="Role" value={role} onChange={(e) => set_role(e.target.value as typeof role)} className={`${G_INPUT} w-[110px]`}><option value="admin">Admin</option><option value="operator">Operator</option><option value="member">Member</option></select>
 								{is_email ? <button type="button" disabled={busy || invite.busy} onClick={() => { set_err(null); void invite.send(who.trim(), role); }} className={G_PRIMARY}>Invite</button> : null}
 								{found.length ? (
-									<ul role="listbox" aria-label="Matches" className="absolute left-0 right-0 top-10 z-40 rounded-lg border border-[#33363c] bg-[#16171a] py-1">
+									<ul role="listbox" aria-label="Matches" className="absolute left-0 right-0 top-10 z-40 rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] py-1">
 										{found.map((u) => <li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); void add_person(u); }} className="cursor-pointer px-3 py-1.5 text-[12.5px] hover:bg-[var(--g-soft)]">{person_name(u)} <span className="text-[var(--g-ink-3)]">{handle(u.username)}</span></li>)}
 									</ul>
 								) : null}

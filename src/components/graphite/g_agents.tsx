@@ -15,7 +15,7 @@ import { Mcp_section } from '@/components/graphite/g_mcp';
 
 export const G_PRIMARY = 'inline-flex shrink-0 items-center whitespace-nowrap gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-40';
 export const G_BTN = 'inline-flex shrink-0 items-center whitespace-nowrap gap-1.5 rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-40';
-export const G_INPUT = 'min-w-0 rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-1.5 text-[13px] text-[var(--g-ink)] outline-none placeholder:text-[#5d616b] focus:border-[var(--g-acc-line)]';
+export const G_INPUT = 'min-w-0 rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-1.5 text-[13px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)] focus:border-[var(--g-acc-line)]';
 export const G_PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 
 function hexa(hex: string, a: number) { const n = Number.parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
@@ -32,7 +32,7 @@ export function Kind_chip({ agent_type, name }: { agent_type: string; name?: str
 
 export const Origin_badge = ({ is_system }: { is_system: boolean }) => is_system
 	? <span className="rounded border border-[var(--g-line)] px-1.5 text-[10px] font-bold tracking-[0.05em] text-[var(--g-ink-3)]">BUILT-IN</span>
-	: <span className="rounded border border-[rgba(155,140,255,.45)] px-1.5 text-[10px] font-bold tracking-[0.05em] text-[#cfc7ff]">CUSTOM</span>;
+	: <span className="rounded border border-[rgba(155,140,255,.45)] px-1.5 text-[10px] font-bold tracking-[0.05em] text-[var(--g-acc-text)]">CUSTOM</span>;
 
 export function Setup_badge({ setup, used }: { setup: { has_settings: boolean; required_total: number; required_configured: number; ready: boolean } | null; used?: number | null }) {
 	if (!setup) return <span className="text-[12px] text-[var(--g-ink-3)]">—</span>;
@@ -63,7 +63,7 @@ export function use_post() {
 
 function Source_tag({ f, mode, realm }: { f: Agent_field; mode: 'org' | 'realm'; realm: string | null }) {
 	if (mode === 'realm') {
-		if (f.source === 'realm') return <span className="text-[11px] text-[#8fb8ff]">overridden in {realm}</span>;
+		if (f.source === 'realm') return <span className="text-[11px] text-[var(--g-run-text)]">overridden in {realm}</span>;
 		if (f.org_value) return <span className="text-[11px] text-[var(--g-ink-3)]">from the org</span>;
 		return <span className="text-[11px] text-[var(--g-warn-text)]">not set anywhere</span>;
 	}
@@ -256,13 +256,13 @@ export function Register_dialog({ org_id, org_label, existing, on_close, on_done
 	}
 
 	return (
-		<div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) on_close(); }}>
-			<div role="dialog" aria-modal="true" aria-label="Register a custom agent" className="w-full max-w-[780px] rounded-2xl border border-[var(--g-line)] bg-[#141518] shadow-[0_30px_80px_rgba(0,0,0,.6)]">
+		<div className="fixed inset-0 z-50 grid place-items-center bg-[var(--g-backdrop)] p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) on_close(); }}>
+			<div role="dialog" aria-modal="true" aria-label="Register a custom agent" className="w-full max-w-[780px] rounded-2xl border border-[var(--g-line)] bg-[var(--g-panel)] shadow-[var(--g-pop-shadow)]">
 				<div className="flex items-center gap-2 border-b border-[var(--g-line)] px-5 py-3.5"><b className="text-[16px]">Register a custom agent</b><span className="g-mono text-[12px] text-[var(--g-ink-3)]">for {org_label}</span><button type="button" aria-label="Close" onClick={on_close} className="ml-auto text-[var(--g-ink-3)]">✕</button></div>
 				<div className="grid gap-4 px-5 py-4 md:grid-cols-[1.1fr_.9fr]">
 					<div>
 						<p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">manifest.yml <span className="normal-case tracking-normal">· paste or drop a file</span></p>
-						<textarea aria-label="Agent manifest" value={text} onChange={(e) => set_text(e.target.value)} onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void f.text().then(set_text); } }} rows={16} spellCheck={false} placeholder={'name: ledger-matcher\nversion: 0.4.0\nagent_type: exec\ndescription: …\nsettings:\n  required:\n    - key: bank_api_key'} className="g-mono w-full resize-y rounded-lg border border-[var(--g-line)] bg-[#0e0f11] p-3 text-[12px] leading-relaxed text-[var(--g-ink-2)] outline-none focus:border-[var(--g-acc-line)]" />
+						<textarea aria-label="Agent manifest" value={text} onChange={(e) => set_text(e.target.value)} onDrop={(e) => { const f = e.dataTransfer.files?.[0]; if (f) { e.preventDefault(); void f.text().then(set_text); } }} rows={16} spellCheck={false} placeholder={'name: ledger-matcher\nversion: 0.4.0\nagent_type: exec\ndescription: …\nsettings:\n  required:\n    - key: bank_api_key'} className="g-mono w-full resize-y rounded-lg border border-[var(--g-line)] bg-[var(--g-input)] p-3 text-[12px] leading-relaxed text-[var(--g-ink-2)] outline-none focus:border-[var(--g-acc-line)]" />
 					</div>
 					<div className="flex flex-col gap-2.5" data-testid="manifest-preview">
 						{!parsed.ok ? <p className={`rounded-lg border px-3 py-2 text-[12.5px] ${text.trim() ? 'border-[var(--g-bad-line,var(--g-line))] text-[var(--g-bad)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)]'}`} role={text.trim() ? 'alert' : undefined}>{parsed.error}</p> : (

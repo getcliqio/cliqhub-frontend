@@ -146,7 +146,7 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 				aria-label={`${agent_label(x)} in ${x.phase}: ${fmt_ms((x.end_ms ?? now) - x.start_ms)}${x.status === 'error' ? ', failed' : ''}`}
 				onMouseDown={(ev) => ev.stopPropagation()}
 				onClick={() => on_select(sel ? null : x)}
-				className={`absolute top-1 h-[18px] overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left text-[10.5px] font-semibold text-[#0c0d0f] ${x.status === 'running' ? 'animate-pulse' : ''}`}
+				className={`absolute top-1 h-[18px] overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left text-[10.5px] font-semibold text-[var(--g-on-color)] ${x.status === 'running' ? 'animate-pulse' : ''}`}
 				style={{ left: `${pct(s)}%`, width: `max(4px, ${pct(e) - pct(s)}%)`, background: KIND_COLOR[x.kind], backgroundImage: x.kind === 'human' ? HATCH : undefined, opacity: dim ? 0.25 : 1, boxShadow: sel ? '0 0 0 2px #fff' : x.status === 'error' ? '0 0 0 1.5px var(--g-bad)' : undefined }}
 			>
 				{label ?? (x.status === 'error' ? '✕' : '')}

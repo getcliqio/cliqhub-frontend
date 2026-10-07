@@ -84,7 +84,7 @@ function Waiting({ items, total, scope }: { items: Overview_item[]; total: numbe
 			<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 				{shown.length ? (
 					<>
-						<div className="border-b border-[var(--g-line-2)] bg-[#121316] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Oldest waiting first</div>
+						<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Oldest waiting first</div>
 						{shown.map((i) => <Inbox_row key={`${i.kind}-${i.id}`} item={needs_to_item(i)} is_new={false} show_realm_org={false} />)}
 						{total > mine.length && kind === 'all' && !q.trim() ? (
 							<p className="border-t border-[var(--g-line-2)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]" data-testid="needs-more">
@@ -119,7 +119,7 @@ function Done({ scope }: { scope: View_scope }) {
 		<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 			{items.length ? groups.map((g) => (
 				<div key={g.day}>
-					<div className="border-b border-[var(--g-line-2)] bg-[#121316] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
+					<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
 					{g.items.map((i) => <Inbox_row key={i.id} item={i} is_new={false} show_realm_org={false} />)}
 				</div>
 			)) : <Empty title="No past HUGs yet" body="Answered reviews and supplied inputs show up here." />}

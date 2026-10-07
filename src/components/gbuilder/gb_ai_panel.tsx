@@ -109,7 +109,7 @@ export function Gb_ai_panel({ team, dispatch, on_preview, request }: {
 		<div className="flex h-full min-h-0 flex-col" data-testid="ai-panel">
 			<div ref={scroller} className="min-h-0 flex-1 overflow-auto px-3 py-3">
 				{!msgs.length ? (
-					<div className="rounded-xl border border-[var(--g-line)] bg-[#121316] p-3 text-[12.5px] text-[var(--g-ink-2)]">
+					<div className="rounded-xl border border-[var(--g-line)] bg-[var(--g-head)] p-3 text-[12.5px] text-[var(--g-ink-2)]">
 						<b className="text-[var(--g-ink)]">Ask for any change.</b> “Add a security scan in parallel with tests”, “send failures back to implement, max 3 tries”, “explain this workflow”.
 						<p className="mt-1.5 text-[11.5px] text-[var(--g-ink-3)]">Changes are shown on the canvas first — nothing changes until you apply.</p>
 					</div>
@@ -120,7 +120,7 @@ export function Gb_ai_panel({ team, dispatch, on_preview, request }: {
 						{m.changes?.length ? (
 							<div className="mt-2 grid gap-1.5">
 								{m.changes.map((c, j) => { const [k, fg, bg] = SIGN[c.kind]; return (
-									<div key={j} className="flex items-start gap-2 rounded-lg border border-[var(--g-line)] bg-[#111215] px-2 py-1.5 text-[12px]">
+									<div key={j} className="flex items-start gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-input)] px-2 py-1.5 text-[12px]">
 										<span className="g-mono shrink-0 rounded px-1 text-[10px] font-bold" style={{ color: fg, background: bg }}>{c.target === 'role' ? 'ROLE' : k}</span>
 										<span><b className="text-[var(--g-ink)]">{c.name}</b><span className="block text-[var(--g-ink-3)]">{c.detail}</span></span>
 									</div>
@@ -135,7 +135,7 @@ export function Gb_ai_panel({ team, dispatch, on_preview, request }: {
 						) : null}
 					</div>
 				))}
-				{busy ? <p className="px-1 text-[12px] text-[#cfc7ff]" role="status">✦ Thinking…</p> : null}
+				{busy ? <p className="px-1 text-[12px] text-[var(--g-acc-text)]" role="status">✦ Thinking…</p> : null}
 
 				<div className="mt-3">
 					<div className="mb-1.5 flex items-center"><span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Suggestions</span>
@@ -143,7 +143,7 @@ export function Gb_ai_panel({ team, dispatch, on_preview, request }: {
 					{sug_err ? <p role="alert" className="text-[12px] text-[var(--g-bad)]">{sug_err}</p> : null}
 					{sugs?.length === 0 ? <p className="text-[12px] text-[var(--g-ink-3)]">Nothing to suggest — looks good.</p> : null}
 					{sugs?.map((s, i) => (
-						<div key={i} className="mb-1.5 flex items-start gap-2 rounded-lg border border-[var(--g-line)] bg-[#121316] px-2.5 py-2 text-[12px]" data-testid="suggestion">
+						<div key={i} className="mb-1.5 flex items-start gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-head)] px-2.5 py-2 text-[12px]" data-testid="suggestion">
 							<span className="flex-1"><b className="text-[var(--g-ink)]">{s.title}</b><span className="block text-[var(--g-ink-3)]">{s.description}</span></span>
 							<button type="button" onClick={() => void send(`${s.title}: ${s.description}`)} className="shrink-0 font-semibold text-[var(--g-acc)]">Try →</button>
 						</div>
@@ -152,8 +152,8 @@ export function Gb_ai_panel({ team, dispatch, on_preview, request }: {
 			</div>
 			<form onSubmit={(e) => { e.preventDefault(); void send(input); }} className="border-t border-[var(--g-line)] p-3">
 				<div className="rounded-xl p-px" style={{ background: 'linear-gradient(135deg,rgba(124,108,255,.8),rgba(255,122,217,.55),rgba(45,212,191,.55))' }}>
-					<div className="flex items-end gap-2 rounded-[11px] bg-[#121316] p-2">
-						<textarea aria-label="Ask AI" value={input} onChange={(e) => set_input(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); } }} rows={2} placeholder="Ask for a change…" className="min-h-0 flex-1 resize-none bg-transparent text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[#5d616b]" />
+					<div className="flex items-end gap-2 rounded-[11px] bg-[var(--g-head)] p-2">
+						<textarea aria-label="Ask AI" value={input} onChange={(e) => set_input(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(input); } }} rows={2} placeholder="Ask for a change…" className="min-h-0 flex-1 resize-none bg-transparent text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)]" />
 						<button type="submit" disabled={busy || !input.trim()} className="rounded-md bg-[var(--g-acc)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-acc)] disabled:opacity-40">Send</button>
 					</div>
 				</div>

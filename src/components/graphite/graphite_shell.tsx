@@ -32,8 +32,10 @@ import {
 	LayoutDashboard,
 	UserCog,
 	Zap,
+	Palette,
 } from 'lucide-react';
-import { useAuth } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { apply_theme, is_theme, read_theme, use_theme, type Theme } from '@/lib/theme';
 import { avatar_outline } from '@/lib/admin';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Getting_started_data } from '@/lib/getting_started';
@@ -152,7 +154,7 @@ export function Org_switcher({ data, scope, on_close }: Switcher_props) {
 			role="dialog"
 			aria-label="Switch organization"
 			onKeyDown={on_key}
-			className="absolute left-0 top-[calc(100%+6px)] z-50 w-[340px] overflow-hidden rounded-xl border border-[#2c2f35] bg-[#17191c] shadow-[0_24px_60px_rgba(0,0,0,.6)]"
+			className="absolute left-0 top-[calc(100%+6px)] z-50 w-[340px] overflow-hidden rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] shadow-[var(--g-pop-shadow)]"
 		>
 			<div className="border-b border-[var(--g-line)] p-2.5">
 				<label className="flex h-9 items-center gap-2 rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[13px]">
@@ -283,7 +285,7 @@ function Side_link({ item }: { item: Nav_item }) {
 			end={item.end}
 			className={({ isActive }) =>
 				`flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition ${isActive
-					? 'bg-[var(--g-hover)] text-white shadow-[inset_2px_0_0_var(--g-acc)]'
+					? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]'
 					: 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
 		>
 			{({ isActive }) => (
@@ -346,7 +348,7 @@ function Bell_menu({ data, scope, multi_org }: { data: Overview_data | null; sco
 				) : null}
 			</button>
 			{open ? (
-				<div role="dialog" aria-label="Latest notifications" className="absolute right-0 top-10 z-50 w-[440px] overflow-hidden rounded-xl border border-[#33363c] bg-[#16171a] shadow-[0_24px_70px_rgba(0,0,0,.65)]">
+				<div role="dialog" aria-label="Latest notifications" className="absolute right-0 top-10 z-50 w-[440px] overflow-hidden rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] shadow-[var(--g-pop-shadow)]">
 					<div className="flex items-center gap-2 border-b border-[var(--g-line)] px-3.5 py-3">
 						<b className="text-[14px] font-semibold">Notifications</b>
 						{count ? <span className="text-[12px] text-[var(--g-ink-3)]">{count}{summary?.capped ? '+' : ''} new</span> : null}
@@ -391,7 +393,7 @@ function Crumbs({ scope, fallback, title }: { scope: View_scope; fallback: { org
 			{items.map((c, i) => (
 				<span key={i} className="flex min-w-0 items-center gap-1.5">
 					<Link to={c.to} className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{c.node}</Link>
-					<ChevronRight aria-hidden className="h-3 w-3 shrink-0 text-[#4a4d55]" />
+					<ChevronRight aria-hidden className="h-3 w-3 shrink-0 text-[var(--g-ink-4)]" />
 				</span>
 			))}
 			<span className="min-w-0 truncate font-semibold" aria-current="page">{title}</span>
@@ -404,6 +406,8 @@ const ORG_PAGES = ['/home', '/hugs', '/inbox', '/teams', '/agents', '/notificati
 
 export function Graphite_shell({ children, data, title, actions, current_realm_id = null }: Shell_props) {
 	const { user, logout } = useAuth();
+	const saved_theme = user?.preferences?.theme;
+	useEffect(() => { if (is_theme(saved_theme) && saved_theme !== read_theme()) apply_theme(saved_theme); }, [saved_theme]);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const params = useParams();
@@ -463,7 +467,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	}
 
 	return (
-		<div className="theme-graphite flex h-screen flex-col overflow-hidden">
+		<div className="theme-graphite g-app flex h-screen flex-col overflow-hidden">
 			<ImpersonationRibbon />
 			<div className="grid min-h-0 flex-1 grid-cols-[252px_minmax(0,1fr)]">
 				<aside className="flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-side)] px-3 py-4" aria-label="Primary">
@@ -479,7 +483,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							aria-haspopup="dialog"
 							aria-expanded={switcher_open}
 							aria-label={`Switch organization (current: ${scope_text(scope)})`}
-							className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-[var(--g-panel)] py-2 pl-2.5 text-left pr-2.5 ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[#34373e]'}`}
+							className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-[var(--g-panel)] py-2 pl-2.5 text-left pr-2.5 ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[var(--g-line-strong)]'}`}
 							data-testid="view-switcher"
 						>
 							<Scope_label scope={scope} />
@@ -597,7 +601,7 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 	}, [on_close]);
 	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-[var(--g-ink-2)] hover:bg-[var(--g-hover)] hover:text-[var(--g-ink)]';
 	return (
-		<div ref={ref} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+6px)] z-50 w-[250px] rounded-xl border border-[#2c2f35] bg-[#17191c] p-1.5 shadow-[0_18px_50px_rgba(0,0,0,.6)]">
+		<div ref={ref} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+6px)] z-50 w-[250px] rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-1.5 shadow-[var(--g-pop-shadow)]">
 			<div className="px-2.5 pb-2 pt-1.5">
 				<b className="block truncate text-[13px] font-semibold">{user?.display_name || user?.username}</b>
 				<span className="block truncate text-[11.5px] text-[var(--g-ink-3)]">@{user?.username}{is_site_admin ? ' · site admin' : ''}</span>
@@ -607,6 +611,7 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />API tokens</Link>
 			<Link role="menuitem" to={my_notifications_href} onClick={on_close} className={item}><BellRing aria-hidden className="h-4 w-4 opacity-70" />My notifications</Link>
 			<Link role="menuitem" to="/settings" onClick={on_close} className={item}><Settings aria-hidden className="h-4 w-4 opacity-70" />All settings</Link>
+			<Theme_picker />
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/getting-started" onClick={on_close} className={item}>
 				<Rocket aria-hidden className="h-4 w-4 opacity-70" />Getting started
@@ -616,11 +621,36 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 			{is_site_admin ? (
 				<button role="menuitem" type="button" onClick={() => { on_close(); on_admin(); }} className={item}>
 					<Shield aria-hidden className="h-4 w-4 opacity-70" />Site admin
-					<span className="ml-auto rounded border border-[rgba(255,159,90,.45)] px-1.5 text-[10px] font-bold tracking-[0.06em] text-[#ff9f5a]">SITE</span>
+					<span className="ml-auto rounded border border-[rgba(255,159,90,.45)] px-1.5 text-[10px] font-bold tracking-[0.06em] text-[var(--g-orange)]">SITE</span>
 				</button>
 			) : null}
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<button role="menuitem" type="button" onClick={() => { on_close(); on_sign_out(); }} className={item}><LogOut aria-hidden className="h-4 w-4 opacity-70" />Sign out</button>
+		</div>
+	);
+}
+
+const THEMES: Array<{ id: Theme; label: string }> = [{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }, { id: 'system', label: 'System' }];
+
+/** Dark / Light / System — applied now, saved on your profile (best effort). */
+function Theme_picker() {
+	const theme = use_theme();
+	const auth_fetch = useAuthFetch();
+	const pick = (t: Theme) => {
+		apply_theme(t);
+		void auth_fetch('/v1/users/update_profile', { method: 'POST', body: JSON.stringify({ preferences: { theme: t } }) }).catch(() => { /* kept in this browser */ });
+	};
+	return (
+		<div className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-[var(--g-ink-2)]">
+			<Palette aria-hidden className="h-4 w-4 opacity-70" />Theme
+			<div role="radiogroup" aria-label="Theme" className="ml-auto flex rounded-md border border-[var(--g-line)] p-0.5">
+				{THEMES.map((t) => (
+					<button key={t.id} type="button" role="radio" aria-checked={theme === t.id} onClick={() => pick(t.id)}
+						className={`rounded px-1.5 py-0.5 text-[11.5px] ${theme === t.id ? 'bg-[var(--g-acc-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
+						{t.label}
+					</button>
+				))}
+			</div>
 		</div>
 	);
 }

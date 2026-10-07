@@ -85,7 +85,7 @@ export function Custom_events_panel({ org_id, initial }: { org_id: string | null
 										<td className="px-4"><Pill tone={ev.source === 'declared' ? 'ok' : 'muted'}>{ev.source}</Pill>{ev.realm_id === null ? <span className="ml-1.5 text-[11px] text-[var(--g-ink-3)]">all realms</span> : null}</td>
 										<td className="g-mono px-4 text-[var(--g-ink-3)]">{ev.team_slug ?? '—'}</td>
 										<td className="px-4 text-right">{ev.realm_id === null ? null : confirm === ev.id
-											? <span className="inline-flex items-center gap-2 text-[12px]"><span className="text-[var(--g-ink-3)]">Rules for it stop matching.</span><button type="button" disabled={busy} onClick={() => void remove(ev)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 font-semibold text-[#160606]">Remove</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
+											? <span className="inline-flex items-center gap-2 text-[12px]"><span className="text-[var(--g-ink-3)]">Rules for it stop matching.</span><button type="button" disabled={busy} onClick={() => void remove(ev)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 font-semibold text-[var(--g-on-color)]">Remove</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
 											: <button type="button" onClick={() => set_confirm(ev.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Remove…</button>}</td>
 									</tr>
 								))}

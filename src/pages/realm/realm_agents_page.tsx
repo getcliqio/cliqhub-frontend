@@ -24,7 +24,7 @@ type Filter = 'used' | 'not_ready' | 'overridden' | 'all';
 function Values_cell({ r, realm }: { r: Agent_list_row; realm: string }) {
 	if (!r.setup || !r.setup.has_settings) return <span className="text-[var(--g-ink-3)]">no settings</span>;
 	const keys = r.overrides.find((o) => o.realm_slug === realm)?.keys ?? [];
-	if (keys.length) return <span><span className="text-[#8fb8ff]">overrides {keys.join(', ')}</span>{r.setup.ready ? <span className="text-[var(--g-ink-3)]"> · rest from org</span> : null}</span>;
+	if (keys.length) return <span><span className="text-[var(--g-run-text)]">overrides {keys.join(', ')}</span>{r.setup.ready ? <span className="text-[var(--g-ink-3)]"> · rest from org</span> : null}</span>;
 	if (!r.setup.ready) return <span className="text-[var(--g-warn-text)]">{r.setup.required_total - r.setup.required_configured} required key{r.setup.required_total - r.setup.required_configured === 1 ? '' : 's'} missing</span>;
 	return <span className="text-[var(--g-ink-3)]">↑ all from org</span>;
 }

@@ -116,7 +116,7 @@ function Events({ scope, seen }: { scope: View_scope; seen: number }) {
 						</div>
 					) : groups.map((g) => (
 						<div key={g.day}>
-							<div className="border-b border-[var(--g-line-2)] bg-[#121316] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
+							<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
 							{g.items.map((i) => (
 								<Inbox_row key={i.id} item={i} is_new={i.at > seen} show_realm_org={false}
 									extra={i.realm_id && i.org_slug && i.event !== 'notification.failed' ? (

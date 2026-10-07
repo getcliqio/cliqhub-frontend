@@ -102,7 +102,7 @@ export function Install_popover({
 		}
 	}
 	return (
-		<div ref={ref} role="dialog" aria-label={`Install ${label}`} className="absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-[10px] border border-[#33363c] bg-[#16171a] text-left shadow-[0_20px_60px_rgba(0,0,0,.6)]">
+		<div ref={ref} role="dialog" aria-label={`Install ${label}`} className="absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] text-left shadow-[var(--g-pop-shadow)]">
 			<div className="border-b border-[var(--g-line)] px-3.5 py-2.5 text-[13px] font-semibold">Install {label}</div>
 			<div className="border-b border-[var(--g-line)] px-3.5 py-2"><input autoFocus aria-label="Search realms" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search realms…" className={`${INPUT} w-full`} /></div>
 			<div className="max-h-[240px] overflow-auto py-1" role="radiogroup" aria-label="Realm">
@@ -235,7 +235,7 @@ export function Component() {
 														{t.installs.length ? (
 															<span className="flex flex-wrap gap-1">
 																{t.installs.slice(0, 4).map((i) => (
-																	<span key={i.realm_id} title={i.behind ? `${i.realm_slug} runs ${i.version}; ${t.latest_version} is out` : `${i.realm_slug} · ${i.version ?? ''}`} className={`whitespace-nowrap rounded-[5px] px-1.5 py-px text-[11.5px] ${i.behind ? 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]' : 'bg-[var(--g-run-soft)] text-[#7cc4ff]'}`}>
+																	<span key={i.realm_id} title={i.behind ? `${i.realm_slug} runs ${i.version}; ${t.latest_version} is out` : `${i.realm_slug} · ${i.version ?? ''}`} className={`whitespace-nowrap rounded-[5px] px-1.5 py-px text-[11.5px] ${i.behind ? 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]' : 'bg-[var(--g-run-soft)] text-[var(--g-run-text)]'}`}>
 																		{i.realm_slug}{i.behind ? ` · on ${i.version}` : ''}
 																	</span>
 																))}

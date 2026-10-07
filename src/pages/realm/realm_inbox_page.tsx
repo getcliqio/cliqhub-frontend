@@ -27,7 +27,7 @@ function Stat({ label, value, tone, on, onClick }: { label: string; value: numbe
 			onClick={onClick}
 			aria-pressed={on}
 			data-testid={`inbox-stat-${label}`}
-			className={`relative overflow-hidden rounded-[10px] border bg-[var(--g-panel)] px-4 py-3 text-left ${on ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[#34373e]'}`}
+			className={`relative overflow-hidden rounded-[10px] border bg-[var(--g-panel)] px-4 py-3 text-left ${on ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[var(--g-line-strong)]'}`}
 		>
 			<span aria-hidden className="absolute inset-y-0 left-0 w-[2px]" style={{ background: value ? tone : 'transparent' }} />
 			<span className="block text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--g-ink-3)]">{label}</span>

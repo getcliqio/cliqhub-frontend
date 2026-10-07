@@ -24,7 +24,7 @@ const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-
 const STATUS: Record<string, { label: string; color: string }> = {
 	online: { label: 'Online', color: 'var(--g-ok)' },
 	stale: { label: 'Stale', color: 'var(--g-warn)' },
-	offline: { label: 'Offline', color: '#4a4d55' },
+	offline: { label: 'Offline', color: 'var(--g-ink-4)' },
 };
 /** Status order for sorting (online first). */
 const STATUS_RANK: Record<string, number> = { online: 0, stale: 1, offline: 2 };
@@ -146,7 +146,7 @@ export function Component() {
 													<td className="px-4 py-2.5 text-right">
 														{confirm === d.id ? (
 															<span className="inline-flex gap-1.5">
-																<button type="button" onClick={() => void remove(d.id)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Remove</button>
+																<button type="button" onClick={() => void remove(d.id)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Remove</button>
 																<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 															</span>
 														) : (

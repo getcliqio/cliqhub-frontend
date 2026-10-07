@@ -85,7 +85,7 @@ export function Phase_inspector({ phase, phases, statuses, run_name, on_open_fil
 	];
 	const status = statuses?.[phase.name];
 	const head = (what: string | null) => <h5 className={H5}><Kind_tile type={phase} /><b className="text-[13px] normal-case tracking-normal text-[var(--g-ink)]">{phase.name}</b>{what ? ` · ${what}` : null}</h5>;
-	const cmds = phase.commands.length ? <pre className="g-mono rounded-lg border border-[var(--g-line)] bg-[#0e0f11] px-3 py-2.5 text-[12px] leading-[1.9] text-[var(--g-ink-2)]">{phase.commands.map((c) => `$ ${c}`).join('\n')}</pre> : null;
+	const cmds = phase.commands.length ? <pre className="g-mono rounded-lg border border-[var(--g-line)] bg-[var(--g-input)] px-3 py-2.5 text-[12px] leading-[1.9] text-[var(--g-ink-2)]">{phase.commands.map((c) => `$ ${c}`).join('\n')}</pre> : null;
 	const urls = (list: string[]) => <ul className="g-mono space-y-1 text-[12px] text-[var(--g-ink-2)]">{list.map((s) => <li key={s} className="break-all">{s}</li>)}</ul>;
 	// First column: the most specific thing this kind of phase has.
 	let primary: ReactNode;
@@ -144,7 +144,7 @@ export function Phase_inspector({ phase, phases, statuses, run_name, on_open_fil
 		</div>
 	) : kind === 'gate' ? (
 		<div>
-			<h5 className={H5}><span className="text-[#f5a524]">↺</span> Verdicts</h5>
+			<h5 className={H5}><span className="text-[var(--g-warn)]">↺</span> Verdicts</h5>
 			<Kv rows={[['pass', 'continue'], ['route', phase.depends_on.length ? `back to ${phase.depends_on.join(' / ')}` : 'back upstream'], ['budget', phase.max_iterations ? `${phase.max_iterations} tries, then escalate` : '—']]} />
 		</div>
 	) : null;
@@ -167,7 +167,7 @@ function Coverage({ i }: { i: Team_install }) {
 	const short = i.installed_count < i.online_daemon_count;
 	return (
 		<span className="inline-flex items-center gap-2.5">
-			<span className="inline-flex gap-[3px]" aria-hidden>{Array.from({ length: Math.min(n, 12) }, (_, k) => <i key={k} className="block h-2.5 w-2.5 rounded-[3px]" style={{ background: k < i.installed_count ? 'var(--g-ok)' : '#2c2f35' }} />)}</span>
+			<span className="inline-flex gap-[3px]" aria-hidden>{Array.from({ length: Math.min(n, 12) }, (_, k) => <i key={k} className="block h-2.5 w-2.5 rounded-[3px]" style={{ background: k < i.installed_count ? 'var(--g-ok)' : 'var(--g-line-strong)' }} />)}</span>
 			<span className={`g-mono ${short ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>{Math.min(i.installed_count, n)}/{i.online_daemon_count || n}</span>
 		</span>
 	);
@@ -175,12 +175,12 @@ function Coverage({ i }: { i: Team_install }) {
 
 function highlight_yaml(line: string): ReactNode {
 	const c = /^(\s*)(#.*)$/.exec(line);
-	if (c) return <>{c[1]}<span className="text-[#5d616b]">{c[2]}</span></>;
+	if (c) return <>{c[1]}<span className="text-[var(--g-ink-4)]">{c[2]}</span></>;
 	const m = /^(\s*-?\s*)([A-Za-z0-9_.-]+)(:)(.*)$/.exec(line);
 	if (!m) return line;
 	const val = m[4];
-	const cls = /^\s*(true|false|\d+(\.\d+)?)\s*$/.test(val) ? 'text-[#f5a524]' : 'text-[#b5e27a]';
-	return <>{m[1]}<span className="text-[#8fb4ff]">{m[2]}</span>{m[3]}<span className={cls}>{val}</span></>;
+	const cls = /^\s*(true|false|\d+(\.\d+)?)\s*$/.test(val) ? 'text-[var(--g-warn)]' : 'text-[var(--g-lime)]';
+	return <>{m[1]}<span className="text-[var(--g-run-text)]">{m[2]}</span>{m[3]}<span className={cls}>{val}</span></>;
 }
 
 // ── page ─────────────────────────────────────────────────────────────────
@@ -311,7 +311,7 @@ export function Component() {
 				{team ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(true)} className={ROW_ACTION_CLS}>{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
 				{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
 				{edit_choice && team?.draft_saved_at ? (
-					<div role="dialog" aria-label="Open in Builder" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[#33363c] bg-[#16171a] p-3.5 text-left shadow-[0_20px_60px_rgba(0,0,0,.6)]">
+					<div role="dialog" aria-label="Open in Builder" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-3.5 text-left shadow-[var(--g-pop-shadow)]">
 						<p className="text-[13px] font-semibold">You have unpublished changes</p>
 						<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Saved {relative_time(Date.parse(team.draft_saved_at))}. Pick up where you left off, or start again from {team.latest_version ? `v${team.latest_version}` : 'the published team'}.</p>
 						<div className="mt-3 flex flex-col gap-1.5">
@@ -361,9 +361,9 @@ export function Component() {
 		const o = data.overview;
 		content = (
 			<>
-				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[#0d0e10]">
+				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-input)]">
 					<div className="absolute left-3.5 top-3 z-10 flex items-center gap-2"><b className="text-[13px]">Workflow</b><span className="text-[12px] text-[var(--g-ink-3)]">{o.phases.length} phases{team?.version ? ` · v${team.version}` : ''}</span></div>
-					<button type="button" onClick={() => go_tab('workflow')} className="absolute right-3 top-2.5 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-[#2c2f35] bg-[rgba(22,23,26,.85)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Open workflow <ArrowRight aria-hidden className="h-3 w-3" /></button>
+					<button type="button" onClick={() => go_tab('workflow')} className="absolute right-3 top-2.5 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Open workflow <ArrowRight aria-hidden className="h-3 w-3" /></button>
 					<div className="pt-9"><Workflow_graph phases={o.phases} height={200} on_select={(p) => go_tab('workflow', { phase: p })} /></div>
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5"><Workflow_legend phases={o.phases} />{o.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support: {o.support.map((s) => <span key={s.name} className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]">{s.name}</span>)}</span> : null}</div>
 				</div>
@@ -408,9 +408,9 @@ export function Component() {
 		const sel = all.find((p) => p.name === phase_sel) ?? graph_phases[0] ?? null;
 		content = (
 			<>
-				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[#0d0e10]">
+				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-input)]">
 					<div className="absolute left-3 top-2.5 z-10 flex flex-wrap items-center gap-2">
-						<select aria-label="Overlay a run" value={run_sel} onChange={(e) => set_params({ run: e.target.value === 'latest' ? null : e.target.value })} className={`${INPUT} h-7 w-[280px] bg-[rgba(22,23,26,.95)]`}>
+						<select aria-label="Overlay a run" value={run_sel} onChange={(e) => set_params({ run: e.target.value === 'latest' ? null : e.target.value })} className={`${INPUT} h-7 w-[280px] bg-[var(--g-pop)]`}>
 							<option value="none">Plain</option>
 							<option value="latest">Last run</option>
 							{w.recent_runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.run_name || r.run_id.slice(0, 8)} · {r.realm_slug ?? ''} · {r.state}</option>)}
@@ -420,7 +420,7 @@ export function Component() {
 						{run_sel !== 'none' && !ov ? <span className="text-[11.5px] text-[var(--g-ink-3)]">No runs to overlay.</span> : null}
 					</div>
 					<div className="absolute right-3 top-2.5 z-10 flex gap-1.5">
-						{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className="inline-flex h-7 items-center rounded-md border border-[#2c2f35] bg-[rgba(22,23,26,.85)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Edit in Builder</button> : null}
+						{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Edit in Builder</button> : null}
 					</div>
 					<div className="pt-11"><Workflow_graph phases={graph_phases} height={240} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p }, true)} statuses={ov ? ov.statuses : null} /></div>
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5"><Workflow_legend phases={graph_phases} />
@@ -459,7 +459,7 @@ export function Component() {
 								<a download={cur.path.split('/').pop()} href={`data:text/plain;charset=utf-8,${encodeURIComponent(cur.content)}`} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Download aria-hidden className="h-3 w-3" />Save</a>
 							</div>
 							<pre className="g-mono max-h-[560px] overflow-auto py-3 text-[12px] leading-[1.7] text-[var(--g-ink-2)]" data-testid="file-view">
-								{lines.map((l, i) => <div key={i}><span className="mr-4 inline-block w-[38px] select-none text-right text-[#4a4d55]">{i + 1}</span>{cur.kind === 'yaml' ? highlight_yaml(l) : l}</div>)}
+								{lines.map((l, i) => <div key={i}><span className="mr-4 inline-block w-[38px] select-none text-right text-[var(--g-ink-4)]">{i + 1}</span>{cur.kind === 'yaml' ? highlight_yaml(l) : l}</div>)}
 							</pre>
 						</>
 					) : <p className="px-4 py-6 text-[12.5px] text-[var(--g-ink-3)]">Nothing to show.</p>}
@@ -495,7 +495,7 @@ export function Component() {
 									return (
 										<tr key={x.run_id} onClick={href ? () => navigate(href) : undefined} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${href ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid={`run-${x.run_id}`}>
 											<td className="max-w-[320px] px-4 py-2.5">{href ? <Link to={href} onClick={(e) => e.stopPropagation()} className="block truncate font-semibold text-[var(--g-ink)] hover:underline">{x.run_name || x.run_id}</Link> : <span className="block truncate font-semibold">{x.run_name || x.run_id}</span>}</td>
-											<td className="px-4 py-2.5">{x.realm_slug ?? realm?.slug ? <span className="rounded-[5px] bg-[var(--g-run-soft)] px-1.5 py-px text-[11.5px] text-[#7cc4ff]">{x.realm_slug ?? realm?.slug}</span> : '—'}</td>
+											<td className="px-4 py-2.5">{x.realm_slug ?? realm?.slug ? <span className="rounded-[5px] bg-[var(--g-run-soft)] px-1.5 py-px text-[11.5px] text-[var(--g-run-text)]">{x.realm_slug ?? realm?.slug}</span> : '—'}</td>
 											<td className="px-4 py-2.5"><State_pill state={x.state} /></td>
 											<td className="g-mono px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{x.current_phase ?? '—'}</td>
 											<td className="px-4 py-2.5 text-[var(--g-ink-3)]">{x.started_at ? relative_time(x.started_at) : '—'}</td>
@@ -547,7 +547,7 @@ export function Component() {
 											<td className="px-4 py-2.5 text-right">
 												{confirm === `rm:${i.realm_id}` ? (
 													<span className="inline-flex gap-1.5">
-														<button type="button" disabled={busy !== null} onClick={() => void act(`rm:${i.realm_id}`, '/v1/realms/remove_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Removed from ${i.realm_slug}; its daemons uninstall it.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Uninstall</button>
+														<button type="button" disabled={busy !== null} onClick={() => void act(`rm:${i.realm_id}`, '/v1/realms/remove_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Removed from ${i.realm_slug}; its daemons uninstall it.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Uninstall</button>
 														<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 													</span>
 												) : (
@@ -585,7 +585,7 @@ export function Component() {
 					{vs.items.map((v) => (
 						<div key={v.version} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3" data-testid={`version-${v.version}`}>
 							<div className="relative before:absolute before:bottom-0 before:left-2 before:top-0 before:w-px before:bg-[var(--g-line)]">
-								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_var(--g-acc-soft)]' : 'border-[#4a4d55] bg-[var(--g-panel)]'}`} />
+								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_var(--g-acc-soft)]' : 'border-[var(--g-line-strong)] bg-[var(--g-panel)]'}`} />
 							</div>
 							<div className="border-b border-[var(--g-line-2)] py-3">
 								<div className="flex flex-wrap items-center gap-2.5">
@@ -646,7 +646,7 @@ export function Component() {
 							<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 border-b border-[var(--g-line-2)] px-4 py-3.5">
 								<div><b className="text-[13px]">Unpublish</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Back to draft.</p></div>
 								<div>{confirm === 'unpublish'
-									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('unpublish', '/v1/teams/unpublish', { name: team.name, scope: team.scope }, `${label} is a draft again.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Unpublish</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
+									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('unpublish', '/v1/teams/unpublish', { name: team.name, scope: team.scope }, `${label} is a draft again.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Unpublish</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
 									: <button type="button" onClick={() => set_confirm('unpublish')} className={ROW_ACTION_CLS}>Unpublish…</button>}</div>
 							</div>
 							{team.versions.length > 1 ? (
@@ -658,7 +658,7 @@ export function Component() {
 											{team.versions.filter((v) => !v.is_latest).map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
 										</select>
 										{confirm === 'delver'
-											? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Deleted ${del_version}.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Delete {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+											? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Deleted ${del_version}.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Delete {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
 											: <button type="button" disabled={!del_version} onClick={() => set_confirm('delver')} className={ROW_ACTION_CLS}>Delete version…</button>}
 									</div>
 								</div>
@@ -671,7 +671,7 @@ export function Component() {
 							<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 px-4 py-3.5">
 								<div><b className="text-[13px]">Delete team</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Removes it from the registry and from every realm’s team list.</p></div>
 								<div>{confirm === 'delete'
-									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('delete', '/v1/teams/delete', { name: team.name, scope: team.scope }, `Deleted ${label}.`, () => navigate('/teams', { replace: true }))} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Delete {team.name}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
+									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('delete', '/v1/teams/delete', { name: team.name, scope: team.scope }, `Deleted ${label}.`, () => navigate('/teams', { replace: true }))} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Delete {team.name}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
 									: <button type="button" onClick={() => set_confirm('delete')} className="rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-bad)]">Delete team…</button>}</div>
 							</div>
 						</section>

@@ -23,7 +23,7 @@ export function Md({ children, class_name = '' }: { children: string; class_name
 	);
 }
 
-const KIND_TONE: Record<string, string> = { design: '#b69cff', review: '#ff7ad9', handoff: '#2dd4bf', output: '#3ecf8e' };
+const KIND_TONE: Record<string, string> = { design: 'var(--g-t-team)', review: 'var(--g-hug)', handoff: 'var(--g-t-conn)', output: 'var(--g-ok)' };
 
 function Csv_table({ text }: { text: string }) {
 	const rows = useMemo(() => parse_csv(text), [text]);
@@ -174,7 +174,7 @@ export function Field_input({ f, value, on_change, invalid }: { f: Field_spec; v
 		return (
 			<div className="flex items-start gap-3">
 				<button type="button" role="switch" aria-checked={on} aria-labelledby={`${id}-l`} onClick={() => on_change(!on)} className={`relative mt-0.5 h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-[var(--g-acc)]' : 'bg-[var(--g-line)]'}`}>
-					<span className={`absolute top-0.5 h-4 w-4 rounded-full bg-[#0c0d0f] transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
+					<span className={`absolute top-0.5 h-4 w-4 rounded-full bg-[var(--g-bg)] transition-all ${on ? 'left-[18px]' : 'left-0.5'}`} />
 				</button>
 				<div className="flex flex-col gap-0.5"><span id={`${id}-l`}>{label}</span>{help}</div>
 			</div>

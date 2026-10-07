@@ -120,7 +120,7 @@ function Add_member({ realm_id, on_added }: { realm_id: string; on_added: () => 
 				<div className="relative min-w-[240px] flex-1">
 					<input aria-label="Find a person" value={picked ? picked.label : q} onChange={(e) => { set_picked(null); set_q(e.target.value); }} placeholder="Name, username or email…" className={`${INPUT} w-full`} />
 					{results.length && !picked ? (
-						<ul role="listbox" aria-label="People" className="absolute left-0 right-0 top-10 z-40 max-h-[220px] overflow-y-auto rounded-lg border border-[#33363c] bg-[#16171a] py-1 shadow-[0_16px_40px_rgba(0,0,0,.55)]">
+						<ul role="listbox" aria-label="People" className="absolute left-0 right-0 top-10 z-40 max-h-[220px] overflow-y-auto rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] py-1 shadow-[var(--g-pop-shadow)]">
 							{results.map((u) => (
 								<li key={u.id} role="option" aria-selected={false} onMouseDown={(e) => { e.preventDefault(); set_picked({ id: u.id, label: person_name(u), email: u.email }); set_results([]); }} className="cursor-pointer px-3 py-1.5 text-[13px] hover:bg-[var(--g-soft)]">
 									{person_name(u)} <span className="text-[var(--g-ink-3)]">{handle(u.username)} · {u.email}</span>
@@ -180,7 +180,7 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 									<td className="px-4 py-2.5 text-right">
 										{!admin || m.is_you ? null : confirm === key ? (
 											<span className="inline-flex gap-1.5">
-												<button type="button" onClick={() => void run('/v1/realms/remove_member', { realm_id: data.realm.id, member_type: m.member_type, member_id: m.member_id }, `${m.username ?? m.member_id} removed.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Remove</button>
+												<button type="button" onClick={() => void run('/v1/realms/remove_member', { realm_id: data.realm.id, member_type: m.member_type, member_id: m.member_id }, `${m.username ?? m.member_id} removed.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Remove</button>
 												<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 											</span>
 										) : <button type="button" aria-label={`Remove ${m.username ?? m.member_id}`} onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Remove…</button>}
@@ -249,7 +249,7 @@ function Tokens({ data, admin, post, reload }: { data: Realm_settings_data; admi
 				<div className={`${CARD} flex flex-col gap-2 border-[var(--g-acc-line)] p-3`} role="status" aria-label="New token">
 					<p className="text-[12.5px]"><b>Copy it now</b> — it won’t be shown again.</p>
 					<div className="flex items-center gap-2">
-						<code className="g-mono flex-1 truncate rounded bg-[#0e0f11] px-2.5 py-2 text-[12px]" data-testid="new-token">{created}</code>
+						<code className="g-mono flex-1 truncate rounded bg-[var(--g-input)] px-2.5 py-2 text-[12px]" data-testid="new-token">{created}</code>
 						<button type="button" onClick={() => { void navigator.clipboard?.writeText(created).then(() => set_copied(true)).catch(() => {}); }} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1`}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}{copied ? 'Copied' : 'Copy'}</button>
 					</div>
 				</div>
@@ -269,7 +269,7 @@ function Tokens({ data, admin, post, reload }: { data: Realm_settings_data; admi
 									<td className="px-4 py-2.5 text-right">
 										{!admin ? null : confirm === t.id ? (
 											<span className="inline-flex gap-1.5">
-												<button type="button" onClick={() => void revoke(t.id)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[#160606]">Revoke</button>
+												<button type="button" onClick={() => void revoke(t.id)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Revoke</button>
 												<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 											</span>
 										) : <button type="button" aria-label={`Revoke ${t.name}`} onClick={() => set_confirm(t.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Revoke…</button>}
@@ -307,7 +307,7 @@ function Danger({ data, admin, post }: { data: Realm_settings_data; admin: boole
 				{admin ? (
 					<div className="mt-3 flex flex-wrap items-center gap-2">
 						<input aria-label="Type the realm slug to confirm" value={typed} onChange={(e) => set_typed(e.target.value)} placeholder={data.realm.slug} className={`${INPUT} w-[220px]`} />
-						<button type="button" disabled={typed !== data.realm.slug || busy} onClick={() => void del()} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[#160606] disabled:opacity-40">{busy ? 'Deleting…' : 'Delete realm'}</button>
+						<button type="button" disabled={typed !== data.realm.slug || busy} onClick={() => void del()} className="rounded-md bg-[var(--g-bad)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-color)] disabled:opacity-40">{busy ? 'Deleting…' : 'Delete realm'}</button>
 					</div>
 				) : <div className="mt-3"><Read_only_note /></div>}
 				<div className="mt-2"><Msg msg={msg} /></div>

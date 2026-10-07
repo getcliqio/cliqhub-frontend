@@ -29,7 +29,7 @@ const team_chip = (label: string) => { const m = /^@?([^/]+)\/(.+)$/.exec(label)
 
 function Key_cell({ v }: { v: 'org' | 'realm' | 'missing' }) {
 	if (v === 'org') return <span className="text-[var(--g-ink-3)]">↑ org</span>;
-	if (v === 'realm') return <span className="text-[#8fb8ff]">● override</span>;
+	if (v === 'realm') return <span className="text-[var(--g-run-text)]">● override</span>;
 	return <span className="text-[var(--g-warn-text)]">○ missing</span>;
 }
 
@@ -89,7 +89,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 							<h3 className={H3}>Realm overrides<span className="text-[12px] font-normal text-[var(--g-ink-3)]">{d.overrides ? `${d.overrides.length} realm${d.overrides.length === 1 ? '' : 's'}` : ''}</span></h3>
 							<div className="px-4 py-3 text-[12.5px] text-[var(--g-ink-2)]">
 								{d.overrides?.length ? d.overrides.map((o) => (
-									<div key={o.realm_id} className="flex items-center gap-2 py-0.5"><b>{o.realm_slug}</b><span className="text-[#8fb8ff]">overrides {o.keys.join(', ')}</span>{org_slug ? <Link to={`${realm_path(org_slug, o.realm_slug)}/agents/${a.id}`} className="ml-auto text-[var(--g-acc)]">Open →</Link> : null}</div>
+									<div key={o.realm_id} className="flex items-center gap-2 py-0.5"><b>{o.realm_slug}</b><span className="text-[var(--g-run-text)]">overrides {o.keys.join(', ')}</span>{org_slug ? <Link to={`${realm_path(org_slug, o.realm_slug)}/agents/${a.id}`} className="ml-auto text-[var(--g-acc)]">Open →</Link> : null}</div>
 								)) : <p className="text-[var(--g-ink-3)]">No realm overrides these values.</p>}
 								<p className="mt-2 text-[var(--g-ink-3)]">Overrides are edited in each realm’s Agents page. <button type="button" onClick={() => go_tab('realms')} className="text-[var(--g-acc)]">See all realms →</button></p>
 							</div>
@@ -135,7 +135,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 			</div>
 		);
 	} else if (tab === 'manifest') {
-		body = <pre className="g-mono max-h-[560px] overflow-auto rounded-[10px] border border-[var(--g-line)] bg-[#0e0f11] p-4 text-[12px] leading-relaxed text-[var(--g-ink-2)]" data-testid="manifest">{d.manifest ? yaml.dump(d.manifest, { lineWidth: 100 }) : 'No manifest.'}</pre>;
+		body = <pre className="g-mono max-h-[560px] overflow-auto rounded-[10px] border border-[var(--g-line)] bg-[var(--g-input)] p-4 text-[12px] leading-relaxed text-[var(--g-ink-2)]" data-testid="manifest">{d.manifest ? yaml.dump(d.manifest, { lineWidth: 100 }) : 'No manifest.'}</pre>;
 	} else {
 		body = (
 			<>
@@ -153,7 +153,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 				</div>
 				{in_use_block ? (
 					<div role="alert" className="mt-3 rounded-[10px] border border-[rgba(255,92,92,.45)] bg-[rgba(255,92,92,.05)] px-4 py-3" data-testid="in-use">
-						<b className="text-[#ff8b8b]">Can’t remove {a.name} yet</b>
+						<b className="text-[var(--g-bad-text)]">Can’t remove {a.name} yet</b>
 						<p className="mt-1 text-[12.5px] text-[var(--g-ink-2)]">{msg!.text}. Change those phases to another agent (or delete the teams), then remove it.</p>
 						{used.length ? <div className="mt-2 flex flex-wrap gap-2">{used.map((u) => <Link key={`${u.scope}/${u.name}`} to={`${team_href(u.scope, u.name)}?tab=workflow`} className={G_BTN}>Open {u.name}</Link>)}</div> : null}
 					</div>
