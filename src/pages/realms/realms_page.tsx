@@ -15,6 +15,7 @@ import { realm_path } from '@/lib/realm_url';
 import { use_view_scope } from '@/lib/view_scope';
 import { handle, person_name } from '@/lib/admin';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { useAuth } from '@/lib/auth_context';
 import { Banner, Pill } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Secret_reveal } from '@/components/graphite/g_secret';
@@ -23,7 +24,8 @@ import { use_invite } from '@/components/graphite/g_invites';
 export function slugify(s: string): string {
 	return s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 }
-const can_create = (o: Overview_org) => o.role === 'owner' || o.role === 'admin';
+/** Older Core didn't send permissions: fall back to the role name. */
+const can_create = (o: Overview_org) => (o.permissions ? o.permissions.includes('realms.create') : o.role === 'owner' || o.role === 'admin');
 
 function Health({ r }: { r: Overview_realm }) {
 	const d = r.daemons;
@@ -234,7 +236,8 @@ export function Component() {
 	const creating = sp.get('new') === '1';
 	const joined = sp.get('joined');
 	const joined_realm = joined ? (org?.realms ?? []).find((r) => r.slug === joined) ?? null : null;
-	const may_create = Boolean(org && can_create(org));
+	const { user } = useAuth();
+	const may_create = Boolean(org && (user?.role === 'admin' || can_create(org)));
 	const set = (k: string, v: string | null) => set_sp((prev) => { const p = new URLSearchParams(prev); if (v) p.set(k, v); else p.delete(k); return p; }, { replace: true });
 	const realms = useMemo(() => (org?.realms ?? []).filter((r) => !q || `${r.slug} ${r.name}`.toLowerCase().includes(q)), [org, q]);
 	const total = org?.realms.length ?? 0;
@@ -243,7 +246,9 @@ export function Component() {
 			<div className="flex flex-col gap-4 px-7 py-6">
 				<header className="flex flex-wrap items-center gap-3">
 					<div><h1 className="text-[22px] font-semibold tracking-tight">Realms</h1><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">Groups of machines that run your teams. {total} realm{total === 1 ? '' : 's'} in {org?.display_name || org?.slug || 'this organization'}.</p></div>
-					{may_create && !creating ? <button type="button" onClick={() => set('new', '1')} className={`${G_PRIMARY} ml-auto`}><Plus className="h-3.5 w-3.5" /> New realm</button> : null}
+					{org && !creating ? (
+						<button type="button" disabled={!may_create} title={may_create ? undefined : `Your role in ${org.display_name || org.slug} doesn't allow creating realms`} onClick={() => set('new', '1')} className={`${G_PRIMARY} ml-auto disabled:cursor-not-allowed disabled:opacity-45`}><Plus className="h-3.5 w-3.5" /> New realm</button>
+					) : null}
 				</header>
 				{joined_realm ? <Banner tone="ok">You joined {joined_realm.name || joined_realm.slug}. <Link to={`${realm_path(joined_realm.org_slug, joined_realm.slug)}/inbox`} className="font-semibold underline">Open it →</Link></Banner> : null}
 				{creating && may_create && org ? <New_realm orgs={[org]} initial_org={org.slug} on_close={() => set('new', null)} /> : null}

@@ -15,6 +15,7 @@ import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
 import { coverage_text, type Coverage_filter, type Realm_team_row, type Realm_teams_data } from '@/lib/realm_teams';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { use_access, type Gate } from '@/lib/access';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
@@ -25,6 +26,8 @@ export const TEAMS_PAGE_SIZE = 25;
 
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
+/** Greyed out when your role doesn't allow it (the reason is the tooltip). */
+const GATED = 'disabled:cursor-not-allowed disabled:opacity-45';
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 
 const CHIPS: Array<{ id: Coverage_filter | null; label: string; count: keyof Realm_teams_data['counts'] }> = [
@@ -49,7 +52,7 @@ function use_post() {
 }
 
 /** Row ⋯ menu. */
-function Row_menu({ row, base, on_remove, on_add }: { row: Realm_team_row; base: string; on_remove: () => void; on_add: () => void }) {
+function Row_menu({ row, base, on_remove, on_add, manage }: { row: Realm_team_row; base: string; on_remove: () => void; on_add: () => void; manage: Gate }) {
 	const [open, set_open] = useState(false);
 	const ref = useRef<HTMLDivElement | null>(null);
 	useEffect(() => {
@@ -69,8 +72,8 @@ function Row_menu({ row, base, on_remove, on_add }: { row: Realm_team_row; base:
 					{row.scope ? <Link role="menuitem" to={`${base}/teams/${encodeURIComponent(row.scope)}/${encodeURIComponent(row.slug)}`} className={item}>View team</Link> : null}
 					<Link role="menuitem" to={`${base}/runs?team=${encodeURIComponent(row.scope ? `${row.scope}/${row.slug}` : row.slug)}`} className={item}>Runs of this team</Link>
 					{row.in_team_list
-						? <button type="button" role="menuitem" onClick={() => { set_open(false); on_remove(); }} className={`${item} text-[var(--g-bad)]`}>Remove from realm…</button>
-						: <button type="button" role="menuitem" onClick={() => { set_open(false); on_add(); }} className={item}>Add to realm’s team list</button>}
+						? <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_remove(); }} className={`${item} ${GATED} text-[var(--g-bad)]`}>Remove from realm…</button>
+						: <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_add(); }} className={`${item} ${GATED}`}>Add to realm’s team list</button>}
 				</div>
 			) : null}
 		</div>
@@ -161,6 +164,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const overview = use_overview();
+	const access = use_access(overview.data);
 	const post = use_post();
 	const [search, set_search] = useSearchParams();
 	const coverage = ((v) => (v === 'full' || v === 'partial' || v === 'none' ? v : null))(search.get('coverage'));
@@ -192,6 +196,8 @@ export function Component() {
 	const data = read.data;
 	const cols = sort.with_sortable(data?.sortable);
 	const realm_id = data?.realm.id ?? null;
+	const manage = access.realm(realm_id, 'operate', 'realms.teams.manage');
+	const runnable = access.realm(realm_id, 'operate', 'teams.run');
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 	const from = data && data.total ? data.offset + 1 : 0;
 	const to = data ? Math.min(data.offset + data.limit, data.total) : 0;
@@ -237,7 +243,7 @@ export function Component() {
 									);
 								})}
 							</div>
-							<button type="button" disabled={!realm_id} onClick={() => set_installing(true)} className={`${PRIMARY} ml-auto`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</button>
+							<button type="button" disabled={!realm_id || !manage.ok} title={manage.reason ?? undefined} onClick={() => set_installing(true)} className={`${PRIMARY} ${GATED} ml-auto`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</button>
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
@@ -283,10 +289,10 @@ export function Component() {
 															</span>
 														) : (
 															<span className="inline-flex items-center gap-1.5">
-																{r.scope && r.in_team_list ? <button type="button" onClick={() => set_running(r)} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
-																{r.update_available ? <button type="button" disabled={busy !== null} onClick={() => void act(r, 'update')} className={ROW_ACTION_CLS}>{busy === `update:${r.label}` ? 'Updating…' : 'Update'}</button> : null}
-																{!r.in_team_list && r.scope ? <button type="button" disabled={busy !== null} onClick={() => void act(r, 'add')} className={ROW_ACTION_CLS}>Add to realm</button> : null}
-																<Row_menu row={r} base={base} on_remove={() => set_confirm_remove(r.label)} on_add={() => void act(r, 'add')} />
+																{r.scope && r.in_team_list ? <button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_running(r)} className={`${ROW_ACTION_CLS} ${GATED} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
+																{r.update_available ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'update')} className={`${ROW_ACTION_CLS} ${GATED}`}>{busy === `update:${r.label}` ? 'Updating…' : 'Update'}</button> : null}
+																{!r.in_team_list && r.scope ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'add')} className={`${ROW_ACTION_CLS} ${GATED}`}>Add to realm</button> : null}
+																<Row_menu row={r} base={base} on_remove={() => set_confirm_remove(r.label)} on_add={() => void act(r, 'add')} manage={manage} />
 															</span>
 														)}
 													</td>

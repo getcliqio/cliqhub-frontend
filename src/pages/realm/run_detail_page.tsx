@@ -35,6 +35,7 @@ import { parse_kv_lines, pick_default_resume_phase } from '@/components/dispatch
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { sort_phases_workflow } from '@/components/runs/run_phases_panel';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { use_access, type Gate } from '@/lib/access';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
@@ -386,7 +387,11 @@ const BTN = 'inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(
 const BTN_PRIMARY = 'inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]';
 const BTN_WAIT = 'inline-flex h-8 cursor-not-allowed items-center rounded-md border border-[var(--g-line)] px-3 text-[12.5px] font-semibold text-[var(--g-ink-3)]';
 
-export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_data; org_slug: string; slug: string; reload: () => Promise<void> }) {
+/** What the viewer may do on this run (from `lib/access.ts`); everything allowed when not given. */
+export interface Run_gates { inputs: Gate; cancel: Gate; run: Gate }
+const ALL_ALLOWED: Run_gates = { inputs: { ok: true, reason: null }, cancel: { ok: true, reason: null }, run: { ok: true, reason: null } };
+
+export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: { data: Run_detail_data; org_slug: string; slug: string; reload: () => Promise<void>; gates?: Run_gates }) {
 	const auth_fetch = useAuthFetch();
 	const { run } = data;
 	const base = realm_path(org_slug, slug);
@@ -487,20 +492,20 @@ export function Run_view({ data, org_slug, slug, reload }: { data: Run_detail_da
 					{awaiting ? (
 						pending?.endpoint === '/v1/runs/supply_inputs'
 							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('supplied inputs')}>Input pending…</button>
-							: <button type="button" className={BTN_PRIMARY} onClick={() => set_panel((p) => (p === 'supply' ? null : 'supply'))}>Provide input</button>
+							: <button type="button" className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.inputs.ok} title={gates.inputs.reason ?? undefined} onClick={() => set_panel((p) => (p === 'supply' ? null : 'supply'))}>Provide input</button>
 					) : null}
 					{live ? (
 						pending?.endpoint === '/v1/cancel'
 							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('cancel')}>Cancel pending…</button>
-							: <button type="button" className={BTN} onClick={() => set_panel((p) => (p === 'cancel' ? null : 'cancel'))}>Cancel</button>
+							: <button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.cancel.ok} title={gates.cancel.reason ?? undefined} onClick={() => set_panel((p) => (p === 'cancel' ? null : 'cancel'))}>Cancel</button>
 					) : null}
 					{can_resume ? (
 						pending?.endpoint === '/v1/resume'
 							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('resume')}>Resume pending…</button>
-							: <button type="button" className={BTN} onClick={() => set_panel((p) => (p === 'resume' ? null : 'resume'))}>Resume from…</button>
+							: <button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.run.ok} title={gates.run.reason ?? undefined} onClick={() => set_panel((p) => (p === 'resume' ? null : 'resume'))}>Resume from…</button>
 					) : null}
 					{(failed || completed || state_lost) && again_target ? (
-						<button type="button" className={BTN} onClick={() => { set_panel(null); set_run_again(true); }} title="Start a fresh run — inputs are copied from this run">Run again</button>
+						<button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.run.ok} onClick={() => { set_panel(null); set_run_again(true); }} title={gates.run.reason ?? 'Start a fresh run — inputs are copied from this run'}>Run again</button>
 					) : null}
 				</div>
 			</div>
@@ -647,6 +652,7 @@ function Skeleton() {
 export function Component() {
 	const { org = '', slug = '', run_id = '' } = useParams();
 	const overview = use_overview();
+	const access = use_access(overview.data);
 	const [refresh_ms, set_refresh_ms] = useState(LIVE_POLL_MS);
 	const detail = use_bff_read<Run_detail_data>(
 		'/v1/run_detail/get',
@@ -666,6 +672,11 @@ export function Component() {
 	}
 
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm?.id) ?? null;
+	const gates: Run_gates = {
+		inputs: access.realm(realm?.id, 'operate', 'teams.inputs'),
+		cancel: access.realm(realm?.id, 'operate', 'teams.cancel'),
+		run: access.realm(realm?.id, 'operate', 'teams.run'),
+	};
 
 	return (
 		<Graphite_shell
@@ -693,7 +704,7 @@ export function Component() {
 				{detail.status === 'error' && !data ? (
 					<Blocking_error http_status={detail.http_status} code={detail.code} error={detail.error} on_retry={() => void detail.reload()} what="run" />
 				) : null}
-				{data ? <Run_view data={data} org_slug={org} slug={slug} reload={detail.reload} /> : null}
+				{data ? <Run_view data={data} org_slug={org} slug={slug} reload={detail.reload} gates={gates} /> : null}
 			</div>
 		</Graphite_shell>
 	);

@@ -13,6 +13,7 @@ import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realm_path } from '@/lib/realm_url';
 import type { Realm_daemons_data } from '@/lib/realm_daemons';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { use_access } from '@/lib/access';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
@@ -33,6 +34,7 @@ export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const auth_fetch = useAuthFetch();
 	const overview = use_overview();
+	const access = use_access(overview.data);
 	const [search, set_search] = useSearchParams();
 	const status = ((v) => (v === 'online' || v === 'stale' || v === 'offline' ? v : null))(search.get('status'));
 	const q = search.get('q') ?? '';
@@ -57,6 +59,7 @@ export function Component() {
 		last_heartbeat: (d) => d.last_heartbeat, running: (d) => d.running, teams_ready: (d) => d.teams_ready,
 	}) : [];
 	const realm_id = data?.realm.id ?? null;
+	const removable = access.realm(realm_id, 'admin', 'daemons.remove');
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 
 	async function remove(id: string) {
@@ -150,7 +153,7 @@ export function Component() {
 																<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 															</span>
 														) : (
-															<button type="button" aria-label={`Remove ${d.name || d.id}`} onClick={() => set_confirm(d.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Remove…</button>
+															<button type="button" aria-label={`Remove ${d.name || d.id}`} disabled={!removable.ok} title={removable.reason ?? undefined} onClick={() => set_confirm(d.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:text-[var(--g-ink-3)]">Remove…</button>
 														)}
 													</td>
 												</tr>

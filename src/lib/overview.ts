@@ -32,6 +32,8 @@ export interface Overview_realm {
 	awaiting_input: number;
 	pending_reviews: number;
 	needs_you: number;
+	/** What you may do here (view < operate < admin); null when Core didn't say. Optional for older BFFs. */
+	level?: 'view' | 'operate' | 'admin' | null;
 }
 
 /** What people call a realm: its name (e.g. "measureone-sdlc"); the slug only when it has none. */
@@ -44,6 +46,8 @@ export interface Overview_org {
 	slug: string;
 	display_name: string;
 	role: string;
+	/** Your effective org permissions (owners hold all); null when Core didn't say. Optional for older BFFs. */
+	permissions?: string[] | null;
 	/** The org's lifecycle state (`waiting_for_owner` until its owner accepts). */
 	org_status: Org_status;
 	status: 'ok' | 'error';
