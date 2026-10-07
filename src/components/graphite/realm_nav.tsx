@@ -2,6 +2,7 @@
  * Realm sub-navigation for realm pages. Older deep links (settings/a2a, channels…)
  * redirect to these sections.
  */
+import { daemon_summary } from '@/lib/overview';
 import { NavLink } from 'react-router';
 import { realm_path } from '@/lib/realm_url';
 import { Realm_dot } from '@/components/graphite/graphite_shell';
@@ -24,7 +25,7 @@ export function Realm_nav({ org_slug, slug, realm }: { org_slug: string; slug: s
 			{realm ? (
 				<span className="mr-2 flex items-center gap-1.5 text-[12px] text-[var(--g-ink-3)]" data-testid="realm-health">
 					<Realm_dot realm={realm} />
-					{realm.daemons.total === 0 ? 'no daemons' : `${realm.daemons.online}/${realm.daemons.total} daemons`}
+					{daemon_summary(realm.daemons)}
 				</span>
 			) : null}
 			{GRAPHITE.map((g) => (

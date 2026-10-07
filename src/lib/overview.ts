@@ -36,6 +36,16 @@ export interface Overview_realm {
 	level?: 'view' | 'operate' | 'admin' | null;
 }
 
+/**
+ * A realm's daemons in words: "3 online", "3 online · 1 offline", or "no daemons".
+ * Online is what matters (capacity); daemons that come and go aren't a ratio of a fixed fleet.
+ */
+export function daemon_summary(d: { online: number; stale: number; offline: number; total: number }): string {
+	if (d.total === 0) return 'no daemons';
+	const down = d.stale + d.offline;
+	return down ? `${d.online} online · ${down} offline` : `${d.online} online`;
+}
+
 /** What people call a realm: its name (e.g. "measureone-sdlc"); the slug only when it has none. */
 export function realm_label(r: Pick<Overview_realm, 'slug' | 'name'>): string {
 	return r.name?.trim() || r.slug;

@@ -142,7 +142,7 @@ describe('Realm inbox page', () => {
 		expect(within(nav).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
 		expect(within(nav).getByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
 		expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings');
-		expect(await screen.findByTestId('realm-health')).toHaveTextContent('5/6 daemons');
+		expect(await screen.findByTestId('realm-health')).toHaveTextContent('5 online · 1 offline');
 		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
 		// One org at a time: the breadcrumb starts at the org (no "All my work").
 		expect(within(crumb).queryByRole('link', { name: /All my work/ })).toBeNull();

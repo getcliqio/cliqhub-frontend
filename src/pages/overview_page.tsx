@@ -12,6 +12,7 @@ import { Link } from 'react-router';
 import { AlertTriangle, ArrowRight, CheckCircle2, CircleHelp, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
 import {
+	daemon_summary,
 	item_href,
 	relative_time,
 	scope_overview,
@@ -120,7 +121,7 @@ function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: O
 						<span className="min-w-0 flex-1">
 							<b className="block truncate text-[13.5px] font-semibold">{r.name || r.slug}</b>
 							<span className="flex items-center gap-1.5 truncate text-[12px] text-[var(--g-ink-3)]">
-								{r.daemons.total === 0 ? 'no daemons' : `${r.daemons.online}/${r.daemons.total} daemons`}
+								{daemon_summary(r.daemons)}
 								{r.active_runs ? <><span aria-hidden>·</span>{r.active_runs} running</> : null}
 							</span>
 						</span>
@@ -262,7 +263,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 				<Stat
 					label="Daemons"
 					tone={view.totals.daemons_total === 0 ? 'muted' : offline ? 'warn' : 'ok'}
-					value={<>{view.totals.daemons_online}<span className="text-[16px] text-[var(--g-ink-3)]">/{view.totals.daemons_total}</span></>}
+					value={<>{view.totals.daemons_online}<span className="ml-1.5 text-[14px] font-normal text-[var(--g-ink-3)]">online</span></>}
 					sub={view.totals.daemons_total === 0 ? 'none enrolled' : offline ? `${offline} offline` : 'all online'}
 				/>
 			</div>

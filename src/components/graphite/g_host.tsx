@@ -31,7 +31,7 @@ export interface Workspace_page_data {
 export const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
 export const team_label = (t: { scope: string; slug: string }) => (t.scope ? `@${t.scope}/${t.slug}` : t.slug);
 
-const DAEMON_STATUS: Record<string, { label: string; tone: 'ok' | 'warn' | 'muted' }> = { online: { label: 'Online', tone: 'ok' }, stale: { label: 'Stale', tone: 'warn' }, offline: { label: 'Offline', tone: 'muted' } };
+const DAEMON_STATUS: Record<string, { label: string; tone: 'ok' | 'warn' | 'muted' }> = { online: { label: 'Online', tone: 'ok' }, stale: { label: 'Stale', tone: 'warn' }, offline: { label: 'Offline', tone: 'muted' }, removed: { label: 'No longer connected', tone: 'muted' } };
 export function Daemon_status({ status }: { status?: string }) {
 	const s = DAEMON_STATUS[status ?? ''] ?? { label: status ?? 'unknown', tone: 'muted' as const };
 	return <Pill tone={s.tone}>{s.label}</Pill>;
