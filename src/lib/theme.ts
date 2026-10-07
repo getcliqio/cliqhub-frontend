@@ -62,6 +62,25 @@ export function init_theme(): void {
 	} catch { /* no matchMedia */ }
 }
 
+/** The profile's theme as last seen this page load (see {@link sync_from_profile}). */
+let profile_seen: string | undefined;
+
+/**
+ * Apply the theme saved on the profile — only when the profile's value CHANGES (first sight
+ * on this page load, or another sign-in). The in-memory profile isn't refreshed after you pick
+ * a theme here, so re-applying it on every page would flip you back (e.g. to dark on HUGs).
+ */
+export function sync_from_profile(saved: unknown): void {
+	if (!is_theme(saved) || saved === profile_seen) return;
+	profile_seen = saved;
+	if (saved !== read_theme()) apply_theme(saved);
+}
+
+/** Tests only: forget what the profile said. */
+export function reset_profile_sync(): void {
+	profile_seen = undefined;
+}
+
 /** The current choice, kept in sync across components. */
 export function use_theme(): Theme {
 	const [t, set_t] = useState<Theme>(() => read_theme());

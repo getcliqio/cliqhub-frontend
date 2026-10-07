@@ -41,7 +41,7 @@ import {
 	PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
-import { apply_theme, is_theme, read_theme, use_theme, type Theme } from '@/lib/theme';
+import { apply_theme, sync_from_profile, use_theme, type Theme } from '@/lib/theme';
 import { avatar_outline } from '@/lib/admin';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Getting_started_data } from '@/lib/getting_started';
@@ -457,7 +457,7 @@ const ORG_PAGES = ['/home', '/hugs', '/inbox', '/teams', '/agents', '/notificati
 export function Graphite_shell({ children, data, title, actions, current_realm_id = null }: Shell_props) {
 	const { user, logout } = useAuth();
 	const saved_theme = user?.preferences?.theme;
-	useEffect(() => { if (is_theme(saved_theme) && saved_theme !== read_theme()) apply_theme(saved_theme); }, [saved_theme]);
+	useEffect(() => { sync_from_profile(saved_theme); }, [saved_theme]);
 	const navigate = useNavigate();
 	const location = useLocation();
 	const params = useParams();

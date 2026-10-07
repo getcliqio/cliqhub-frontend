@@ -7,7 +7,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { multi_org_overview, gs_response } from './fixtures_overview';
-import { apply_theme, read_theme, resolve_theme } from '@/lib/theme';
+import { apply_theme, read_theme, reset_profile_sync, resolve_theme } from '@/lib/theme';
 
 const auth = {
 	user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} as Record<string, unknown> },
@@ -37,7 +37,7 @@ function render_page() {
 }
 
 describe('theme', () => {
-	beforeEach(() => { window.localStorage.removeItem('cliqhub.theme'); delete document.documentElement.dataset.gTheme; auth.user.preferences = {}; });
+	beforeEach(() => { window.localStorage.removeItem('cliqhub.theme'); delete document.documentElement.dataset.gTheme; auth.user.preferences = {}; reset_profile_sync(); });
 	afterEach(() => vi.restoreAllMocks());
 
 	it('dark by default; apply_theme paints and remembers; system follows the OS', () => {
@@ -66,6 +66,20 @@ describe('theme', () => {
 		expect(document.documentElement.dataset.gTheme).toBe('light');
 		expect(within(group).getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_profile')?.body).toEqual({ preferences: { theme: 'light' } }));
+	});
+
+	it('picking Light sticks across pages even though the loaded profile still says dark (HUGs bug)', async () => {
+		auth.user.preferences = { theme: 'dark' };
+		route_fetch();
+		const first = render_page();
+		await screen.findByTestId('account-button');
+		expect(read_theme()).toBe('dark');
+		apply_theme('light');
+		first.unmount();
+		render_page(); // the next page mounts the shell again with the same stale profile
+		await screen.findByTestId('account-button');
+		expect(document.documentElement.dataset.gTheme).toBe('light');
+		expect(read_theme()).toBe('light');
 	});
 
 	it('a theme saved on the profile (another browser) is applied here', async () => {
