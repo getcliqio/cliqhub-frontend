@@ -403,3 +403,116 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/run_detail/get').length).toBe(n1 + 1);
 	});
 });
+
+describe('Graphite run detail — run history', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	const H = 3_600_000;
+	const design_phases = () => {
+		const now = Date.now();
+		return [
+			{ phase: 'plan', status: 'completed', sequence: 0, started_at: now - 21 * H, completed_at: now - 20.5 * H, error: null, agent: 'planner', attempts: 1, previous_attempts: [] },
+			{ phase: 'design', status: 'failed', sequence: 1, started_at: now - 20.5 * H, completed_at: now - 20 * H, error: 'sub-team run @measureone/design-lld failed', agent: null, attempts: 1, previous_attempts: [] },
+		];
+	};
+
+	it('shows nothing extra for a run with one attempt', async () => {
+		route_fetch(run_detail({ attempts: [{ n: 1, started_at: Date.now() - 600_000, from_phase: null, ended_at: Date.now() - 60_000, state: 'failed', failed_phase: 'match', error: null }], attempts_source: 'events', parent: null, children: [] }));
+		render_page();
+		await ready();
+		expect(screen.queryByTestId('attempts-strip')).toBeNull();
+		expect(screen.queryByTestId('parent-run')).toBeNull();
+		expect(screen.queryByRole('region', { name: 'Sub-team runs' })).toBeNull();
+	});
+
+	it('shows the attempts strip for a resumed run: failed at a phase → resumed from it → completed', async () => {
+		const now = Date.now();
+		route_fetch(run_detail({
+			attempts: [
+				{ n: 1, started_at: now - 21 * H, from_phase: null, ended_at: now - 20 * H, state: 'failed', failed_phase: 'design', error: 'sub-team failed' },
+				{ n: 2, started_at: now - 19 * H, from_phase: 'design', ended_at: now - 18 * H, state: 'completed', failed_phase: null, error: null },
+			],
+			attempts_source: 'events',
+		}, { state: 'completed', error: null }));
+		render_page();
+		await ready();
+		const strip = screen.getByTestId('attempts-strip');
+		expect(strip).toHaveTextContent('2 attempts');
+		const items = within(strip).getAllByTestId('attempt');
+		expect(items[0]).toHaveTextContent('Attempt 1 · failed at design · 20h ago');
+		expect(items[1]).toHaveTextContent('Attempt 2 · completed');
+		expect(within(strip).getByTestId('attempt-resume')).toHaveTextContent('Resumed from design · 19h ago');
+		expect(strip).not.toHaveTextContent('from phase history');
+	});
+
+	it('says when the attempts were worked out from phase history', async () => {
+		route_fetch(run_detail({
+			attempts: [
+				{ n: 1, started_at: 1, from_phase: null, ended_at: 2, state: 'failed', failed_phase: 'match', error: null },
+				{ n: 2, started_at: 3, from_phase: 'match', ended_at: null, state: 'running', failed_phase: null, error: null },
+			],
+			attempts_source: 'phases',
+		}, { state: 'running', completed_at: null, error: null }));
+		render_page();
+		await ready();
+		expect(screen.getByTestId('attempts-strip')).toHaveTextContent('from phase history');
+		expect(within(screen.getByTestId('attempts-strip')).getAllByTestId('attempt')[1]).toHaveTextContent('Attempt 2 · running');
+	});
+
+	it('a sub-team run links back to the run and phase that spawned it', async () => {
+		route_fetch(run_detail({ parent: { run_id: 'run-kf', run_name: 'kind-fern', phase: 'design', state: 'failed', realm_slug: 'prod-us', org_slug: 'measureone' } }));
+		render_page();
+		await ready();
+		const parent = screen.getByTestId('parent-run');
+		expect(parent).toHaveTextContent('kind-fern›design');
+		expect(within(parent).getByRole('link', { name: 'kind-fern' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-kf');
+	});
+
+	it('lists the sub-team runs (failed ones too) in Details and on their phase, linked', async () => {
+		const now = Date.now();
+		route_fetch(run_detail({
+			phases: design_phases(),
+			children: [{ run_id: 'run-lld', run_name: 'lld-1', team_label: '@measureone/design-lld', parent_phase: 'design', state: 'failed', started_at: now - 20.4 * H, completed_at: now - 20 * H, realm_slug: null, org_slug: null }],
+		}));
+		render_page();
+		await ready();
+		const kids = within(screen.getByRole('region', { name: 'Sub-team runs' })).getAllByTestId('child-run');
+		expect(kids).toHaveLength(1);
+		expect(kids[0]).toHaveTextContent('lld-1');
+		expect(kids[0]).toHaveTextContent('phase design · @measureone/design-lld');
+		expect(within(kids[0]).getByRole('link', { name: 'lld-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
+		const on_phase = screen.getByTestId('phase-child-run');
+		expect(within(on_phase).getByRole('link', { name: 'lld-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
+		expect(screen.queryByTestId('child-succeeded-later')).toBeNull();
+	});
+
+	it('flags a failed team phase whose sub-team run succeeded later, and offers resume from that phase', async () => {
+		const now = Date.now();
+		route_fetch(run_detail({
+			phases: design_phases(),
+			children: [{ run_id: 'run-lld', run_name: 'lld-1', team_label: '@measureone/design-lld', parent_phase: 'design', state: 'completed', started_at: now - 20.4 * H, completed_at: now - 2 * H, realm_slug: 'prod-us', org_slug: 'measureone' }],
+		}));
+		render_page();
+		await ready();
+		const note = screen.getByTestId('child-succeeded-later');
+		expect(note).toHaveTextContent('Sub-team run lld-1 succeeded later, but this run is still failed. Resume it from design to continue.');
+		fireEvent.click(within(note).getByRole('button', { name: 'Resume from design' }));
+		expect(screen.getByTestId('resume-select')).toHaveValue('design');
+	});
+
+	it('shows earlier attempts of a phase compactly with "ran N×"', async () => {
+		const now = Date.now();
+		const phases = design_phases();
+		phases[1] = { ...phases[1]!, attempts: 2, previous_attempts: [{ attempt: 0, status: 'failed', started_at: now - 30 * H, completed_at: now - 29 * H, error: 'first try' } as never] };
+		route_fetch(run_detail({ phases }));
+		render_page();
+		await ready();
+		const rows = screen.getAllByTestId('phase-row');
+		const design = rows.find((r) => r.textContent?.includes('design'))!;
+		expect(design).toHaveTextContent('ran 2×');
+		expect(within(design).getByTestId('phase-earlier-attempts')).toHaveTextContent('earlier:failed29h ago');
+	});
+});
+

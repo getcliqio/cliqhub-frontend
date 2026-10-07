@@ -47,6 +47,57 @@ export interface Run_detail_phase {
 	completed_at: number | null;
 	error: string | null;
 	agent: string | null;
+	/** Times the phase ran in all (earlier attempts + current); absent from an older BFF. */
+	attempts?: number;
+	/** Earlier attempts (gate route-backs and resumes), oldest first. */
+	previous_attempts?: Run_phase_attempt[];
+}
+
+/** One earlier attempt of a phase. */
+export interface Run_phase_attempt {
+	attempt: number | null;
+	status: string;
+	started_at: number | null;
+	completed_at: number | null;
+	error: string | null;
+}
+
+/** How one attempt of the run ended (`running` while it is still going). */
+export type Run_attempt_state = 'completed' | 'failed' | 'crashed' | 'cancelled' | 'running' | 'unknown';
+
+/** One attempt of the run — a resume reuses the run id and starts a new attempt. */
+export interface Run_attempt {
+	n: number;
+	started_at: number | null;
+	/** The phase a resume started from; null for the first attempt (or when not recorded). */
+	from_phase: string | null;
+	ended_at: number | null;
+	state: Run_attempt_state;
+	failed_phase: string | null;
+	error: string | null;
+}
+
+/** The run (and phase) that spawned a sub-team run. */
+export interface Run_parent {
+	run_id: string;
+	run_name: string | null;
+	phase: string | null;
+	state: string | null;
+	realm_slug: string | null;
+	org_slug: string | null;
+}
+
+/** A sub-team run one of this run's team phases spawned. */
+export interface Run_child {
+	run_id: string;
+	run_name: string | null;
+	team_label: string | null;
+	parent_phase: string | null;
+	state: string;
+	started_at: number | null;
+	completed_at: number | null;
+	realm_slug: string | null;
+	org_slug: string | null;
 }
 
 export interface Pending_control {
@@ -147,7 +198,15 @@ export interface Run_detail_data {
 	artifacts: Run_artifact[];
 	/** Each phase output, oldest first (absent from an older BFF). */
 	phase_outputs?: Run_phase_output[];
-	sections: Record<'phases' | 'labels' | 'realm' | 'reviews' | 'artifacts', Section_status>;
+	/** The run's attempts, oldest first; null when its events couldn't be read (absent from an older BFF). */
+	attempts?: Run_attempt[] | null;
+	/** `events`: from the run's lifecycle events; `phases`: reconstructed from phase history. */
+	attempts_source?: 'events' | 'phases' | null;
+	/** Set when this run is a sub-team run. */
+	parent?: Run_parent | null;
+	/** Sub-team runs this run's team phases spawned, oldest first. */
+	children?: Run_child[];
+	sections: Record<'phases' | 'labels' | 'realm' | 'reviews' | 'artifacts', Section_status> & Partial<Record<'events' | 'parent' | 'children', Section_status>>;
 	partial: boolean;
 }
 
