@@ -75,6 +75,8 @@ export interface Run_attempt {
 	state: Run_attempt_state;
 	failed_phase: string | null;
 	error: string | null;
+	/** Who asked for this resume (attempts after the first), when Core recorded it. */
+	resumed_by?: { username: string | null; display_name: string | null } | null;
 }
 
 /** The run (and phase) that spawned a sub-team run. */

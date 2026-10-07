@@ -19,6 +19,7 @@ const REALM_GROUPS: Event_group[] = [
 		label: 'All runs',
 		children: [
 			{ value: 'run.started', label: 'Run started' },
+			{ value: 'run.resume_requested', label: 'Resume requested (by a person)' },
 			{ value: 'run.resumed', label: 'Run resumed' },
 			{ value: 'run.completed', label: 'Run completed' },
 			{ value: 'run.failed', label: 'Run failed' },

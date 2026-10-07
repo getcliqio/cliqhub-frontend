@@ -432,7 +432,7 @@ describe('Graphite run detail — run history', () => {
 		route_fetch(run_detail({
 			attempts: [
 				{ n: 1, started_at: now - 21 * H, from_phase: null, ended_at: now - 20 * H, state: 'failed', failed_phase: 'design', error: 'sub-team failed' },
-				{ n: 2, started_at: now - 19 * H, from_phase: 'design', ended_at: now - 18 * H, state: 'completed', failed_phase: null, error: null },
+				{ n: 2, started_at: now - 19 * H, from_phase: 'design', ended_at: now - 18 * H, state: 'completed', failed_phase: null, error: null, resumed_by: { username: 'sapan', display_name: 'Sapan Shah' } },
 			],
 			attempts_source: 'events',
 		}, { state: 'completed', error: null }));
@@ -443,8 +443,16 @@ describe('Graphite run detail — run history', () => {
 		const items = within(strip).getAllByTestId('attempt');
 		expect(items[0]).toHaveTextContent('Attempt 1 · failed at design · 20h ago');
 		expect(items[1]).toHaveTextContent('Attempt 2 · completed');
-		expect(within(strip).getByTestId('attempt-resume')).toHaveTextContent('Resumed from design · 19h ago');
+		expect(within(strip).getByTestId('attempt-resume')).toHaveTextContent('Resumed from design by Sapan Shah · 19h ago');
 		expect(strip).not.toHaveTextContent('from phase history');
+	});
+
+	it('a run that ran but whose daemon record is gone says so (not "no daemon assigned")', async () => {
+		route_fetch(run_detail({}, { daemon_id: null, started_at: Date.now() - H }));
+		render_page();
+		await ready();
+		expect(screen.getByText('daemon no longer registered')).toBeInTheDocument();
+		expect(screen.queryByText('no daemon assigned')).toBeNull();
 	});
 
 	it('says when the attempts were worked out from phase history', async () => {

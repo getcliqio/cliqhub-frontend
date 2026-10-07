@@ -179,6 +179,7 @@ export function Attempts_strip({ attempts, source }: { attempts: Run_attempt[] |
 							<span aria-hidden className="text-[var(--g-ink-4)]">→</span>
 							<span className="text-[var(--g-ink-2)]" data-testid="attempt-resume">
 								Resumed{a.from_phase ? <> from <span className="g-mono">{a.from_phase}</span></> : null}
+								{a.resumed_by ? <> by <b className="font-semibold text-[var(--g-ink)]">{a.resumed_by.display_name || a.resumed_by.username}</b></> : null}
 								{a.started_at ? <span className="text-[var(--g-ink-3)]" title={format_datetime(a.started_at)}> · {relative_time(a.started_at)}</span> : null}
 							</span>
 							<span aria-hidden className="text-[var(--g-ink-4)]">→</span>
@@ -406,6 +407,9 @@ function Details({ run, base, parent, children, run_link }: {
 							<span className="flex items-center gap-2">
 								<Link to={`${base}/daemons/${encodeURIComponent(run.daemon_id)}`} className="g-mono truncate text-[12px] hover:underline">{run.daemon_id}</Link>
 							</span>
+						) : run.started_at ? (
+							// It ran, but its daemon's record was removed (before 2026-10-07 removing a daemon erased it from its runs).
+							<span className="text-[var(--g-ink-3)]" title="This run did run on a daemon, but that daemon is no longer registered with CliqHub, so its name isn't known.">daemon no longer registered</span>
 						) : <span className="text-[var(--g-warn-text)]">no daemon assigned</span>}
 					</Field>
 					<div className="grid grid-cols-2 gap-3">

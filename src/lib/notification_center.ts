@@ -75,7 +75,7 @@ export interface Notification_check_data {
 }
 
 const LABELS: Record<string, string> = {
-	'run.started': 'Run started', 'run.resumed': 'Run resumed', 'run.completed': 'Run completed', 'run.failed': 'Run failed',
+	'run.started': 'Run started', 'run.resume_requested': 'Resume requested', 'run.resumed': 'Run resumed', 'run.completed': 'Run completed', 'run.failed': 'Run failed',
 	'run.crashed': 'Run crashed', 'run.cancelled': 'Run cancelled',
 	'phase.started': 'Phase started', 'phase.completed': 'Phase completed', 'phase.failed': 'Phase failed', 'phase.skipped': 'Phase skipped',
 	'phase.escalated': 'Gate escalated', 'phase.input_required': 'Input needed', 'phase.inputs_supplied': 'Input supplied',
