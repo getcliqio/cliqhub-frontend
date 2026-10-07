@@ -33,7 +33,7 @@ type Center = 'canvas' | 'yaml' | 'changes';
 type Save_state = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; at: number } | { kind: 'error'; message: string } | { kind: 'unnamed' } | { kind: 'signed_out' } | { kind: 'manual' };
 
 const TAB = (on: boolean) => `rounded-md px-3 py-1 text-[12.5px] ${on ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
-const GHOST = 'inline-flex h-8 items-center gap-1.5 rounded-md border border-[var(--g-line)] px-2.5 text-[12.5px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-40';
+const GHOST = 'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-[var(--g-line)] px-2.5 text-[12.5px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-40';
 export const AUTOSAVE_MS = 1500;
 export const VALIDATE_MS = 1200;
 
@@ -330,7 +330,7 @@ export function Gb_app() {
 			<div className="flex rounded-lg border border-[var(--g-line)] p-0.5" role="tablist" aria-label="View">
 				{(['canvas', 'yaml', 'changes'] as Center[]).map((c) => <button key={c} type="button" role="tab" aria-selected={center === c} onClick={() => set_center(c)} className={TAB(center === c)}>{c === 'yaml' ? 'YAML' : c[0].toUpperCase() + c.slice(1)}</button>)}
 			</div>
-			<button type="button" onClick={() => download(`${team_slug(team)}.team.yml`, team_to_yaml(team))} className={GHOST}>↓ Export</button>
+			<button type="button" onClick={() => download(`${team_slug(team)}.team.yml`, team_to_yaml(team))} aria-label="Export" title="Download team.yml" className={GHOST}>↓<span className="hidden xl:inline">Export</span></button>
 			<button type="button" onClick={start_over} className={GHOST} title="Start a new team">New</button>
 			{cancel ? (
 				<span className="inline-flex items-center gap-1.5" role="group" aria-label="Cancel editing" data-testid="cancel-confirm">

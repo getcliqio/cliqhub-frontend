@@ -361,7 +361,7 @@ describe('Graphite builder — workspace', () => {
 		const create = vi.fn(() => 'blob:x');
 		Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
 		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-		fireEvent.click(screen.getByText('↓ Export'));
+		fireEvent.click(screen.getByRole('button', { name: 'Export' }));
 		expect(create).toHaveBeenCalled();
 		expect(click).toHaveBeenCalled();
 	});

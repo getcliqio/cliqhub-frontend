@@ -385,14 +385,14 @@ function Crumbs({ scope, fallback, title }: { scope: View_scope; fallback: { org
 	const org = scope.org;
 	const realm_slug = scope.kind === 'realm' ? scope.realm.slug : fallback?.slug ?? null;
 	const realm_org = scope.kind === 'realm' ? scope.realm.org_slug : fallback?.org ?? null;
-	if (org) items.push({ to: `/home?org=${encodeURIComponent(org.slug)}`, node: <><Org_chip org={org} size={14} />{org.display_name || org.slug}</> });
-	else if (fallback) items.push({ to: `/home?org=${encodeURIComponent(fallback.org)}`, node: fallback.org });
-	if (realm_slug && realm_org) items.push({ to: `${realm_path(realm_org, realm_slug)}/inbox`, node: scope.kind === 'realm' ? realm_label(scope.realm) : realm_slug });
+	if (org) items.push({ to: `/home?org=${encodeURIComponent(org.slug)}`, node: <><Org_chip org={org} size={14} /><span className="truncate">{org.display_name || org.slug}</span></> });
+	else if (fallback) items.push({ to: `/home?org=${encodeURIComponent(fallback.org)}`, node: <span className="truncate">{fallback.org}</span> });
+	if (realm_slug && realm_org) items.push({ to: `${realm_path(realm_org, realm_slug)}/inbox`, node: <span className="truncate">{scope.kind === 'realm' ? realm_label(scope.realm) : realm_slug}</span> });
 	return (
 		<nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-[13px]">
 			{items.map((c, i) => (
 				<span key={i} className="flex min-w-0 items-center gap-1.5">
-					<Link to={c.to} className="inline-flex items-center gap-1.5 whitespace-nowrap font-medium text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{c.node}</Link>
+					<Link to={c.to} className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap font-medium text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{c.node}</Link>
 					<ChevronRight aria-hidden className="h-3 w-3 shrink-0 text-[var(--g-ink-4)]" />
 				</span>
 			))}
@@ -539,10 +539,11 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 				<div className="flex min-h-0 flex-col">
 					<header className="flex h-14 shrink-0 items-center gap-3 border-b border-[var(--g-line)] px-7">
 						<Crumbs scope={scope} fallback={scope.kind === 'realm' ? null : route_realm} title={title} />
-						<div className="ml-auto flex items-center gap-2">
+						<div className="ml-auto flex shrink-0 items-center gap-2">
 							{actions}
-							<Link to="/browse" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--g-line)] px-2.5 text-[12.5px] font-medium text-[var(--g-ink-2)] hover:text-[var(--g-ink)]" data-testid="marketplace-link">
-								<Store aria-hidden className="h-3.5 w-3.5" />Marketplace
+							<Link to="/browse" aria-label="Marketplace" title="Marketplace" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--g-line)] px-2.5 text-[12.5px] font-medium text-[var(--g-ink-2)] hover:text-[var(--g-ink)]" data-testid="marketplace-link">
+								{/* Icon only on narrower screens, where page actions need the room. */}
+								<Store aria-hidden className="h-3.5 w-3.5" /><span className="hidden xl:inline">Marketplace</span>
 							</Link>
 							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
 							<div className="relative">
