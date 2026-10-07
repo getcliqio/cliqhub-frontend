@@ -1,17 +1,17 @@
 /**
- * Right-hand panel. Nothing selected → the team (description, use for / not
- * for, inputs, tags, agents). A phase selected → only what that kind of phase
- * needs (see lib/builder/kinds): a role brief only where the kind has one.
+ * Right-hand slide-out panel. Opened for the team (description, use for / not
+ * for, inputs, tags, agents) or for a selected phase → only what that kind of
+ * phase needs (see lib/builder/kinds): a role brief only where the kind has one.
+ * Problems are not repeated here — they live in one list in the left panel.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, X } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { api_message } from '@/lib/use_bff_read';
 import type { GeneratedPhase, GeneratedTeam } from '@/lib/builder/store';
 import type { SourceEntry, TargetEntry } from '@/lib/types';
 import { CONNECTOR_AGENTS, KINDS, LLM_AGENTS, PALETTE, kind_of, role_need, type Kind_id } from '@/lib/builder/kinds';
 import { change_kind, connect, disconnect, duplicate_phase, remove_bridged, rename_phase, would_cycle, type Op_result } from '@/lib/builder/graph_ops';
-import type { Problem } from '@/lib/builder/checks';
 import { Kind_tile } from '@/components/gbuilder/gb_canvas';
 
 export const IN = 'w-full rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)] focus:border-[var(--g-acc-line)]';
@@ -41,18 +41,12 @@ function List_editor({ label, items, on_change, placeholder }: { label: string; 
 	);
 }
 
-function Problems({ items, team, on_change }: { items: Problem[]; team: GeneratedTeam; on_change: (t: GeneratedTeam) => void }) {
-	if (!items.length) return null;
+/** Closes the inspector (the canvas gets the room back). */
+function Close_button({ on_close }: { on_close: () => void }) {
 	return (
-		<div className="grid gap-1.5 border-b border-[var(--g-line)] px-4 py-3" data-testid="panel-problems">
-			{items.map((p) => (
-				<div key={p.id} className={`flex items-start gap-2 rounded-lg border px-2.5 py-1.5 text-[12px] ${p.level === 'error' ? 'border-[var(--g-bad-line)] text-[var(--g-bad-text)]' : 'border-[rgba(255,178,36,.35)] text-[var(--g-warn-text)]'}`}>
-					<span aria-hidden>{p.level === 'error' ? '●' : '!'}</span>
-					<span className="flex-1">{p.message}</span>
-					{p.fix ? <button type="button" onClick={() => on_change(p.fix!.apply(team))} className="shrink-0 font-semibold text-[var(--g-acc)]">{p.fix.label}</button> : null}
-				</div>
-			))}
-		</div>
+		<button type="button" aria-label="Close details" title="Close (Esc)" onClick={on_close} data-gb-close className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]">
+			<X aria-hidden className="h-4 w-4" />
+		</button>
 	);
 }
 
@@ -139,7 +133,7 @@ function Entries({ title, kind, items, on }: { title: string; kind: 'source' | '
 	);
 }
 
-export function Phase_panel({ team, name, problems, on_change, on_select }: { team: GeneratedTeam; name: string; problems: Problem[]; on_change: (t: GeneratedTeam, select?: string | null) => void; on_select: (n: string | null) => void }) {
+export function Phase_panel({ team, name, on_change, on_select, on_close }: { team: GeneratedTeam; name: string; on_change: (t: GeneratedTeam, select?: string | null) => void; on_select: (n: string | null) => void; on_close?: () => void }) {
 	const phase = team.phases.find((p) => p.name === name);
 	const [menu, set_menu] = useState(false);
 	const [draft_name, set_draft_name] = useState(name);
@@ -192,8 +186,8 @@ export function Phase_panel({ team, name, problems, on_change, on_select }: { te
 						</div>
 					) : null}
 				</div>
+				{on_close ? <Close_button on_close={on_close} /> : null}
 			</div>
-			<Problems items={problems} team={team} on_change={(t) => on_change(t)} />
 
 			{need !== 'none' ? <Role_editor team={team} phase={phase} need={need} label={k.role_label} on_role={set_role} /> : null}
 
@@ -284,7 +278,7 @@ export function Phase_panel({ team, name, problems, on_change, on_select }: { te
 	);
 }
 
-export function Team_panel({ team, problems, on_change, on_ask_ai, focus_inputs }: { team: GeneratedTeam; problems: Problem[]; on_change: (t: GeneratedTeam) => void; on_ask_ai: (prompt: string) => void; focus_inputs: number }) {
+export function Team_panel({ team, on_change, on_ask_ai, focus_inputs, on_close }: { team: GeneratedTeam; on_change: (t: GeneratedTeam) => void; on_ask_ai: (prompt: string) => void; focus_inputs: number; on_close?: () => void }) {
 	const inputs_ref = useRef<HTMLDivElement>(null);
 	useEffect(() => { if (focus_inputs) { inputs_ref.current?.scrollIntoView?.({ block: 'center' }); inputs_ref.current?.querySelector<HTMLInputElement>('input')?.focus(); } }, [focus_inputs]);
 	const scope = /^@([^/]+)\//.exec(team.name)?.[1] ?? null;
@@ -294,11 +288,13 @@ export function Team_panel({ team, problems, on_change, on_ask_ai, focus_inputs 
 	for (const p of team.phases) if (p.agent) counts.set(p.agent, (counts.get(p.agent) ?? 0) + 1);
 	return (
 		<div data-testid="team-panel">
-			<div className="border-b border-[var(--g-line)] px-4 py-3">
-				<b className="text-[14px]">Team</b>
-				<p className="text-[11.5px] text-[var(--g-ink-3)]">Click empty canvas to come back here.</p>
+			<div className="flex items-start gap-2 border-b border-[var(--g-line)] px-4 py-3">
+				<div className="min-w-0 flex-1">
+					<h2 className="text-[14px] font-bold" id="gb-inspector-title">Team</h2>
+					<p className="text-[11.5px] text-[var(--g-ink-3)]">Settings for the whole team.</p>
+				</div>
+				{on_close ? <Close_button on_close={on_close} /> : null}
 			</div>
-			<Problems items={problems} team={team} on_change={on_change} />
 			<Section title="Name & description">
 				<div className="flex items-center gap-1">
 					{scope ? <span className="g-mono text-[12px] text-[var(--g-ink-3)]">@{scope}/</span> : null}

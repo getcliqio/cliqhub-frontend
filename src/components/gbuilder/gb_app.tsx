@@ -1,7 +1,8 @@
 /**
- * The Graphite builder. Start screen until there is a team; then a three-pane
- * workspace: Build/AI on the left, Canvas · YAML · Changes in the middle, the
- * inspector (phase or team) on the right.
+ * The Graphite builder. Start screen until there is a team; then the
+ * workspace: Build/AI on the left (shape palette, AI chat, and the one
+ * Problems list), Canvas · YAML · Changes in the middle, and an inspector
+ * (phase or team) that slides out on the right only while it is needed.
  *
  * Reads/writes (no new endpoints):
  *   drafts     /v1/teams/create → /v1/teams/update (autosave, debounced)
@@ -9,25 +10,28 @@
  *   AI         /v1/teams/build {chat | suggest | improve_role | generate | status}
  *   publish    /v1/team_page/get (installs) · /v1/teams/publish · /v1/realms/add_team
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as RKeyboardEvent } from 'react';
+import { PanelRight } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { api_message } from '@/lib/use_bff_read';
 import { use_overview } from '@/lib/overview';
 import { useBuilder, useBuilderDispatch, type Builder_source, type GeneratedTeam, type SingleAction } from '@/lib/builder/store';
 import { clear_builder_session_restores } from '@/lib/builder/session_restore';
-import { KINDS, PALETTE, kind_of, type Kind_id } from '@/lib/builder/kinds';
+import { KINDS, kind_of, type Kind_id } from '@/lib/builder/kinds';
 import { add_after, add_root, diff_teams, duplicate_phase, remove_bridged } from '@/lib/builder/graph_ops';
 import { check_team, type Problem } from '@/lib/builder/checks';
 import { team_to_yaml } from '@/lib/builder/yaml_tools';
 import { team_scope, team_slug } from '@/lib/builder/publish';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
-import { Gb_canvas, KIND_MIME, Kind_tile, type Canvas_preview } from '@/components/gbuilder/gb_canvas';
+import { Gb_canvas, type Canvas_preview } from '@/components/gbuilder/gb_canvas';
 import { Phase_panel, Team_panel } from '@/components/gbuilder/gb_inspector';
 import { Gb_ai_panel } from '@/components/gbuilder/gb_ai_panel';
 import { Gb_yaml } from '@/components/gbuilder/gb_yaml';
 import { Gb_start } from '@/components/gbuilder/gb_start';
 import { Gb_publish } from '@/components/gbuilder/gb_publish';
+import { Problems_list } from '@/components/gbuilder/gb_problems';
+import { Shape_palette } from '@/components/gbuilder/gb_palette';
 
 type Center = 'canvas' | 'yaml' | 'changes';
 type Save_state = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; at: number } | { kind: 'error'; message: string } | { kind: 'unnamed' } | { kind: 'signed_out' } | { kind: 'manual' };
@@ -229,6 +233,8 @@ export function Gb_app() {
 	const [preview, set_preview] = useState<Canvas_preview | null>(null);
 	const [ai_req, set_ai_req] = useState<{ id: number; text: string } | null>(null);
 	const [focus_inputs, set_focus_inputs] = useState(0);
+	/** The team details are open in the inspector (a selected phase opens it on its own). */
+	const [team_open, set_team_open] = useState(false);
 	const [publishing, set_publishing] = useState(false);
 	const [baseline, set_baseline] = useState<{ set: boolean; team: GeneratedTeam | null; draft_id: string | null; is_new: boolean }>({ set: false, team: null, draft_id: null, is_new: false });
 	const [auto_create, set_auto_create] = useState(search.get('view') !== '1');
@@ -244,6 +250,7 @@ export function Gb_app() {
 		if (!core || core.valid || local.some((p) => p.level === 'error')) return local;
 		return [...local, ...core.errors.map((m, i) => ({ id: `core-${i}`, level: 'error' as const, phase: null, field: null, message: m }))];
 	}, [local, core]);
+	// Canvas marker only: phase → worst level (the list itself is in the left panel).
 	const by_phase = useMemo(() => {
 		const m = new Map<string, 'error' | 'warning'>();
 		for (const p of problems) if (p.phase && m.get(p.phase) !== 'error') m.set(p.phase, p.level);
@@ -256,7 +263,48 @@ export function Gb_app() {
 		if (select !== undefined) acts.push({ type: 'SELECT_PHASE', name: select });
 		dispatch({ type: 'BATCH', actions: acts });
 	}, [dispatch]);
-	const select = useCallback((name: string | null) => dispatch({ type: 'SELECT_PHASE', name }), [dispatch]);
+	const select = useCallback((name: string | null) => { set_team_open(false); set_focus_inputs(0); dispatch({ type: 'SELECT_PHASE', name }); }, [dispatch]);
+	/** Open the team details (optionally straight at the run inputs). */
+	const focus_panel = useRef(false);
+	const open_team = useCallback((at_inputs = false) => {
+		select(null);
+		set_team_open(true);
+		if (at_inputs) set_focus_inputs((x) => x + 1);
+		else focus_panel.current = true;
+	}, [select]);
+	const close_panel = useCallback(() => select(null), [select]);
+	const phase_open = Boolean(team && selected && team.phases.some((p) => p.name === selected));
+	const panel_open = Boolean(team) && (phase_open || team_open);
+	const panel_ref = useRef<HTMLElement | null>(null);
+	const opener = useRef<HTMLElement | null>(null);
+	const was_open = useRef(false);
+	// Focus: remember what opened the inspector; an explicit open moves focus into it,
+	// and closing it puts focus back where it came from.
+	useEffect(() => {
+		if (panel_open && !was_open.current) {
+			const a = document.activeElement as HTMLElement | null;
+			opener.current = a && a !== document.body && !panel_ref.current?.contains(a) ? a : null;
+		}
+		if (panel_open && focus_panel.current) {
+			focus_panel.current = false;
+			panel_ref.current?.querySelector<HTMLElement>('[data-gb-close]')?.focus();
+		}
+		if (!panel_open && was_open.current) {
+			const a = document.activeElement;
+			if (!a || a === document.body) {
+				const o = opener.current;
+				if (o?.isConnected) o.focus();
+				else document.querySelector<HTMLElement>('[data-testid="team-details"]')?.focus();
+			}
+			opener.current = null;
+		}
+		was_open.current = panel_open;
+	}, [panel_open, team_open]);
+	function on_panel_key(e: RKeyboardEvent) {
+		if (e.key !== 'Escape' || e.defaultPrevented) return;
+		e.preventDefault();
+		close_panel();
+	}
 	const ask_ai = useCallback((text: string) => { set_left('ai'); set_ai_req((r) => ({ id: (r?.id ?? 0) + 1, text })); }, []);
 
 	function add_kind(kind: Kind_id) {
@@ -276,14 +324,14 @@ export function Gb_app() {
 			const mod = e.metaKey || e.ctrlKey;
 			if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); dispatch({ type: 'UNDO' }); return; }
 			if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); set_left('ai'); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('[aria-label="Ask AI"]')?.focus(), 0); return; }
-			if (e.key === 'Escape') { dispatch({ type: 'SELECT_PHASE', name: null }); return; }
+			if (e.key === 'Escape') { if (!e.defaultPrevented) close_panel(); return; }
 			if (!sel) return;
 			if (e.key === 'Backspace' || e.key === 'Delete') { e.preventDefault(); const r = remove_bridged(t, sel); if (r.ok) change(r.team, null); return; }
 			if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); const r = duplicate_phase(t, sel); if (r.ok) change(r.team, r.name ?? null); }
 		};
 		window.addEventListener('keydown', on);
 		return () => window.removeEventListener('keydown', on);
-	}, [change, dispatch, publishing]);
+	}, [change, close_panel, dispatch, publishing]);
 
 	function start(t: GeneratedTeam) {
 		set_baseline({ set: true, team: null, draft_id: null, is_new: true });
@@ -319,8 +367,6 @@ export function Gb_app() {
 	}
 	const cancel_question = is_new ? 'Discard this new team?' : 'Discard your changes?';
 
-	const errors = problems.filter((p) => p.level === 'error');
-	const warnings = problems.filter((p) => p.level === 'warning');
 	const need_roles = team ? team.phases.filter((p) => KINDS[kind_of(p)].role === 'required').length : 0;
 	const title = team ? (team.name.replace(/^@[^/]+\//, '') || 'untitled-team') : 'New team';
 
@@ -349,9 +395,9 @@ export function Gb_app() {
 		<Graphite_shell data={overview.data} title={title} actions={actions}>
 			<div className="theme-graphite g-app h-full min-h-0" data-testid="builder">
 				{!team ? <Gb_start on_team={start} /> : (
-					<div className="grid h-full min-h-0 grid-cols-[240px_minmax(0,1fr)_340px]">
-						{/* left: build / AI */}
-						<aside className="flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-input)]">
+					<div className="flex h-full min-h-0">
+						{/* left: build / AI, then the one Problems list */}
+						<aside className="flex w-[232px] shrink-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-input)]" aria-label="Build tools">
 							<div className="grid grid-cols-2 border-b border-[var(--g-line)]" role="tablist" aria-label="Build or AI">
 								<button type="button" role="tab" aria-selected={left === 'build'} onClick={() => set_left('build')} className={`py-2.5 text-[13px] ${left === 'build' ? 'border-b-2 border-[var(--g-acc)] font-semibold' : 'text-[var(--g-ink-3)]'}`}>Build</button>
 								<button type="button" role="tab" aria-selected={left === 'ai'} onClick={() => set_left('ai')} className={`py-2.5 text-[13px] ${left === 'ai' ? 'border-b-2 border-[var(--g-acc)] font-semibold' : 'text-[var(--g-ink-3)]'}`}>✦ AI</button>
@@ -359,61 +405,27 @@ export function Gb_app() {
 							{left === 'ai' ? (
 								<div className="min-h-0 flex-1"><Gb_ai_panel team={team} dispatch={dispatch} on_preview={set_preview} request={ai_req} /></div>
 							) : (
-								<div className="min-h-0 flex-1 overflow-y-auto px-3 py-3" data-testid="build-panel">
-									<div className="mb-2 flex items-baseline px-1"><span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Add a phase</span><span className="ml-auto text-[10.5px] text-[var(--g-ink-3)]">drag or click</span></div>
-									<div className="grid gap-1.5">
-										{PALETTE.map((k) => (
-											<button
-												key={k}
-												type="button"
-												draggable
-												onDragStart={(e) => { e.dataTransfer.setData(KIND_MIME, k); e.dataTransfer.setData('text/plain', k); e.dataTransfer.effectAllowed = 'copy'; }}
-												onClick={() => add_kind(k)}
-												title={selected ? `Add after ${selected}` : 'Add to the canvas'}
-												className="flex cursor-grab items-center gap-2.5 rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] px-2.5 py-2 text-left hover:border-[var(--g-acc-line)] active:cursor-grabbing"
-												data-testid={`tile-${k}`}
-											>
-												<Kind_tile kind={k} size={26} />
-												<span className="min-w-0"><b className="block text-[12.5px]">{KINDS[k].label}</b><span className="block truncate text-[11px] text-[var(--g-ink-3)]">{KINDS[k].blurb}</span></span>
-											</button>
-										))}
-									</div>
-									<div className="mb-1.5 mt-5 flex items-baseline px-1"><span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Outline</span><span className="ml-auto text-[10.5px] text-[var(--g-ink-3)]">{team.phases.filter((p) => !p.is_support).length} phases</span></div>
-									<ul data-testid="outline">
-										{team.phases.filter((p) => !p.is_support).map((p) => (
-											<li key={p.name}>
-												<button type="button" onClick={() => select(p.name)} className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[12.5px] ${selected === p.name ? 'bg-[var(--g-soft)] text-[var(--g-ink)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)]'}`}>
-													<i aria-hidden className="h-2 w-2 shrink-0 rounded-[2px]" style={{ background: KINDS[kind_of(p)].color }} />
-													<span className="truncate">{p.name}</span>
-													{by_phase.get(p.name) ? <i aria-label={by_phase.get(p.name) === 'error' ? 'has errors' : 'has warnings'} className="ml-auto h-1.5 w-1.5 rounded-full" style={{ background: by_phase.get(p.name) === 'error' ? 'var(--g-bad)' : 'var(--g-warn)' }} /> : null}
-												</button>
-											</li>
-										))}
-									</ul>
-									{team.phases.some((p) => p.is_support) ? (
-										<>
-											<p className="mb-1 mt-4 px-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Support</p>
-											<ul>{team.phases.filter((p) => p.is_support).map((p) => <li key={p.name}><button type="button" onClick={() => select(p.name)} className="w-full truncate rounded-md px-2 py-1 text-left text-[12.5px] text-[var(--g-ink-3)] hover:bg-[var(--g-soft)]">{p.name}</button></li>)}</ul>
-										</>
-									) : null}
+								<div className="shrink-0 px-3 py-3" data-testid="build-panel">
+									<Shape_palette selected={phase_open ? selected : null} on_add={add_kind} />
 								</div>
 							)}
+							<div className={left === 'ai' ? 'flex max-h-[38%] shrink-0 flex-col' : 'flex min-h-0 flex-1 flex-col'}>
+								<Problems_list team={team} problems={problems} on_open={(phase) => (phase && team.phases.some((p) => p.name === phase) ? select(phase) : open_team())} on_change={(t) => change(t)} />
+							</div>
 						</aside>
 
 						{/* center */}
-						<section className="relative flex min-h-0 flex-col">
-							<div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--g-line)] px-3 py-2" data-testid="status-pills">
-								{errors.length ? (
-									<button type="button" onClick={() => { const p = errors.find((x) => x.phase); if (p?.phase) select(p.phase); else select(null); }} className="rounded-full bg-[var(--g-bad-soft)] px-2.5 py-0.5 text-[12px] text-[var(--g-bad)]">✕ {errors.length} problem{errors.length === 1 ? '' : 's'}</button>
-								) : team.phases.length ? <span className="rounded-full bg-[var(--g-ok-soft)] px-2.5 py-0.5 text-[12px] text-[var(--g-ok)]">✓ Valid workflow</span> : null}
+						<section className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+							<div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--g-line)] px-3 py-2" data-testid="canvas-toolbar">
 								{need_roles ? <span className="rounded-full bg-[var(--g-soft)] px-2.5 py-0.5 text-[12px] text-[var(--g-ink-2)]">{need_roles} role brief{need_roles === 1 ? '' : 's'}</span> : null}
-								{warnings.slice(0, 2).map((w) => <button key={w.id} type="button" onClick={() => select(w.phase)} className="max-w-[320px] truncate rounded-full bg-[var(--g-warn-soft)] px-2.5 py-0.5 text-[12px] text-[var(--g-warn-text)]">! {w.phase && !w.message.startsWith(w.phase) ? `${w.phase}: ` : ''}{w.message}</button>)}
-								{warnings.length > 2 ? <span className="text-[12px] text-[var(--g-ink-3)]">+{warnings.length - 2} more</span> : null}
-								<button type="button" onClick={() => dispatch({ type: 'UNDO' })} disabled={!state.history.length} className="ml-auto grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)] disabled:opacity-30" aria-label="Undo" title="Undo (⌘Z)">↶</button>
+								<button type="button" onClick={() => (team_open && !phase_open ? close_panel() : open_team())} aria-expanded={team_open && !phase_open} aria-controls="gb-inspector" className={`ml-auto ${GHOST}`} data-testid="team-details" title="Team name, description, inputs and agents">
+									<PanelRight aria-hidden className="h-3.5 w-3.5" />Team details
+								</button>
+								<button type="button" onClick={() => dispatch({ type: 'UNDO' })} disabled={!state.history.length} className="grid h-8 w-8 place-items-center rounded-md border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)] disabled:opacity-30" aria-label="Undo" title="Undo (⌘Z)">↶</button>
 							</div>
 							<div className="min-h-0 flex-1">
 								{center === 'canvas' ? (
-									<Gb_canvas team={team} selected={selected} problems={by_phase} on_select={select} on_change={change} on_inputs={() => { select(null); set_focus_inputs((x) => x + 1); }} preview={preview} />
+									<Gb_canvas team={team} selected={selected} problems={by_phase} on_select={select} on_change={change} on_inputs={() => open_team(true)} preview={preview} />
 								) : center === 'yaml' ? (
 									<Gb_yaml team={team} selected={selected} problems={problems} on_team={(t) => change(t)} on_select={select} on_role={(name, content) => change({ ...team, roles: team.roles.map((r) => (r.name === name ? { ...r, content } : r)) })} />
 								) : (
@@ -427,12 +439,21 @@ export function Gb_app() {
 							) : null}
 						</section>
 
-						{/* right: inspector */}
-						<aside className="min-h-0 overflow-y-auto border-l border-[var(--g-line)] bg-[var(--g-input)]" data-testid="inspector">
-							{selected && team.phases.some((p) => p.name === selected)
-								? <Phase_panel team={team} name={selected} problems={problems.filter((p) => p.phase === selected)} on_change={change} on_select={select} />
-								: <Team_panel team={team} problems={problems.filter((p) => !p.phase)} on_change={(t) => change(t)} on_ask_ai={ask_ai} focus_inputs={focus_inputs} />}
-						</aside>
+						{/* right: inspector — slides out only while a phase or the team details are open */}
+						{panel_open ? (
+							<aside
+								id="gb-inspector"
+								ref={panel_ref}
+								aria-label={phase_open ? `Phase details: ${selected}` : 'Team details'}
+								onKeyDown={on_panel_key}
+								className="g-slide-in-right min-h-0 w-[340px] shrink-0 overflow-y-auto border-l border-[var(--g-line)] bg-[var(--g-input)] shadow-[var(--g-drawer-shadow)]"
+								data-testid="inspector"
+							>
+								{phase_open && selected
+									? <Phase_panel team={team} name={selected} on_change={change} on_select={select} on_close={close_panel} />
+									: <Team_panel team={team} on_change={(t) => change(t)} on_ask_ai={ask_ai} focus_inputs={focus_inputs} on_close={close_panel} />}
+							</aside>
+						) : null}
 					</div>
 				)}
 				{publishing && team ? (

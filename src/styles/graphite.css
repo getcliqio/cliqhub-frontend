@@ -205,6 +205,15 @@
 /* Workflow graph: gate loop-back arcs march toward the phase they route to. */
 @keyframes g-march { to { stroke-dashoffset: -20; } }
 
+/* Builder inspector slides in from the right; the app sidebar eases between full and rail widths. */
+@keyframes g-slide-in-right { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.theme-graphite .g-slide-in-right { animation: g-slide-in-right 0.18s ease-out; }
+.theme-graphite .g-side-cols { transition: grid-template-columns 0.18s ease; }
+@media (prefers-reduced-motion: reduce) {
+	.theme-graphite .g-slide-in-right { animation: none; }
+	.theme-graphite .g-side-cols { transition: none; }
+}
+
 /* Rendered markdown (review briefs, artifacts, chat) — Graphite type scale. */
 .theme-graphite .g-md { color: var(--g-ink-2); font-size: 13.5px; line-height: 1.6; overflow-wrap: anywhere; }
 .theme-graphite .g-md > :first-child { margin-top: 0; }

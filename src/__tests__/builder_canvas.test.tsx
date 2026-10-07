@@ -9,6 +9,8 @@ vi.mock('@/lib/auth_context', () => ({ useAuth: () => ({ user: { id: 'u1', usern
 
 import { Gb_canvas, KIND_MIME } from '@/components/gbuilder/gb_canvas';
 import { Phase_panel, Team_panel } from '@/components/gbuilder/gb_inspector';
+import { Problems_list } from '@/components/gbuilder/gb_problems';
+import { Shape_palette } from '@/components/gbuilder/gb_palette';
 import { check_team } from '@/lib/builder/checks';
 
 const TEAM: GeneratedTeam = {
@@ -40,7 +42,7 @@ function Phase_harness({ name, start = TEAM }: { name: string; start?: Generated
 	const [sel, set_sel] = useState<string | null>(name);
 	latest = team;
 	return sel && team.phases.some((p) => p.name === sel)
-		? <Phase_panel team={team} name={sel} problems={check_team(team).filter((p) => p.phase === sel)} on_change={(t, s) => { set_team(t); if (s !== undefined) set_sel(s); }} on_select={set_sel} />
+		? <Phase_panel team={team} name={sel} on_change={(t, s) => { set_team(t); if (s !== undefined) set_sel(s); }} on_select={set_sel} />
 		: <output data-testid="none">none</output>;
 }
 const deps = (n: string) => latest.phases.find((p) => p.name === n)?.depends_on;
@@ -210,12 +212,13 @@ describe('Phase_panel', () => {
 		expect((await screen.findByRole('alert')).textContent).toBe('LLM busy');
 	});
 
-	it('problems offer one-click fixes', () => {
+	it('does not repeat problems (they live in the left panel list) and has a close button', () => {
 		const bad = { ...TEAM, phases: TEAM.phases.map((p) => (p.name === 'tests' ? { ...p, depends_on: ['desing'] } : p)) };
-		render(<Phase_harness name="tests" start={bad} />);
-		const fix = screen.getByRole('button', { name: /design/ });
-		fireEvent.click(fix);
-		expect(deps('tests')).toEqual(['design']);
+		const on_close = vi.fn();
+		render(<Phase_panel team={bad} name="tests" on_change={() => {}} on_select={() => {}} on_close={on_close} />);
+		expect(screen.queryByTestId('panel-problems')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+		expect(on_close).toHaveBeenCalled();
 	});
 
 	it('⋯ menu: duplicate and delete (bridged)', () => {
@@ -232,12 +235,69 @@ describe('Team_panel', () => {
 		function H() {
 			const [team, set_team] = useState(TEAM);
 			latest = team;
-			return <Team_panel team={team} problems={[]} on_change={set_team} on_ask_ai={ask} focus_inputs={0} />;
+			return <Team_panel team={team} on_change={set_team} on_ask_ai={ask} focus_inputs={0} />;
 		}
 		render(<H />);
 		expect(screen.getByRole('region', { name: 'Use it for' })).toBeTruthy();
 		expect(screen.getByRole('region', { name: 'Not for' })).toBeTruthy();
 		fireEvent.click(within(screen.getByRole('region', { name: 'Use it for' })).getByRole('button', { name: /Suggest/ }));
 		expect(ask).toHaveBeenCalledWith(expect.stringContaining('use_when'));
+	});
+});
+
+describe('Problems_list', () => {
+	const bad: GeneratedTeam = { ...TEAM, phases: TEAM.phases.map((p) => (p.name === 'tests' ? { ...p, depends_on: ['desing'] } : p.name === 'check' ? { ...p, commands: [] } : p)) };
+
+	function List_harness({ on_open }: { on_open: (p: string | null) => void }) {
+		const [team, set_team] = useState(bad);
+		latest = team;
+		return <Problems_list team={team} problems={check_team(team)} on_open={on_open} on_change={set_team} />;
+	}
+
+	it('counts errors and warnings, errors first; each row opens its phase', () => {
+		const on_open = vi.fn();
+		render(<List_harness on_open={on_open} />);
+		const list = screen.getByTestId('problems');
+		const errs = check_team(bad).filter((p) => p.level === 'error').length;
+		expect(within(screen.getByTestId('problems-count')).getByText(`${errs} error${errs === 1 ? '' : 's'}`)).toBeTruthy();
+		const rows = within(list).getAllByRole('listitem');
+		expect(rows.length).toBe(check_team(bad).length);
+		expect(rows[0].textContent).toContain('✕');
+		fireEvent.click(within(list).getAllByTitle('Open check')[0]);
+		expect(on_open).toHaveBeenCalledWith('check');
+	});
+
+	it('quick fixes apply in place', () => {
+		render(<List_harness on_open={() => {}} />);
+		const fix = within(screen.getByTestId('problems')).getAllByRole('button').find((b) => !b.title && /design/.test(b.textContent ?? ''))!;
+		fireEvent.click(fix);
+		expect(deps('tests')).toEqual(['design']);
+	});
+
+	it('says the workflow is valid when there is nothing to fix', () => {
+		render(<Problems_list team={TEAM} problems={[]} on_open={() => {}} on_change={() => {}} />);
+		expect(screen.getByText('✓ Valid workflow')).toBeTruthy();
+		expect(screen.queryAllByRole('listitem')).toHaveLength(0);
+	});
+});
+
+describe('Shape_palette', () => {
+	it('is a compact grid of every phase kind; tooltips carry the description; click adds', () => {
+		const on_add = vi.fn();
+		render(<Shape_palette selected="design" on_add={on_add} />);
+		const tiles = within(screen.getByTestId('palette')).getAllByRole('button');
+		expect(tiles.map((t) => t.dataset.testid)).toEqual(['tile-agent', 'tile-gate', 'tile-human', 'tile-connector', 'tile-script', 'tile-fetch', 'tile-team']);
+		// name only on the tile; the blurb is in the tooltip
+		expect(screen.getByTestId('tile-gate').textContent).toBe('◆Gate');
+		expect(screen.getByTestId('tile-gate').getAttribute('title')).toMatch(/checks · pass or route back.*add after design/);
+		fireEvent.click(screen.getByTestId('tile-human'));
+		expect(on_add).toHaveBeenCalledWith('human');
+	});
+
+	it('tiles drag the kind onto the canvas', () => {
+		render(<Shape_palette selected={null} on_add={() => {}} />);
+		const set = vi.fn();
+		fireEvent.dragStart(screen.getByTestId('tile-script'), { dataTransfer: { setData: set, effectAllowed: '' } });
+		expect(set).toHaveBeenCalledWith(KIND_MIME, 'script');
 	});
 });

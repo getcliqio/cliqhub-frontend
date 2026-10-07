@@ -5,6 +5,10 @@
  * `.theme-graphite` tokens; pages still on the legacy shell are unaffected.
  * The sidebar tree and the switcher both read the single BFF overview
  * payload, so there are no per-org calls from the browser.
+ *
+ * The sidebar collapses to an icon rail (toggle at its foot; the choice is
+ * remembered in this browser). The team builder collapses it automatically
+ * and leaves the remembered choice alone, so other pages look as before.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router';
@@ -33,6 +37,8 @@ import {
 	UserCog,
 	Zap,
 	Palette,
+	PanelLeftClose,
+	PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { apply_theme, is_theme, read_theme, use_theme, type Theme } from '@/lib/theme';
@@ -277,8 +283,34 @@ interface Nav_item {
 	badge?: number;
 }
 
-function Side_link({ item }: { item: Nav_item }) {
+function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolean }) {
 	const Icon = item.icon;
+	if (compact) {
+		const label = item.badge ? `${item.label} (${item.badge})` : item.label;
+		return (
+			<NavLink
+				to={item.to}
+				end={item.end}
+				aria-label={label}
+				title={label}
+				className={({ isActive }) =>
+					`relative mx-auto grid h-9 w-9 place-items-center rounded-lg transition ${isActive
+						? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]'
+						: 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
+			>
+				{({ isActive }) => (
+					<>
+						<Icon aria-hidden className={`h-4 w-4 ${isActive ? 'text-[var(--g-acc)]' : 'opacity-70'}`} strokeWidth={1.8} />
+						{item.badge ? (
+							<span aria-hidden className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[var(--g-warn)] px-1 text-center text-[9.5px] font-bold leading-4 text-[var(--g-on-color)]" data-testid="rail-badge">
+								{item.badge > 99 ? '99+' : item.badge}
+							</span>
+						) : null}
+					</>
+				)}
+			</NavLink>
+		);
+	}
 	return (
 		<NavLink
 			to={item.to}
@@ -406,6 +438,19 @@ function Crumbs({ scope, fallback, title }: { scope: View_scope; fallback: { org
 	);
 }
 
+export const SIDEBAR_KEY = 'cliqhub.sidebar_collapsed';
+
+function read_collapsed(): boolean {
+	try { return localStorage.getItem(SIDEBAR_KEY) === '1'; } catch { return false; }
+}
+function write_collapsed(v: boolean) {
+	try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0'); } catch { /* storage unavailable */ }
+}
+/** Routes that want the canvas: the sidebar starts collapsed there. */
+export function auto_collapse(pathname: string): boolean {
+	return pathname === '/builder' || pathname.startsWith('/builder/');
+}
+
 /** Pages that belong to one organization (the shell asks for one before showing them). */
 const ORG_PAGES = ['/home', '/hugs', '/inbox', '/teams', '/agents', '/notifications', '/realms', '/o/'];
 
@@ -418,6 +463,17 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const params = useParams();
 	const [switcher_open, set_switcher_open] = useState(false);
 	const [menu_open, set_menu_open] = useState(false);
+	// Remembered choice (outside the builder) and a builder-only override.
+	const [collapsed_pref, set_collapsed_pref] = useState(read_collapsed);
+	const [expanded_here, set_expanded_here] = useState(false);
+	const auto = auto_collapse(location.pathname);
+	const collapsed = auto ? !expanded_here : collapsed_pref;
+	// Leaving the builder drops its override, so the remembered choice comes back.
+	useEffect(() => { if (!auto) set_expanded_here(false); }, [auto]);
+	function toggle_sidebar() {
+		if (auto) { set_expanded_here((v) => !v); return; }
+		set_collapsed_pref((v) => { write_collapsed(!v); return !v; });
+	}
 	const scope = use_view_scope(data, current_realm_id);
 	// Remember the org for the next visit in this browser.
 	const scope_org_slug = scope.org?.slug ?? null;
@@ -474,11 +530,11 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	return (
 		<div className="theme-graphite g-app flex h-screen flex-col overflow-hidden">
 			<ImpersonationRibbon />
-			<div className="grid min-h-0 flex-1 grid-cols-[252px_minmax(0,1fr)]">
-				<aside className="flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-side)] px-3 py-4" aria-label="Primary">
-					<Link to="/home" className="mb-4 flex items-center gap-2.5 px-2 text-[14.5px] font-semibold tracking-tight">
+			<div className={`g-side-cols grid min-h-0 flex-1 ${collapsed ? 'grid-cols-[60px_minmax(0,1fr)]' : 'grid-cols-[252px_minmax(0,1fr)]'}`}>
+				<aside className={`flex min-h-0 flex-col border-r border-[var(--g-line)] bg-[var(--g-side)] py-4 ${collapsed ? 'px-2' : 'px-3'}`} aria-label="Primary" data-collapsed={collapsed ? 'true' : 'false'} data-testid="sidebar">
+					<Link to="/home" aria-label={collapsed ? 'CliqHub home' : undefined} title={collapsed ? 'CliqHub' : undefined} className={`mb-4 flex items-center gap-2.5 text-[14.5px] font-semibold tracking-tight ${collapsed ? 'justify-center' : 'px-2'}`}>
 						<Cliq_mark class_name="h-6 w-6" title="CliqHub" />
-						CliqHub
+						{collapsed ? null : 'CliqHub'}
 					</Link>
 
 					<div className="relative mb-3">
@@ -488,17 +544,40 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							aria-haspopup="dialog"
 							aria-expanded={switcher_open}
 							aria-label={`Switch organization (current: ${scope_text(scope)})`}
-							className={`flex w-full items-center gap-2.5 rounded-[10px] border bg-[var(--g-panel)] py-2 pl-2.5 text-left pr-2.5 ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[var(--g-line-strong)]'}`}
+							title={collapsed ? `Organization: ${scope_text(scope)}` : undefined}
+							className={`flex w-full items-center rounded-[10px] border bg-[var(--g-panel)] text-left ${collapsed ? 'justify-center p-1.5' : 'gap-2.5 py-2 pl-2.5 pr-2.5'} ${switcher_open ? 'border-[var(--g-acc-line)]' : 'border-[var(--g-line)] hover:border-[var(--g-line-strong)]'}`}
 							data-testid="view-switcher"
 						>
-							<Scope_label scope={scope} />
-							<ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-[var(--g-ink-3)]" />
+							{collapsed ? (
+								scope.org
+									? <Org_chip org={scope.org} size={28} />
+									: <span className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] bg-[var(--g-soft)]"><Building2 className="h-4 w-4 text-[var(--g-ink-3)]" aria-hidden /></span>
+							) : (
+								<>
+									<Scope_label scope={scope} />
+									<ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-[var(--g-ink-3)]" />
+								</>
+							)}
 						</button>
 						{switcher_open ? (
 							<Org_switcher data={data} scope={scope} on_close={() => set_switcher_open(false)} />
 						) : null}
 					</div>
 
+					{collapsed ? (
+						<nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto" data-testid="sidebar-rail">
+							<div className="space-y-1">
+								{nav.map((item) => <Side_link key={item.label} item={item} compact />)}
+								<Side_link item={teams_item} compact />
+							</div>
+							{is_org_admin ? (
+								<div data-testid="nav-org-admin">
+									<div className="mx-2 my-3 border-t border-[var(--g-line)]" role="separator" aria-label="Org admin" />
+									<div className="space-y-1">{org_admin.map((item) => <Side_link key={item.label} item={item} compact />)}</div>
+								</div>
+							) : null}
+						</nav>
+					) : (
 					<nav aria-label="Main" className="min-h-0 flex-1 overflow-y-auto">
 						<div className="space-y-0.5">
 							{nav.map((item) => <Side_link key={item.label} item={item} />)}
@@ -539,6 +618,18 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							</div>
 						) : null}
 					</nav>
+					)}
+					<button
+						type="button"
+						onClick={toggle_sidebar}
+						aria-expanded={!collapsed}
+						aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+						className={`mt-2 flex h-8 shrink-0 items-center gap-2 rounded-lg text-[12.5px] text-[var(--g-ink-3)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)] ${collapsed ? 'mx-auto w-9 justify-center' : 'px-2.5'}`}
+						data-testid="sidebar-toggle"
+					>
+						{collapsed ? <PanelLeftOpen aria-hidden className="h-4 w-4" /> : <><PanelLeftClose aria-hidden className="h-4 w-4" />Collapse</>}
+					</button>
 				</aside>
 
 				<div className="flex min-h-0 flex-col">
