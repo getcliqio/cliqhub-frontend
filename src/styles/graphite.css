@@ -101,11 +101,12 @@
 
 
 /*
- * Light (variant C: white content, lavender sidebar). Signed-in app only
- * (`.g-app`); landing, sign-in and the public marketplace stay dark.
+ * Light (variant C: white content, lavender sidebar). Every Graphite surface:
+ * the signed-in app and the signed-out pages (landing, sign-in, invites,
+ * marketplace) follow the same choice; dark is the default.
  * `lib/theme.ts` sets `data-g-theme` on <html> from the person's choice.
  */
-:root[data-g-theme='light'] .theme-graphite.g-app {
+:root[data-g-theme='light'] .theme-graphite {
 	--g-bg: #ffffff;
 	--g-side: #f6f3ff;
 	--g-panel: #ffffff;
@@ -165,8 +166,8 @@
 	color-scheme: light;
 }
 /* On white, cards need a hint of lift. */
-:root[data-g-theme='light'] .theme-graphite.g-app [class*='bg-[var(--g-panel)]'] { box-shadow: var(--g-card-shadow); }
-:root[data-g-theme='light'] .theme-graphite.g-app select { color-scheme: light; }
+:root[data-g-theme='light'] .theme-graphite [class*='bg-[var(--g-panel)]'] { box-shadow: var(--g-card-shadow); }
+:root[data-g-theme='light'] .theme-graphite select { color-scheme: light; }
 
 .theme-graphite ::selection {
 	background: var(--g-acc);

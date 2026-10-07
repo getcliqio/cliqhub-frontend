@@ -8,8 +8,14 @@ import {
 	type ReactNode,
 } from 'react';
 
+import { apply_theme, resolve_theme, use_theme } from '@/lib/theme';
+
 /**
- * App-wide theme (light / dark / follow-system) + colour palette
+ * App-wide theme (light / dark / follow-system) + colour palette.
+ * The light/dark axis is owned by `lib/theme.ts` (default dark, saved under
+ * `cliqhub.theme`, painted on <html> by `paint()`); this provider only exposes
+ * it to the older components (`useTheme`) so the two can never disagree.
+ * Palette
  * (default indigo vs. MeasureOne navy). Both persist to localStorage
  * and apply CSS classes to <html>:
  *   - `dark` for the light/dark axis (existing Tailwind `dark:*` variant)
@@ -33,21 +39,9 @@ interface Theme_context_value {
 	toggle_palette: () => void;
 }
 
-const STORAGE_KEY = 'cliqhub.theme';
 const PALETTE_STORAGE_KEY = 'cliqhub.palette';
 
 const Theme_context = createContext<Theme_context_value | null>(null);
-
-function read_stored(): Theme_choice {
-	if (typeof window === 'undefined') return 'system';
-	try {
-		const raw = window.localStorage.getItem(STORAGE_KEY);
-		if (raw === 'light' || raw === 'dark' || raw === 'system') return raw;
-	} catch {
-		/* ignore storage failures */
-	}
-	return 'system';
-}
 
 function read_stored_palette(): Palette_choice {
 	if (typeof window === 'undefined') return 'default';
@@ -65,18 +59,6 @@ function system_prefers_dark(): boolean {
 	return window.matchMedia('(prefers-color-scheme: dark)').matches;
 }
 
-function apply_class(resolved: 'light' | 'dark') {
-	if (typeof document === 'undefined') return;
-	const root = document.documentElement;
-	if (resolved === 'dark') {
-		root.classList.add('dark');
-		root.setAttribute('data-theme', 'dark');
-	} else {
-		root.classList.remove('dark');
-		root.setAttribute('data-theme', 'light');
-	}
-}
-
 function apply_palette_class(palette: Palette_choice) {
 	if (typeof document === 'undefined') return;
 	const root = document.documentElement;
@@ -90,7 +72,7 @@ function apply_palette_class(palette: Palette_choice) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-	const [choice, set_choice_state] = useState<Theme_choice>(() => read_stored());
+	const choice = use_theme();
 	const [system_dark, set_system_dark] = useState<boolean>(() => system_prefers_dark());
 	const [palette, set_palette_state] = useState<Palette_choice>(() => read_stored_palette());
 
@@ -102,39 +84,17 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		return () => mq.removeEventListener('change', on_change);
 	}, []);
 
-	const resolved: 'light' | 'dark' = choice === 'system' ? (system_dark ? 'dark' : 'light') : choice;
-
-	useEffect(() => {
-		apply_class(resolved);
-	}, [resolved]);
+	// `system_dark` re-renders on an OS switch; `resolve_theme` reads the same media query.
+	const resolved: 'light' | 'dark' = choice === 'system' ? (system_dark ? 'dark' : 'light') : resolve_theme(choice);
 
 	useEffect(() => {
 		apply_palette_class(palette);
 	}, [palette]);
 
-	const set_choice = useCallback((next: Theme_choice) => {
-		set_choice_state(next);
-		try {
-			window.localStorage.setItem(STORAGE_KEY, next);
-		} catch {
-			/* ignore storage failures */
-		}
-	}, []);
+	const set_choice = useCallback((next: Theme_choice) => apply_theme(next), []);
 
-	const toggle = useCallback(() => {
-		set_choice_state((prev) => {
-			// Simple two-state cycle for the top-bar button: light <-> dark.
-			// Users who want to follow system can still pick it via the
-			// select control in Settings.
-			const next: Theme_choice = prev === 'dark' ? 'light' : 'dark';
-			try {
-				window.localStorage.setItem(STORAGE_KEY, next);
-			} catch {
-				/* ignore storage failures */
-			}
-			return next;
-		});
-	}, []);
+	// Simple two-state cycle for the top-bar button: light <-> dark ("system" stays in Settings).
+	const toggle = useCallback(() => apply_theme(resolved === 'dark' ? 'light' : 'dark'), [resolved]);
 
 	const set_palette = useCallback((next: Palette_choice) => {
 		set_palette_state(next);

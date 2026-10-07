@@ -9,6 +9,7 @@ import { AlertCircle } from 'lucide-react';
 import { Cliq_mark } from '@/components/cliq_mark';
 import { Brand_panel } from '@/pages/login_page';
 import '@/styles/graphite.css';
+import { Theme_switch } from '@/components/graphite/theme_switch';
 
 export const AUTH_INPUT = 'h-11 w-full rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-3.5 text-[14px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-3)] focus:border-[var(--g-acc-line)] focus:ring-4 focus:ring-[var(--g-acc-soft)]';
 export const AUTH_PRIMARY = 'flex h-11 w-full items-center justify-center rounded-[10px] bg-[var(--g-acc)] text-[14px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:cursor-not-allowed disabled:opacity-40';
@@ -18,6 +19,7 @@ export const AUTH_SECONDARY = 'flex h-11 w-full items-center justify-center roun
 export function Auth_shell({ children }: { children: ReactNode }) {
 	return (
 		<div className="theme-graphite grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+			<Theme_switch class_name="fixed right-4 top-4 z-20" />
 			<Brand_panel />
 			<main className="flex min-h-screen items-center justify-center px-6 py-12">
 				<div className="w-full max-w-[400px]">

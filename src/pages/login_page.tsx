@@ -6,6 +6,7 @@ import { Cliq_mark } from '@/components/cliq_mark';
 import type { Invite_preview as Invite_wire } from '@/lib/invites';
 import { invite_from_redirect, safe_redirect, type Invite_target } from '@/lib/safe_redirect';
 import '@/styles/graphite.css';
+import { Theme_switch } from '@/components/graphite/theme_switch';
 
 /* -------------------------------------------------------------------------- */
 /* Invite preview                                                             */
@@ -395,6 +396,7 @@ function Login_form() {
 export function Component() {
 	return (
 		<div className="theme-graphite grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+			<Theme_switch class_name="fixed right-4 top-4 z-20" />
 			<Brand_panel />
 			<main className="flex min-h-screen flex-col">
 				<Suspense fallback={null}>

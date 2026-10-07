@@ -16,26 +16,21 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#6366f1" />
     <script>
-      /* Apply the persisted theme before React mounts so users don't see
-         a flash of the wrong theme on the initial paint. Kept in sync with
-         src/lib/theme_context.tsx (STORAGE_KEY = 'cliqhub.theme'). All
-         visual styling (background, color-scheme) is driven by CSS in
-         index.css — this script only toggles the `dark` class + data-theme
-         attribute so CSS can react. */
+      /* Paint the saved theme before React mounts, so the first frame is already right.
+         Mirrors paint() in src/lib/theme.ts: dark unless the person chose light (or
+         "system" on a light OS); sets data-g-theme (Graphite) plus the older `dark`
+         class and data-theme. Key: 'cliqhub.theme'. */
       (function () {
         try {
           var raw = localStorage.getItem('cliqhub.theme');
-          var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
-          var system_dark = !!(mq && mq.matches);
-          var is_dark = raw === 'dark' || ((!raw || raw === 'system') && system_dark);
+          var light = raw === 'light'
+            || (raw === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+          var theme = light ? 'light' : 'dark';
           var root = document.documentElement;
-          if (is_dark) {
-            root.classList.add('dark');
-            root.setAttribute('data-theme', 'dark');
-          } else {
-            root.setAttribute('data-theme', 'light');
-          }
-        } catch (e) { /* ignore */ }
+          root.setAttribute('data-g-theme', theme);
+          root.setAttribute('data-theme', theme);
+          root.classList.toggle('dark', theme === 'dark');
+        } catch (e) { /* storage blocked: the app paints dark on load */ }
       })();
     </script>
   </head>

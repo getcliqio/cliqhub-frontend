@@ -5,6 +5,7 @@ import { ArrowRight, Eye, Hand, Package, Terminal } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
 import { Cliq_mark } from '@/components/cliq_mark';
 import '@/styles/graphite.css';
+import { Theme_switch } from '@/components/graphite/theme_switch';
 
 const PIPELINE: Array<{ label: string; tone: string }> = [
 	{ label: 'architect', tone: 'var(--g-t-llm)' },
@@ -35,6 +36,7 @@ export function Component() {
 				<nav aria-label="Site" className="ml-auto flex items-center gap-5 text-[13.5px] text-[var(--g-ink-2)]">
 					<Link to="/browse" className="hover:text-[var(--g-ink)]">Marketplace</Link>
 					<a href="https://docs.getcliq.io" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--g-ink)]">Docs</a>
+					<Theme_switch />
 					<Link to="/login" className="rounded-lg bg-[var(--g-acc)] px-3.5 py-1.5 font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]">Sign in</Link>
 				</nav>
 			</header>

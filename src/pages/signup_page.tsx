@@ -5,6 +5,7 @@ import { Cliq_mark } from '@/components/cliq_mark';
 import { safe_redirect } from '@/lib/safe_redirect';
 import { Brand_panel } from '@/pages/login_page';
 import '@/styles/graphite.css';
+import { Theme_switch } from '@/components/graphite/theme_switch';
 
 export function Component() {
 	const [sp] = useSearchParams();
@@ -12,6 +13,7 @@ export function Component() {
 	const redirect = raw ? safe_redirect(raw) : null;
 	return (
 		<div className="theme-graphite grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+			<Theme_switch class_name="fixed right-4 top-4 z-20" />
 			<Brand_panel />
 			<main className="flex min-h-screen items-center justify-center px-6 py-12">
 				<div className="w-full max-w-[400px]">
