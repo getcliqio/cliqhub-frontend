@@ -144,6 +144,11 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/hugs_page')),
           },
           {
+            // What reaches you in the org (read-only report over its rules and channels).
+            path: 'my-notifications',
+            lazy: lazy_route(() => import('@/pages/my_notifications_page')),
+          },
+          {
             // System events for the org (HUGs excluded).
             path: 'inbox',
             lazy: lazy_route(() => import('@/pages/inbox_page')),

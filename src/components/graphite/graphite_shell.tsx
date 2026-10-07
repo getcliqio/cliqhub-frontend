@@ -562,6 +562,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 										progress={gs ? { done: gs.done_count, total: gs.total } : null}
 										on_admin={enter_admin}
 										on_sign_out={() => void logout()}
+										my_notifications_href={view_href('/my-notifications', scope, multi_org)}
 									/>
 								) : null}
 							</div>
@@ -577,8 +578,9 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 export const ADMIN_RETURN_KEY = 'cliq.admin_return';
 
 /** Account menu (top right): you, your settings, help, site admin, sign out. */
-function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_sign_out }: {
+function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_sign_out, my_notifications_href }: {
 	on_close: () => void;
+	my_notifications_href: string;
 	user: { username: string; display_name: string } | null;
 	is_site_admin: boolean;
 	progress: { done: number; total: number } | null;
@@ -603,7 +605,7 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 			<div className="mb-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/settings?tab=profile" onClick={on_close} className={item}><UserRound aria-hidden className="h-4 w-4 opacity-70" />Profile &amp; security</Link>
 			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />API tokens</Link>
-			<Link role="menuitem" to="/settings?tab=notifications" onClick={on_close} className={item}><BellRing aria-hidden className="h-4 w-4 opacity-70" />My notifications</Link>
+			<Link role="menuitem" to={my_notifications_href} onClick={on_close} className={item}><BellRing aria-hidden className="h-4 w-4 opacity-70" />My notifications</Link>
 			<Link role="menuitem" to="/settings" onClick={on_close} className={item}><Settings aria-hidden className="h-4 w-4 opacity-70" />All settings</Link>
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/getting-started" onClick={on_close} className={item}>

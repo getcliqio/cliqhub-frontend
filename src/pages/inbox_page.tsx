@@ -13,7 +13,7 @@ import { AlertTriangle, Inbox, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read, api_message } from '@/lib/use_bff_read';
-import { use_view_scope, type View_scope } from '@/lib/view_scope';
+import { use_view_scope, view_href, type View_scope } from '@/lib/view_scope';
 import { INBOX_FILTERS, day_label, is_hug_event, mark_inbox_seen, read_inbox_seen, type Inbox_data, type Inbox_item } from '@/lib/inbox';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
@@ -142,6 +142,7 @@ function Events({ scope, seen }: { scope: View_scope; seen: number }) {
 export function Component() {
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
+	const multi_org = (overview.data?.orgs.length ?? 0) > 0;
 	// "New" is relative to when you arrived; opening the inbox resets the bell.
 	const [seen] = useState(() => read_inbox_seen());
 	useEffect(() => { mark_inbox_seen(); }, []);
@@ -162,7 +163,7 @@ export function Component() {
 						<h1 className="text-[24px] font-semibold tracking-[-0.02em]">Inbox</h1>
 						<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">What happened in this org. Reviews and input requests are in <Link to="/hugs" className="text-[var(--g-acc)] hover:underline">HUGs</Link>.</p>
 					</div>
-					<Link to="/settings?tab=notifications" className="mb-1 ml-auto text-[12.5px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">My notification settings →</Link>
+					<Link to={view_href('/my-notifications', scope, multi_org)} className="mb-1 ml-auto text-[12.5px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">My notifications →</Link>
 				</div>
 				{/* Wait for the org to resolve so the first request is already scoped. */}
 				{overview.status === 'loading' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />
