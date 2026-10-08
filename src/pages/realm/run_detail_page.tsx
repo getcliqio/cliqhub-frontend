@@ -782,7 +782,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 							</section>
 						) : tab === 'timeline' || tab === 'usage' || tab === 'dag' ? (
 							!telemetry ? <div className="h-[320px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading telemetry" />
-								: tab === 'timeline' ? <Timeline t={telemetry} selected={selected?.id ?? null} on_select={set_selected} focus_phase={focus} />
+								: tab === 'timeline' ? <Timeline t={telemetry} selected={selected?.id ?? null} on_select={set_selected} focus_phase={focus} attempts={data.attempts} />
 								: tab === 'usage' ? <Usage t={telemetry} />
 								: <Dag t={telemetry} on_open={open_in_timeline} />
 						) : data.realm ? (

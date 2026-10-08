@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
+import { relative_time } from '@/lib/overview';
+import type { Run_attempt } from '@/lib/realm_inbox';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import {
 	KIND_COLOR,
@@ -106,7 +108,12 @@ type Kind_filter = 'all' | 'llm' | 'gate' | 'human' | 'connector';
 const FILTERS: Array<[Kind_filter, string]> = [['all', 'All'], ['llm', 'LLM'], ['gate', 'Gates'], ['human', 'People'], ['connector', 'Connectors']];
 const in_filter = (f: Kind_filter, k: Agent_kind) => f === 'all' || (f === 'connector' ? k === 'connector' || k === 'shell' : f === 'llm' ? k === 'llm' || k === 'builder' || k === 'custom' : k === f);
 
-export function Timeline({ t, selected, on_select, focus_phase, now = Date.now() }: { t: Run_telemetry_data; selected: string | null; on_select: (b: Telemetry_bar | null) => void; focus_phase?: string | null; now?: number }) {
+/** A run error trimmed for one line: no long ids, no repeated "Phase 'x' failed:" prefix. */
+export function short_error(e: string): string {
+	return e.replace(/\s*\b[0-9a-f]{16,}\b/gi, '').replace(/^Phase '[^']+' failed:\s*/, '').replace(/\s+—\s+escalating$/, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+export function Timeline({ t, selected, on_select, focus_phase, attempts, now = Date.now() }: { t: Run_telemetry_data; selected: string | null; on_select: (b: Telemetry_bar | null) => void; focus_phase?: string | null; /** The run's attempts (resumes); absent when unknown. */ attempts?: Run_attempt[] | null; now?: number }) {
 	const [filter, set_filter] = useState<Kind_filter>('all');
 	const [hide_waiting, set_hide_waiting] = useState(false);
 	const [crit_on, set_crit_on] = useState(false);
@@ -154,6 +161,8 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 			</button>
 		);
 	};
+	/** "waiting for review · 30m" on a review bar wide enough to hold it. */
+	const wait_label = (x: Telemetry_bar) => (x.kind === 'human' && pct(Math.min(x.end_ms ?? now, b)) - pct(Math.max(x.start_ms, a)) > 18 ? `waiting for review · ${fmt_ms((x.end_ms ?? now) - x.start_ms)}` : undefined);
 	const toggle = (key: string) => set_collapsed((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 	/**
 	 * One phase lane: its header (with its own span), its agent bars, and — for a phase that
@@ -167,10 +176,25 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 		const multi = new Set(rows.map((x) => x.agent)).size < rows.length;
 		const top = depth === 0;
 		const indent = { paddingLeft: `${depth * 14}px` };
+		const reran = p.runs > 1 ? <span className="ml-1 text-[11px] font-normal text-[var(--g-warn-text)]">↻{p.runs}</span> : null;
+		const name_cls = `${top && crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''} ${p.status === 'failed' ? 'text-[var(--g-bad)]' : ''}`;
+		// One agent and nothing nested: a single row (phase name, agent, its bar) instead of two.
+		if (rows.length === 1 && !subs.length) {
+			const x = rows[0];
+			return (
+				<div key={key} data-testid={`lane-${key}`} className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
+					<span className="truncate text-[12.5px]" style={{ paddingLeft: `${depth * 14 + 11}px` }} title={`${p.name} · ${agent_label(x)}`}>
+						<span className={`g-mono font-semibold ${name_cls}`}>{p.name}</span>{reran}
+						<span className="ml-1.5 text-[11px] text-[var(--g-ink-3)]">{agent_label(x)}</span>
+					</span>
+					<div className="relative h-full">{bar_el(x, wait_label(x))}</div>
+				</div>
+			);
+		}
 		return (
 			<div key={key} data-testid={`lane-${key}`}>
 				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} className={`truncate text-left text-[12.5px] font-semibold ${top && crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''} ${p.status === 'failed' ? 'text-[var(--g-bad)]' : ''}`}>{open ? '▾' : '▸'} <span className="g-mono">{p.name}</span>{p.runs > 1 ? <span className="ml-1 text-[11px] font-normal text-[var(--g-warn-text)]">↻{p.runs}</span> : null}</button>
+					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} className={`truncate text-left text-[12.5px] font-semibold ${name_cls}`}>{open ? '▾' : '▸'} <span className="g-mono">{p.name}</span>{reran}</button>
 					<div className="relative h-full">
 						{p.start_ms != null ? <i aria-hidden className="absolute top-2 h-3 rounded-[3px]" style={{ left: `${pct(Math.max(p.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(p.end_ms ?? now, b)) - pct(Math.max(p.start_ms, a))}%)`, background: `${KIND_COLOR[p.kind]}40`, backgroundImage: p.kind === 'human' ? HATCH : undefined, opacity: top && crit_on && !crit.has(p.name) ? 0.25 : 1 }} /> : null}
 					</div>
@@ -182,7 +206,7 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 							<span className="truncate text-[12px] text-[var(--g-ink-2)]" style={{ paddingLeft: `${depth * 14 + 16}px` }}>{agent_label(x)}{multi && rows.filter((r) => r.agent === x.agent).length > 1 ? ` · ${x.kind === 'gate' ? 'iter' : 'run'} ${x.run_index}` : ''}{x.model ? <span className="g-mono ml-1.5 text-[10.5px] text-[var(--g-ink-3)]">{x.model.replace(/^claude-/, '')}</span> : null}</span>
 							<div className="relative h-full">
 								{prev?.end_ms != null ? <i aria-hidden className="absolute top-[13px] border-t-[1.5px] border-dashed" style={{ borderColor: KIND_COLOR.gate, left: `${pct(Math.max(prev.end_ms, a))}%`, width: `${Math.max(0, pct(Math.min(x.start_ms, b)) - pct(Math.max(prev.end_ms, a)))}%` }} title="sent back for rework" /> : null}
-								{bar_el(x, x.kind === 'human' && pct(Math.min(x.end_ms ?? now, b)) - pct(Math.max(x.start_ms, a)) > 18 ? `waiting for review · ${fmt_ms((x.end_ms ?? now) - x.start_ms)}` : undefined)}
+								{bar_el(x, wait_label(x))}
 							</div>
 						</div>
 					);
@@ -195,26 +219,37 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 	const sub_run = (r: Telemetry_sub_run, depth: number, key: string): ReactNode => {
 		const open = !collapsed.has(key);
 		const failed = r.state === 'failed' || r.state === 'crashed';
-		const indent = { paddingLeft: `${depth * 14}px` };
+		const team = r.team ?? r.run_name ?? 'run';
+		const start = pct(Math.max(r.start_ms ?? a, a));
+		const err = failed && r.error ? `${r.state === 'crashed' ? 'Crashed' : 'Failed'}: ${short_error(r.error)}` : null;
 		return (
-			<div key={key} data-testid={`sub-run-${r.run_id}`} className="rounded-md bg-[var(--g-panel-2,transparent)]">
+			<div key={key} data-testid={`sub-run-${r.run_id}`}>
 				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} title={r.run_name ?? undefined} className="truncate text-left text-[12px] text-[var(--g-ink-2)]">
-						{open ? '▾' : '▸'} <span className="text-[var(--g-ink-3)]">sub-team</span> <span className="g-mono font-semibold text-[var(--g-ink)]">{r.team ?? r.run_name ?? 'run'}</span>
+					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={{ paddingLeft: `${depth * 14}px` }} title={`Sub-team ${team}${r.run_name ? ` · ${r.run_name}` : ''}`} className="truncate text-left text-[12px] text-[var(--g-ink-2)]">
+						{open ? '▾' : '▸'} <span aria-hidden className="text-[var(--g-ink-3)]">⤷</span> <span className="g-mono font-semibold text-[var(--g-ink)]">{team.replace(/^@[^/]+\//, '')}</span>
 					</button>
-					<div className="relative h-full">
-						{r.start_ms != null ? <i aria-hidden className="absolute top-[11px] h-[5px] rounded-full" style={{ left: `${pct(Math.max(r.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(r.end_ms ?? now, b)) - pct(Math.max(r.start_ms, a))}%)`, background: failed ? 'var(--g-bad)' : 'var(--g-ink-3)' }} /> : null}
+					<div className="relative h-full min-w-0">
+						<span className="absolute top-1.5 max-w-full truncate text-[11px] text-[var(--g-ink-3)]" style={{ left: `${Math.min(start, 85)}%` }}>
+							sub-team{r.run_name ? <> · <span className="g-mono">{r.run_name}</span></> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>
+						</span>
 					</div>
 				</div>
-				{failed && r.error ? (
-					<p role="note" data-testid={`sub-run-error-${r.run_id}`} className="pb-1 text-[11.5px] leading-snug text-[var(--g-bad)]" style={{ paddingLeft: `${depth * 14 + 16}px` }}>
-						{r.state === 'crashed' ? 'Crashed' : 'Failed'}: {r.error}
-					</p>
+				{err ? (
+					<div className="grid grid-cols-[170px_minmax(0,1fr)] pb-1">
+						<span />
+						<p role="note" data-testid={`sub-run-error-${r.run_id}`} title={r.error ?? undefined} className="truncate text-[11.5px] text-[var(--g-bad)]">{err}</p>
+					</div>
 				) : null}
 				{open ? r.phases.map((cp) => lane(cp, r.bars, depth, `${key}/${cp.name}`)) : null}
 			</div>
 		);
 	};
+	/** Resumes (from the run's attempts) and phases that ran more than once, sub-teams included. */
+	const resumes = (attempts ?? []).filter((x) => x.n > 1);
+	const reran: string[] = [];
+	const walk = (ps: Telemetry_phase[]) => { for (const p of ps) { if (p.runs > 1) reran.push(`${p.name} ×${p.runs}`); for (const r of p.sub_runs ?? []) walk(r.phases); } };
+	walk(t.phases);
+	const who = (x: Run_attempt) => x.resumed_by?.display_name || x.resumed_by?.username || null;
 	return (
 		<div className="flex flex-col gap-2" data-testid="timeline">
 			<div className="flex flex-wrap items-center gap-2">
@@ -223,6 +258,18 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 				<button type="button" aria-pressed={crit_on} onClick={() => set_crit_on((v) => !v)} className={CHIP(crit_on)} title="The chain of phases that made the run as long as it was">Critical path</button>
 				<span className="ml-auto text-[11.5px] text-[var(--g-ink-3)]">{zoom ? <button type="button" onClick={() => set_zoom(null)} className="text-[var(--g-acc)] hover:underline">Reset zoom</button> : 'Drag across the chart to zoom'}</span>
 			</div>
+			{attempts != null || reran.length ? (
+				<p data-testid="timeline-history" className="text-[11.5px] text-[var(--g-ink-3)]">
+					{attempts == null ? null : resumes.length === 0 ? 'Not resumed' : (
+						<>
+							<span className="font-semibold text-[var(--g-warn-text)]">Resumed {resumes.length}×</span>
+							{resumes.map((x) => <span key={x.n}> · {x.from_phase ? <>from <span className="g-mono">{x.from_phase}</span></> : 'resumed'}{who(x) ? ` by ${who(x)}` : ''}{x.started_at ? `, ${relative_time(x.started_at)}` : ''}</span>)}
+						</>
+					)}
+					{attempts != null ? ' · ' : null}
+					{reran.length ? <>Re-ran: <span className="g-mono text-[var(--g-warn-text)]">{reran.join(', ')}</span></> : 'No phase re-ran'}
+				</p>
+			) : null}
 			<div className={`${CARD} select-none px-3 pb-3 pt-7`}>
 				<div className="relative grid grid-cols-[170px_minmax(0,1fr)]">
 					<div />
@@ -241,6 +288,11 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 					<div aria-hidden className="pointer-events-none absolute inset-y-0 left-[170px] right-0">
 						{ticks.map((x) => <i key={x} className="absolute inset-y-0 border-l border-dashed border-[var(--g-line-2,#1e2024)]" style={{ left: `${pct(w0 + x)}%` }} />)}
 						{running && now <= b ? <i className="absolute inset-y-0 border-l border-[var(--g-acc)]" style={{ left: `${pct(now)}%` }} title="now" /> : null}
+						{resumes.filter((x) => x.started_at != null && x.started_at >= a && x.started_at <= b).map((x) => (
+							<i key={x.n} data-testid={`resume-mark-${x.n}`} className="absolute inset-y-0 border-l-2 border-[var(--g-warn-text)]" style={{ left: `${pct(x.started_at!)}%` }} title={`Resumed${x.from_phase ? ` from ${x.from_phase}` : ''}${who(x) ? ` by ${who(x)}` : ''}`}>
+								<span className="absolute -top-0.5 left-1 whitespace-nowrap text-[10.5px] font-semibold not-italic text-[var(--g-warn-text)]">↻ resumed</span>
+							</i>
+						))}
 						{drag ? <i className="absolute inset-y-0 bg-[var(--g-acc-soft)]" style={{ left: `${Math.min(...drag) * 100}%`, width: `${Math.abs(drag[1] - drag[0]) * 100}%` }} /> : null}
 					</div>
 					{t.phases.map((p) => lane(p, t.bars, 0, p.name))}

@@ -13,6 +13,8 @@ vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => 
 vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: () => null }));
 
 import { Component as RunPage } from '@/pages/realm/run_detail_page';
+import { Timeline, short_error } from '@/components/graphite/g_telemetry';
+import type { Run_attempt } from '@/lib/realm_inbox';
 
 const M = 60_000;
 const now = Date.now();
@@ -73,6 +75,24 @@ describe('run telemetry helpers', () => {
 	});
 });
 
+describe('Timeline history', () => {
+	const at = (n: number, extra: Partial<Run_attempt> = {}): Run_attempt => ({ n, started_at: t0 + (n - 1) * 4 * M, from_phase: null, ended_at: null, state: 'failed', failed_phase: null, error: null, ...extra });
+	it('says when a run was never resumed, and which phases re-ran', () => {
+		render(<Timeline t={telemetry()} selected={null} on_select={() => {}} attempts={[at(1)]} now={t0 + 20 * M} />);
+		expect(screen.getByTestId('timeline-history')).toHaveTextContent('Not resumed · Re-ran: match ×2');
+		expect(screen.queryByTestId('resume-mark-2')).toBeNull();
+	});
+	it('names each resume, who asked for it, and marks it on the chart', () => {
+		render(<Timeline t={telemetry()} selected={null} on_select={() => {}} attempts={[at(1), at(2, { from_phase: 'match', resumed_by: { username: 'krupali', display_name: 'Krupali' } })]} now={t0 + 20 * M} />);
+		expect(screen.getByTestId('timeline-history')).toHaveTextContent(/Resumed 1× · from match by Krupali/);
+		expect(screen.getByTestId('resume-mark-2')).toHaveAttribute('title', 'Resumed from match by Krupali');
+	});
+	it('trims a run error to one readable line', () => {
+		expect(short_error("Phase 'hug-lld' failed: Gate 'hug-lld' escalated: Review adbf4c163079603a6915ff1cc4c9b18d timed out after 30m — escalating"))
+			.toBe("Gate 'hug-lld' escalated: Review timed out after 30m");
+	});
+});
+
 describe('Run page telemetry', () => {
 	it('summary strip and phases clock with cost; no classic link', async () => {
 		const calls = route_fetch();
@@ -106,12 +126,16 @@ describe('Run page telemetry', () => {
 		const lane = await screen.findByTestId('lane-design');
 		// The sub-team is inside the design lane, not a sibling of it.
 		const sub = within(lane).getByTestId('sub-run-child-1');
-		expect(sub).toHaveTextContent('@measureone/design-lld');
+		expect(sub).toHaveTextContent('design-lld');
+		expect(sub).toHaveTextContent('solar-lilac-fox · failed');
 		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('Failed: Gate \'hug-lld\' escalated: Review timed out after 30m');
 		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
 		expect(within(sub).getByTestId('lane-design/child-1/hug-lld')).toBeInTheDocument();
 		expect(within(sub).getByTestId('bar-c2')).toBeInTheDocument();
 		expect(screen.queryByTestId('lane-draft-lld')).toBeNull();
+		// One agent per step: one row each (the step name and its agent), not a header plus a row.
+		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toHaveTextContent('draft-lld');
+		expect(within(sub).getByTestId('lane-design/child-1/draft-lld').querySelectorAll('[aria-expanded]')).toHaveLength(0);
 		// Collapsing the parent phase hides the sub-team with it.
 		fireEvent.click(within(lane).getAllByRole('button', { name: /design/ })[0]);
 		expect(screen.queryByTestId('sub-run-child-1')).toBeNull();
