@@ -206,3 +206,67 @@ export function by_agent_csv(t: Run_telemetry_data): string {
 	const head = ['agent', 'phase', 'kind', 'runs', 'duration_ms', 'unit_kind', 'units_in', 'units_out', 'cost_usd', 'failures', 'outcome'];
 	return [head.join(','), ...t.by_agent.map((a) => head.map((k) => esc((a as Record<string, unknown>)[k])).join(','))].join('\n');
 }
+
+/** A folded stretch of the timeline: nothing but waiting between `start_ms` and `end_ms`. */
+export interface Folded_gap { start_ms: number; end_ms: number }
+
+/** Where times sit on the timeline (0–1), with long waits folded into short gaps. */
+export interface Time_scale {
+	/** Position of a time, 0 (start) – 1 (end). */
+	x: (ms: number) => number;
+	/** The time at a position (for drag-to-zoom). */
+	t: (x: number) => number;
+	gaps: Folded_gap[];
+}
+
+/** A folded gap's share of the work time on screen. */
+const GAP_SHARE = 0.06;
+
+/**
+ * Lay out [a, b]: with `fold`, every stretch of at least `min_gap_ms` in which no work interval
+ * runs (only waiting on people, queueing or nothing) shrinks to a short gap, so the work gets
+ * the width; without it, time is linear.
+ */
+export function time_scale(a: number, b: number, work: Array<[number, number]>, fold: boolean, min_gap_ms = 3 * 60_000): Time_scale {
+	const span = Math.max(1, b - a);
+	const linear: Time_scale = { x: (ms) => (ms - a) / span, t: (x) => a + x * span, gaps: [] };
+	if (!fold) return linear;
+	const merged: Array<[number, number]> = [];
+	for (const [s, e] of work.map(([s, e]): [number, number] => [Math.max(a, s), Math.min(b, e)]).filter(([s, e]) => e > s).sort((p, q) => p[0] - q[0])) {
+		const last = merged[merged.length - 1];
+		if (last && s <= last[1]) last[1] = Math.max(last[1], e); else merged.push([s, e]);
+	}
+	const gaps: Folded_gap[] = [];
+	let cur = a;
+	for (const [s, e] of merged) { if (s - cur >= min_gap_ms) gaps.push({ start_ms: cur, end_ms: s }); cur = Math.max(cur, e); }
+	if (b - cur >= min_gap_ms && merged.length) gaps.push({ start_ms: cur, end_ms: b });
+	const folded = gaps.reduce((n, g) => n + (g.end_ms - g.start_ms), 0);
+	const shown = span - folded;
+	if (!gaps.length || shown <= 0) return linear;
+	const G = shown * GAP_SHARE;
+	const total = shown + gaps.length * G;
+	const v = (ms: number) => {
+		let out = ms - a;
+		for (const g of gaps) {
+			const len = g.end_ms - g.start_ms;
+			if (ms <= g.start_ms) break;
+			if (ms >= g.end_ms) out -= len - G;
+			else { out = out - (ms - g.start_ms) + G * ((ms - g.start_ms) / len); break; }
+		}
+		return out;
+	};
+	const t = (x: number) => {
+		let target = Math.min(1, Math.max(0, x)) * total;
+		let real = a;
+		for (const g of gaps) {
+			const before = g.start_ms - real;
+			if (target <= before) return real + target;
+			target -= before;
+			if (target <= G) return g.start_ms + (target / G) * (g.end_ms - g.start_ms);
+			target -= G;
+			real = g.end_ms;
+		}
+		return Math.min(b, real + target);
+	};
+	return { x: (ms) => v(ms) / total, t, gaps };
+}

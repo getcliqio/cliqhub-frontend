@@ -25,6 +25,7 @@ import {
 	phase_model_costs,
 	tick_label,
 	tick_step,
+	time_scale,
 	type Agent_kind,
 	type Run_telemetry_data,
 	type Telemetry_bar,
@@ -116,7 +117,7 @@ export function short_error(e: string): string {
 
 export function Timeline({ t, selected, on_select, focus_phase, attempts, run_href, now = Date.now() }: { t: Run_telemetry_data; selected: string | null; on_select: (b: Telemetry_bar | null) => void; focus_phase?: string | null; /** The run's attempts (resumes); absent when unknown. */ attempts?: Run_attempt[] | null; /** Page path of a run (links a sub-team row to its run). */ run_href?: (run_id: string) => string; now?: number }) {
 	const [filter, set_filter] = useState<Kind_filter>('all');
-	const [hide_waiting, set_hide_waiting] = useState(false);
+	const [fold, set_fold] = useState(true);
 	const [crit_on, set_crit_on] = useState(false);
 	const [collapsed, set_collapsed] = useState<Set<string>>(new Set());
 	const w0 = t.window.start_ms ?? Math.min(...t.bars.map((b) => b.start_ms));
@@ -127,121 +128,109 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, run_hr
 		if (p?.start_ms != null) { const e = p.end_ms ?? w1; const pad = Math.max(1000, (e - p.start_ms) * 0.05); set_zoom([p.start_ms - pad, e + pad]); }
 	}, [focus_phase]); // eslint-disable-line react-hooks/exhaustive-deps
 	const [a, b] = zoom ?? [w0, w1];
-	const span = Math.max(1, b - a);
-	const pct = (ms: number) => ((ms - a) / span) * 100;
+	// Work = every bar that isn't waiting on people, sub-teams included; the rest can fold.
+	const all_bars = useMemo(() => {
+		const out: Telemetry_bar[] = [...t.bars];
+		const walk = (ps: Telemetry_phase[]) => { for (const p of ps) for (const r of p.sub_runs ?? []) { out.push(...r.bars); walk(r.phases); } };
+		walk(t.phases);
+		return out;
+	}, [t]);
+	const scale = useMemo(() => time_scale(a, b, all_bars.filter((x) => x.kind !== 'human').map((x): [number, number] => [x.start_ms, x.end_ms ?? now]), fold), [a, b, all_bars, fold, now]);
+	const pct = (ms: number) => scale.x(ms) * 100;
 	const crit = useMemo(() => (crit_on ? critical_path(t.phases) : new Set<string>()), [crit_on, t.phases]);
 	const track = useRef<HTMLDivElement>(null);
 	const [drag, set_drag] = useState<[number, number] | null>(null);
 	const frac = (e: ReactMouseEvent) => { const r = track.current!.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
-	const step = tick_step(span);
+	// Ticks over the time actually shown; none inside a folded gap.
+	const shown_ms = Math.max(1, b - a - scale.gaps.reduce((n, g) => n + (g.end_ms - g.start_ms), 0));
+	const step = tick_step(shown_ms);
 	const ticks: number[] = [];
-	for (let x = Math.ceil((a - w0) / step) * step; w0 + x <= b; x += step) ticks.push(x);
+	for (let x = Math.ceil((a - w0) / step) * step; w0 + x <= b; x += step) {
+		if (!scale.gaps.some((g) => w0 + x > g.start_ms && w0 + x < g.end_ms)) ticks.push(x);
+	}
 	const running = t.run.state === 'running' || t.run.state === 'awaiting_input';
 
 	if (!t.bars.length) {
 		return <p className={`${CARD} px-4 py-10 text-center text-[13px] text-[var(--g-ink-3)]`}>{t.sections.spans === 'error' ? 'Timeline couldn’t be loaded.' : 'No timeline yet — the daemon reports spans as agents finish. Older daemons don’t send them.'}</p>;
 	}
-	const bar_el = (x: Telemetry_bar, label?: string) => {
-		const s = Math.max(x.start_ms, a); const e = Math.min(x.end_ms ?? now, b);
-		if (e < a || s > b) return null;
+	const seg = (s: number, e: number) => ({ left: pct(Math.max(s, a)), width: Math.max(0, pct(Math.min(e, b)) - pct(Math.max(s, a))) });
+	const bar_el = (x: Telemetry_bar) => {
+		const e = x.end_ms ?? now;
+		if (e < a || x.start_ms > b) return null;
+		const { left, width } = seg(x.start_ms, e);
 		const dim = crit_on && !crit.has(x.phase);
 		const sel = selected === x.id;
+		const waiting = x.kind === 'human';
 		return (
 			<button
 				type="button"
 				key={x.id}
 				data-testid={`bar-${x.id}`}
 				aria-pressed={sel}
-				aria-label={`${agent_label(x)} in ${x.phase}: ${fmt_ms((x.end_ms ?? now) - x.start_ms)}${x.status === 'error' ? ', failed' : ''}`}
+				aria-label={`${agent_label(x)} in ${x.phase}: ${fmt_ms(e - x.start_ms)}${x.status === 'error' ? ', failed' : ''}`}
+				title={`${agent_label(x)}${x.model ? ` · ${x.model}` : ''} · ${fmt_ms(e - x.start_ms)}`}
 				onMouseDown={(ev) => ev.stopPropagation()}
 				onClick={() => on_select(sel ? null : x)}
-				className={`absolute top-1 h-[18px] overflow-hidden whitespace-nowrap rounded-[4px] px-1.5 text-left text-[10.5px] font-semibold text-[var(--g-on-color)] ${x.status === 'running' ? 'animate-pulse' : ''}`}
-				style={{ left: `${pct(s)}%`, width: `max(4px, ${pct(e) - pct(s)}%)`, background: KIND_COLOR[x.kind], backgroundImage: x.kind === 'human' ? HATCH : undefined, opacity: dim ? 0.25 : 1, boxShadow: sel ? '0 0 0 2px #fff' : x.status === 'error' ? '0 0 0 1.5px var(--g-bad)' : undefined }}
-			>
-				{label ?? (x.status === 'error' ? '✕' : '')}
-			</button>
+				className={`absolute rounded-[3px] ${waiting ? 'top-[11px] h-[4px]' : 'top-[6px] h-[14px]'} ${x.status === 'running' ? 'animate-pulse' : ''}`}
+				style={{ left: `${left}%`, width: `max(4px, ${width}%)`, background: x.status === 'error' && waiting ? 'var(--g-bad)' : KIND_COLOR[x.kind], opacity: dim ? 0.25 : 1, boxShadow: sel ? '0 0 0 2px var(--g-ink)' : x.status === 'error' && !waiting ? '0 0 0 1.5px var(--g-bad)' : undefined }}
+			/>
 		);
 	};
-	/** "waiting for review · 30m" on a review bar wide enough to hold it. */
-	const wait_label = (x: Telemetry_bar) => (x.kind === 'human' && pct(Math.min(x.end_ms ?? now, b)) - pct(Math.max(x.start_ms, a)) > 18 ? `waiting for review · ${fmt_ms((x.end_ms ?? now) - x.start_ms)}` : undefined);
 	const toggle = (key: string) => set_collapsed((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
-	/**
-	 * One phase lane: its header (with its own span), its agent bars, and — for a phase that
-	 * started a sub-team — that run nested inside it, indented one level per sub-team.
-	 */
-	const lane = (p: Telemetry_phase, bars: Telemetry_bar[], depth: number, key: string): ReactNode => {
-		const rows = bars.filter((x) => x.phase === p.name && in_filter(filter, x.kind) && !(hide_waiting && x.kind === 'human'));
+	const ROW = 'grid h-[26px] grid-cols-[170px_minmax(0,1fr)] items-center';
+	/** A row's label, indented inside sub-team groups (with the group's rule beside it). */
+	const label = (depth: number, rule: string | null, body: ReactNode) => (
+		<span className="flex h-full min-w-0 items-center" style={{ paddingLeft: `${Math.max(0, depth - 1) * 14}px` }}>
+			{rule ? <i aria-hidden className="mr-2 h-full w-[2px] shrink-0" style={{ background: rule }} /> : null}
+			<span className="flex min-w-0 items-center gap-1.5">{body}</span>
+		</span>
+	);
+	/** One phase on one row: its agent runs side by side (re-runs included), its sub-teams below. */
+	const lane = (p: Telemetry_phase, bars: Telemetry_bar[], depth: number, key: string, rule: string | null): ReactNode => {
+		const rows = bars.filter((x) => x.phase === p.name && in_filter(filter, x.kind));
 		const subs = p.sub_runs ?? [];
-		if (!rows.length && !subs.length && (filter !== 'all' || hide_waiting)) return null;
+		if (!rows.length && !subs.length && filter !== 'all') return null;
 		const open = !collapsed.has(key);
-		const multi = new Set(rows.map((x) => x.agent)).size < rows.length;
 		const top = depth === 0;
-		const indent = { paddingLeft: `${depth * 14}px` };
-		const reran = p.runs > 1 ? <span className="ml-1 text-[11px] font-normal text-[var(--g-warn-text)]">↻{p.runs}</span> : null;
-		const name_cls = `${top && crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''} ${p.status === 'failed' ? 'text-[var(--g-bad)]' : ''}`;
-		// One agent and nothing nested: a single row (phase name, agent, its bar) instead of two.
-		if (rows.length === 1 && !subs.length) {
-			const x = rows[0];
-			return (
-				<div key={key} data-testid={`lane-${key}`} className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-					<span className="truncate text-[12.5px]" style={{ paddingLeft: `${depth * 14 + 11}px` }} title={`${p.name} · ${agent_label(x)}`}>
-						<span className={`g-mono font-semibold ${name_cls}`}>{p.name}</span>{reran}
-						<span className="ml-1.5 text-[11px] text-[var(--g-ink-3)]">{agent_label(x)}</span>
-					</span>
-					<div className="relative h-full">{bar_el(x, wait_label(x))}</div>
-				</div>
-			);
-		}
+		const failed = p.status === 'failed';
+		const badge = p.runs > 1 ? <span className="shrink-0 rounded bg-[var(--g-warn-soft)] px-1 text-[10.5px] font-normal text-[var(--g-warn-text)]">{p.kind === 'human' || p.kind === 'gate' ? `${p.runs} rounds` : `${p.runs}×`}</span> : null;
+		const name = <span className={`g-mono truncate text-[12.5px] ${top && crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''} ${failed ? 'text-[var(--g-bad)]' : ''} ${p.status === 'pending' ? 'text-[var(--g-ink-3)]' : ''}`}>{p.name}</span>;
 		return (
 			<div key={key} data-testid={`lane-${key}`}>
-				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} className={`truncate text-left text-[12.5px] font-semibold ${name_cls}`}>{open ? '▾' : '▸'} <span className="g-mono">{p.name}</span>{reran}</button>
+				<div className={ROW}>
+					{label(depth, rule, subs.length
+						? <button type="button" aria-expanded={open} onClick={() => toggle(key)} className="flex min-w-0 items-center gap-1.5 text-left"><span className="text-[10px] text-[var(--g-ink-3)]">{open ? '▾' : '▸'}</span>{name}{badge}</button>
+						: <>{name}{badge}</>)}
 					<div className="relative h-full">
-						{p.start_ms != null ? <i aria-hidden className="absolute top-2 h-3 rounded-[3px]" style={{ left: `${pct(Math.max(p.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(p.end_ms ?? now, b)) - pct(Math.max(p.start_ms, a))}%)`, background: `${KIND_COLOR[p.kind]}40`, backgroundImage: p.kind === 'human' ? HATCH : undefined, opacity: top && crit_on && !crit.has(p.name) ? 0.25 : 1 }} /> : null}
+						{rows.length ? rows.map(bar_el)
+							: p.start_ms != null ? <i aria-hidden className="absolute top-[12px] h-[2px] rounded" style={{ left: `${seg(p.start_ms, p.end_ms ?? now).left}%`, width: `${seg(p.start_ms, p.end_ms ?? now).width}%`, background: failed ? 'var(--g-bad-line)' : 'var(--g-line)' }} />
+							: <span className="absolute top-[5px] text-[11.5px] text-[var(--g-ink-3)]">{p.status === 'pending' ? 'not run' : p.status}</span>}
 					</div>
 				</div>
-				{open ? rows.map((x, i) => {
-					const prev = x.run_index > 1 ? rows.slice(0, i).reverse().find((r) => r.agent === x.agent) : undefined;
-					return (
-						<div key={x.id} className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-							<span className="truncate text-[12px] text-[var(--g-ink-2)]" style={{ paddingLeft: `${depth * 14 + 16}px` }}>{agent_label(x)}{multi && rows.filter((r) => r.agent === x.agent).length > 1 ? ` · ${x.kind === 'gate' ? 'iter' : 'run'} ${x.run_index}` : ''}{x.model ? <span className="g-mono ml-1.5 text-[10.5px] text-[var(--g-ink-3)]">{x.model.replace(/^claude-/, '')}</span> : null}</span>
-							<div className="relative h-full">
-								{prev?.end_ms != null ? <i aria-hidden className="absolute top-[13px] border-t-[1.5px] border-dashed" style={{ borderColor: KIND_COLOR.gate, left: `${pct(Math.max(prev.end_ms, a))}%`, width: `${Math.max(0, pct(Math.min(x.start_ms, b)) - pct(Math.max(prev.end_ms, a)))}%` }} title="sent back for rework" /> : null}
-								{bar_el(x, wait_label(x))}
-							</div>
-						</div>
-					);
-				}) : null}
 				{open ? subs.map((r) => sub_run(r, depth + 1, `${key}/${r.run_id}`)) : null}
 			</div>
 		);
 	};
-	/** A sub-team run inside its parent phase: team, state, why it failed, then its own lanes. */
+	/** A sub-team run: a one-line header (team, run link, how it ended, cost), then its steps under a rule. */
 	const sub_run = (r: Telemetry_sub_run, depth: number, key: string): ReactNode => {
-		const open = !collapsed.has(key);
 		const failed = r.state === 'failed' || r.state === 'crashed';
-		const team = r.team ?? r.run_name ?? 'run';
-		const start = pct(Math.max(r.start_ms ?? a, a));
-		const err = failed && r.error ? `${r.state === 'crashed' ? 'Crashed' : 'Failed'}: ${short_error(r.error)}` : null;
+		const rule = failed ? 'var(--g-bad)' : 'var(--g-line-strong, var(--g-line))';
+		const team = (r.team ?? r.run_name ?? 'run').replace(/^@[^/]+\//, '');
+		const broke = r.phases.filter((p) => p.status === 'failed').at(-1)?.name;
 		return (
 			<div key={key} data-testid={`sub-run-${r.run_id}`}>
-				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={{ paddingLeft: `${depth * 14}px` }} title={`Sub-team ${team}${r.run_name ? ` · ${r.run_name}` : ''}`} className="truncate text-left text-[12px] text-[var(--g-ink-2)]">
-						{open ? '▾' : '▸'} <span aria-hidden className="text-[var(--g-ink-3)]">⤷</span> <span className="g-mono font-semibold text-[var(--g-ink)]">{team.replace(/^@[^/]+\//, '')}</span>
-					</button>
-					<div className="relative h-full min-w-0">
-						<span className="absolute top-1.5 max-w-full truncate text-[11px] text-[var(--g-ink-3)]" style={{ left: `${Math.min(start, 85)}%` }}>
-							sub-team{r.run_name ? <> · {run_href ? <Link to={run_href(r.run_id)} data-testid={`sub-run-link-${r.run_id}`} onMouseDown={(e) => e.stopPropagation()} className="g-mono text-[var(--g-acc)] hover:underline">{r.run_name} ↗</Link> : <span className="g-mono">{r.run_name}</span>}</> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>{r.usage?.cost_usd != null ? <> · <span data-testid={`sub-run-cost-${r.run_id}`}>{fmt_usd(r.usage.cost_usd)}</span></> : null}
-						</span>
-					</div>
+				<div className="flex h-[24px] items-center gap-2 text-[12px]" style={{ paddingLeft: `${Math.max(0, depth - 1) * 14}px` }}>
+					<span aria-hidden className="text-[var(--g-ink-3)]">⤷</span>
+					<span className="g-mono font-semibold">{team}</span>
+					{r.run_name ? (run_href
+						? <Link to={run_href(r.run_id)} data-testid={`sub-run-link-${r.run_id}`} className="g-mono text-[11.5px] text-[var(--g-acc)] hover:underline">{r.run_name} ↗</Link>
+						: <span className="g-mono text-[11.5px] text-[var(--g-ink-3)]">{r.run_name}</span>) : null}
+					{failed
+						? <span data-testid={`sub-run-error-${r.run_id}`} title={r.error ?? undefined} className="text-[var(--g-bad)]">{r.state === 'crashed' ? 'crashed' : 'failed'}{broke ? ` at ${broke}` : ''}</span>
+						: <span className="text-[var(--g-ink-3)]">{r.state}</span>}
+					{r.usage?.cost_usd != null ? <span data-testid={`sub-run-cost-${r.run_id}`} className="text-[var(--g-ink-3)]">{fmt_usd(r.usage.cost_usd)}</span> : null}
 				</div>
-				{err ? (
-					<div className="grid grid-cols-[170px_minmax(0,1fr)] pb-1">
-						<span />
-						<p role="note" data-testid={`sub-run-error-${r.run_id}`} title={r.error ?? undefined} className="truncate text-[11.5px] text-[var(--g-bad)]">{err}</p>
-					</div>
-				) : null}
-				{open ? r.phases.map((cp) => lane(cp, r.bars, depth, `${key}/${cp.name}`)) : null}
+				{r.phases.map((cp) => lane(cp, r.bars, depth, `${key}/${cp.name}`, rule))}
 			</div>
 		);
 	};
@@ -253,41 +242,53 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, run_hr
 	const who = (x: Run_attempt) => x.resumed_by?.display_name || x.resumed_by?.username || null;
 	return (
 		<div className="flex flex-col gap-2" data-testid="timeline">
-			<div className="flex flex-wrap items-center gap-2">
-				{FILTERS.map(([k, l]) => <button key={k} type="button" aria-pressed={filter === k} onClick={() => set_filter(k)} className={CHIP(filter === k)}>{l}</button>)}
-				<button type="button" aria-pressed={hide_waiting} onClick={() => set_hide_waiting((v) => !v)} className={`${CHIP(hide_waiting)} ml-2`}>Hide waiting</button>
-				<button type="button" aria-pressed={crit_on} onClick={() => set_crit_on((v) => !v)} className={CHIP(crit_on)} title="The chain of phases that made the run as long as it was">Critical path</button>
-				<span className="ml-auto text-[11.5px] text-[var(--g-ink-3)]">{zoom ? <button type="button" onClick={() => set_zoom(null)} className="text-[var(--g-acc)] hover:underline">Reset zoom</button> : 'Drag across the chart to zoom'}</span>
+			<div className="flex flex-wrap items-center gap-3 text-[12px] text-[var(--g-ink-2)]">
+				<label className="flex items-center gap-1.5">
+					<span className="text-[var(--g-ink-3)]">Show</span>
+					<select aria-label="Show" value={filter} onChange={(e) => set_filter(e.target.value as Kind_filter)} className="h-7 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 text-[12px]">
+						{FILTERS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+					</select>
+				</label>
+				<label className="flex items-center gap-1.5" title="Shrink long stretches of waiting on people so the work gets the width">
+					<input type="checkbox" checked={fold} onChange={(e) => set_fold(e.target.checked)} /> Fold waiting
+				</label>
+				<label className="flex items-center gap-1.5" title="The chain of phases that made the run as long as it was">
+					<input type="checkbox" checked={crit_on} onChange={(e) => set_crit_on(e.target.checked)} /> Critical path
+				</label>
+				{zoom ? <button type="button" onClick={() => set_zoom(null)} className="text-[var(--g-acc)] hover:underline">Reset zoom</button> : null}
+				{attempts != null || reran.length ? (
+					<span data-testid="timeline-history" className="ml-auto text-[11.5px] text-[var(--g-ink-3)]">
+						{attempts == null ? null : resumes.length === 0 ? 'Not resumed' : (
+							<>
+								<span className="font-semibold text-[var(--g-warn-text)]">Resumed {resumes.length}×</span>
+								{resumes.map((x) => <span key={x.n}> · {x.from_phase ? <>from <span className="g-mono">{x.from_phase}</span></> : 'resumed'}{who(x) ? ` by ${who(x)}` : ''}{x.started_at ? `, ${relative_time(x.started_at)}` : ''}</span>)}
+							</>
+						)}
+						{attempts != null ? ' · ' : null}
+						{reran.length ? <>Re-ran: <span className="g-mono text-[var(--g-warn-text)]">{reran.join(', ')}</span></> : 'No phase re-ran'}
+					</span>
+				) : null}
 			</div>
-			{attempts != null || reran.length ? (
-				<p data-testid="timeline-history" className="text-[11.5px] text-[var(--g-ink-3)]">
-					{attempts == null ? null : resumes.length === 0 ? 'Not resumed' : (
-						<>
-							<span className="font-semibold text-[var(--g-warn-text)]">Resumed {resumes.length}×</span>
-							{resumes.map((x) => <span key={x.n}> · {x.from_phase ? <>from <span className="g-mono">{x.from_phase}</span></> : 'resumed'}{who(x) ? ` by ${who(x)}` : ''}{x.started_at ? `, ${relative_time(x.started_at)}` : ''}</span>)}
-						</>
-					)}
-					{attempts != null ? ' · ' : null}
-					{reran.length ? <>Re-ran: <span className="g-mono text-[var(--g-warn-text)]">{reran.join(', ')}</span></> : 'No phase re-ran'}
-				</p>
-			) : null}
 			<div className={`${CARD} select-none px-3 pb-3 pt-7`}>
 				<div className="relative grid grid-cols-[170px_minmax(0,1fr)]">
 					<div />
 					<div ref={track} className="relative h-0">
 						{ticks.map((x) => <span key={x} className="g-mono absolute -top-5 -translate-x-1/2 text-[10.5px] text-[var(--g-ink-3)]" style={{ left: `${pct(w0 + x)}%` }}>{tick_label(x)}</span>)}
+						{scale.gaps.map((g) => (
+							<span key={g.start_ms} data-testid="folded-gap" className="g-mono absolute -top-5 -translate-x-1/2 whitespace-nowrap text-[10.5px] text-[var(--g-warn-text)]" style={{ left: `${(pct(g.start_ms) + pct(g.end_ms)) / 2}%` }} title={`${fmt_ms(g.end_ms - g.start_ms)} of waiting, folded`}>⫽ {fmt_ms(g.end_ms - g.start_ms)}</span>
+						))}
 					</div>
 				</div>
 				<div
 					className="relative"
 					onMouseDown={(e) => { if (track.current && e.clientX > track.current.getBoundingClientRect().left) { const f = frac(e); set_drag([f, f]); } }}
 					onMouseMove={(e) => { if (drag) set_drag([drag[0], frac(e)]); }}
-					onMouseUp={() => { if (drag && Math.abs(drag[1] - drag[0]) > 0.02) { const [x0, x1] = [Math.min(...drag), Math.max(...drag)]; set_zoom([a + x0 * span, a + x1 * span]); } set_drag(null); }}
+					onMouseUp={() => { if (drag && Math.abs(drag[1] - drag[0]) > 0.02) set_zoom([scale.t(Math.min(...drag)), scale.t(Math.max(...drag))]); set_drag(null); }}
 					onMouseLeave={() => set_drag(null)}
 				>
-					{/* grid lines */}
 					<div aria-hidden className="pointer-events-none absolute inset-y-0 left-[170px] right-0">
 						{ticks.map((x) => <i key={x} className="absolute inset-y-0 border-l border-dashed border-[var(--g-line-2,#1e2024)]" style={{ left: `${pct(w0 + x)}%` }} />)}
+						{scale.gaps.map((g) => <i key={g.start_ms} className="absolute inset-y-0 bg-[var(--g-soft)]" style={{ left: `${pct(g.start_ms)}%`, width: `${pct(g.end_ms) - pct(g.start_ms)}%` }} />)}
 						{running && now <= b ? <i className="absolute inset-y-0 border-l border-[var(--g-acc)]" style={{ left: `${pct(now)}%` }} title="now" /> : null}
 						{resumes.filter((x) => x.started_at != null && x.started_at >= a && x.started_at <= b).map((x) => (
 							<i key={x.n} data-testid={`resume-mark-${x.n}`} className="absolute inset-y-0 border-l-2 border-[var(--g-warn-text)]" style={{ left: `${pct(x.started_at!)}%` }} title={`Resumed${x.from_phase ? ` from ${x.from_phase}` : ''}${who(x) ? ` by ${who(x)}` : ''}`}>
@@ -296,11 +297,15 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, run_hr
 						))}
 						{drag ? <i className="absolute inset-y-0 bg-[var(--g-acc-soft)]" style={{ left: `${Math.min(...drag) * 100}%`, width: `${Math.abs(drag[1] - drag[0]) * 100}%` }} /> : null}
 					</div>
-					{t.phases.map((p) => lane(p, t.bars, 0, p.name))}
+					{t.phases.map((p) => lane(p, t.bars, 0, p.name, null))}
 				</div>
-				<div className="mt-3 flex flex-wrap gap-3 border-t border-[var(--g-line)] pt-2 text-[11px] text-[var(--g-ink-3)]">
-					{(['llm', 'gate', 'human', 'connector', 'shell'] as Agent_kind[]).filter((k) => t.bars.some((x) => x.kind === k)).map((k) => <span key={k} className="flex items-center gap-1.5"><Swatch color={KIND_COLOR[k]} hatch={k === 'human'} />{k === 'human' ? 'waiting on people' : KIND_LABEL[k]}</span>)}
-					{t.totals.reworks ? <span className="flex items-center gap-1.5"><i className="inline-block w-4 border-t-[1.5px] border-dashed" style={{ borderColor: KIND_COLOR.gate }} />sent back for rework</span> : null}
+				<div className="mt-3 flex flex-wrap items-center gap-3 border-t border-[var(--g-line)] pt-2 text-[11px] text-[var(--g-ink-3)]">
+					{all_bars.some((x) => x.kind === 'llm' || x.kind === 'builder' || x.kind === 'custom') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.llm} />AI agent</span> : null}
+					{all_bars.some((x) => x.kind === 'shell' || x.kind === 'connector') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.shell} />script / tool</span> : null}
+					{all_bars.some((x) => x.kind === 'gate') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.gate} />check</span> : null}
+					{all_bars.some((x) => x.kind === 'human') ? <span className="flex items-center gap-1.5"><i aria-hidden className="inline-block h-[3px] w-3 rounded" style={{ background: KIND_COLOR.human }} />waiting on people</span> : null}
+					{scale.gaps.length ? <span>⫽ folded wait (real length shown)</span> : null}
+					<span className="ml-auto">Click a bar for details · drag to zoom</span>
 				</div>
 			</div>
 		</div>

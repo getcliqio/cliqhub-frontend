@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { run_detail, overview_for_realm, REALM } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
 import type { Run_telemetry_data } from '@/lib/run_telemetry';
-import { critical_path, dag_layers, fmt_count, fmt_ms, fmt_usd, phase_model_costs, tick_step, by_agent_csv } from '@/lib/run_telemetry';
+import { critical_path, dag_layers, fmt_count, fmt_ms, fmt_usd, phase_model_costs, tick_step, by_agent_csv, time_scale } from '@/lib/run_telemetry';
 
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
@@ -75,6 +75,24 @@ describe('run telemetry helpers', () => {
 	});
 });
 
+describe('time_scale (fold waiting)', () => {
+	it('folds a long stretch with no work into a short gap and maps back', () => {
+		// Work 0–10m and 50–60m; 40m of waiting in between.
+		const sc = time_scale(0, 60 * M, [[0, 10 * M], [50 * M, 60 * M]], true);
+		expect(sc.gaps).toEqual([{ start_ms: 10 * M, end_ms: 50 * M }]);
+		expect(sc.x(10 * M)).toBeCloseTo(10 / 21.2, 3);
+		expect(sc.x(60 * M)).toBeCloseTo(1, 6);
+		expect(sc.x(50 * M) - sc.x(10 * M)).toBeLessThan(0.06);
+		for (const ms of [5 * M, 30 * M, 55 * M]) expect(sc.t(sc.x(ms))).toBeCloseTo(ms, -1);
+	});
+	it('leaves short pauses and an unfolded scale linear', () => {
+		expect(time_scale(0, 10 * M, [[0, 4 * M], [5 * M, 10 * M]], true).gaps).toEqual([]);
+		const lin = time_scale(0, 60 * M, [[0, 10 * M], [50 * M, 60 * M]], false);
+		expect(lin.gaps).toEqual([]);
+		expect(lin.x(30 * M)).toBeCloseTo(0.5, 6);
+	});
+});
+
 describe('Timeline history', () => {
 	const at = (n: number, extra: Partial<Run_attempt> = {}): Run_attempt => ({ n, started_at: t0 + (n - 1) * 4 * M, from_phase: null, ended_at: null, state: 'failed', failed_phase: null, error: null, ...extra });
 	it('says when a run was never resumed, and which phases re-ran', () => {
@@ -128,10 +146,12 @@ describe('Run page telemetry', () => {
 		// The sub-team is inside the design lane, not a sibling of it.
 		const sub = within(lane).getByTestId('sub-run-child-1');
 		expect(sub).toHaveTextContent('design-lld');
-		expect(sub).toHaveTextContent('solar-lilac-fox ↗ · failed');
+		expect(sub).toHaveTextContent('design-lldsolar-lilac-fox ↗failed at hug-lld$0.75');
 		expect(within(sub).getByTestId('sub-run-link-child-1')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/child-1');
 		expect(within(sub).getByTestId('sub-run-cost-child-1')).toHaveTextContent('$0.75');
-		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('Failed: Gate \'hug-lld\' escalated: Review timed out after 30m');
+		// One line: where it failed; the full error is on hover (and in "Why it failed").
+		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('failed at hug-lld');
+		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveAttribute('title', "Gate 'hug-lld' escalated: Review timed out after 30m");
 		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
 		expect(within(sub).getByTestId('lane-design/child-1/hug-lld')).toBeInTheDocument();
 		expect(within(sub).getByTestId('bar-c2')).toBeInTheDocument();
@@ -173,14 +193,28 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('tree-step-grand-1-lint')).toBeInTheDocument();
 	});
 
+	it('timeline: re-runs share their phase\'s row; a long wait on people is folded and labelled', async () => {
+		const base = telemetry();
+		const wait = { ...base.bars[0], id: 'w1', phase: 'review', agent: 'hug', kind: 'human' as const, start_ms: t0 + 10 * M, end_ms: t0 + 55 * M };
+		route_fetch(telemetry({ phases: [...base.phases, { ...base.phases[0], name: 'review', kind: 'human', status: 'completed', runs: 1, start_ms: t0 + 10 * M, end_ms: t0 + 55 * M }], bars: [...base.bars, wait], window: { start_ms: t0, end_ms: t0 + 55 * M } }));
+		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
+		const match = await screen.findByTestId('lane-match');
+		expect(within(match).getByTestId('bar-b2')).toBeInTheDocument();
+		expect(within(match).getByTestId('bar-b3')).toBeInTheDocument();
+		expect(match).toHaveTextContent('match2 rounds');
+		expect(screen.getAllByTestId('folded-gap').map((g) => g.textContent)).toEqual(['⫽ 4m 0s', '⫽ 45m 0s']);
+		fireEvent.click(screen.getByRole('checkbox', { name: /Fold waiting/ }));
+		expect(screen.queryByTestId('folded-gap')).toBeNull();
+	});
+
 	it('timeline: lanes, filters, select a bar → details replace the side column → logs for that agent', async () => {
 		const calls = route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
 		expect(await screen.findByTestId('timeline')).toBeInTheDocument();
 		expect(screen.getByTestId('lane-fetch')).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: 'Gates' }));
+		fireEvent.change(screen.getByRole('combobox', { name: 'Show' }), { target: { value: 'gate' } });
 		expect(screen.queryByTestId('lane-fetch')).toBeNull();
-		fireEvent.click(screen.getByRole('button', { name: 'All' }));
+		fireEvent.change(screen.getByRole('combobox', { name: 'Show' }), { target: { value: 'all' } });
 		expect(screen.getByRole('complementary', { name: 'Run details' })).toBeInTheDocument();
 		fireEvent.click(screen.getByTestId('bar-b3'));
 		const d = await screen.findByTestId('span-details');
