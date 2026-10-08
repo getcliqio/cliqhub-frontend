@@ -56,6 +56,8 @@ export interface Telemetry_sub_run {
 	end_ms: number | null;
 	phases: Telemetry_phase[];
 	bars: Telemetry_bar[];
+	/** Its model usage, its own sub-teams included (already in the run's totals); absent from an older BFF. */
+	usage?: { cost_usd: number | null; tokens_in: number | null; tokens_out: number | null; cached_in: number | null; model_calls: number | null };
 }
 
 export interface Run_telemetry_data {

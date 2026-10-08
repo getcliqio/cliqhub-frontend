@@ -119,6 +119,7 @@ describe('Run page telemetry', () => {
 				error: "Gate 'hug-lld' escalated: Review timed out after 30m", start_ms: t0 + 1 * M, end_ms: t0 + 9 * M,
 				phases: [step('draft-lld', 'done', 1, 3, 'llm'), step('hug-lld', 'failed', 3, 9, 'human')],
 				bars: [bar('c1', 'draft-lld', 'cursor', 'llm', 1, 3), bar('c2', 'hug-lld', 'hug', 'human', 3, 9)],
+				usage: { cost_usd: 0.748, tokens_in: 155_533, tokens_out: 18_788, cached_in: null, model_calls: 2 },
 			}],
 		};
 		route_fetch(telemetry({ phases: [base.phases[0], design], bars: [base.bars[0]] }));
@@ -128,6 +129,7 @@ describe('Run page telemetry', () => {
 		const sub = within(lane).getByTestId('sub-run-child-1');
 		expect(sub).toHaveTextContent('design-lld');
 		expect(sub).toHaveTextContent('solar-lilac-fox · failed');
+		expect(within(sub).getByTestId('sub-run-cost-child-1')).toHaveTextContent('$0.75');
 		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('Failed: Gate \'hug-lld\' escalated: Review timed out after 30m');
 		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
 		expect(within(sub).getByTestId('lane-design/child-1/hug-lld')).toBeInTheDocument();

@@ -80,7 +80,7 @@ export function Summary_strip({ t }: { t: Run_telemetry_data | null }) {
 				) : <div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{total ? 'no agent timing reported' : ''}</div>}
 			</div>
 			<div className="min-w-0"><div className={LBL}>Cost</div><div className="mt-0.5 text-[20px] font-semibold">{fmt_usd(totals.cost_usd)}</div><div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{totals.cost_usd != null ? 'estimated from model prices' : 'no model usage reported'}</div></div>
-			<div className="min-w-0"><div className={LBL}>Tokens</div><div className="mt-0.5 text-[20px] font-semibold">{fmt_count(totals.tokens_in)} <span className="text-[13px] font-normal text-[var(--g-ink-3)]">in</span> · {fmt_count(totals.tokens_out)} <span className="text-[13px] font-normal text-[var(--g-ink-3)]">out</span></div><div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{cache != null ? `${cache}% of input from cache` : none ? '' : 'cache use not reported'}</div></div>
+			<div className="min-w-0"><div className={LBL}>Tokens</div><div className="mt-0.5 text-[20px] font-semibold">{fmt_count(totals.tokens_in)} <span className="text-[13px] font-normal text-[var(--g-ink-3)]">in</span> · {fmt_count(totals.tokens_out)} <span className="text-[13px] font-normal text-[var(--g-ink-3)]">out</span></div><div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{cache != null ? `${cache}% of input from cache` : none ? '' : totals.tokens_in ? <span title={`${(t.by_model ?? []).map((m) => m.provider).filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(', ') || 'The provider'} reports no cache figures, so cache use is unknown.`}>cache not reported by provider</span> : 'no model tokens'}</div></div>
 			<div className="min-w-0"><div className={LBL}>Model calls</div><div className="mt-0.5 text-[20px] font-semibold">{fmt_count(totals.model_calls)}</div><div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{totals.agent_runs} agent run{totals.agent_runs === 1 ? '' : 's'}{totals.reworks ? ` · ${totals.reworks} rework${totals.reworks === 1 ? '' : 's'}` : ''}</div></div>
 			{none ? <p className="col-span-full -mt-1 text-[11.5px] text-[var(--g-ink-3)]">{t.sections.spans === 'error' || t.sections.usage === 'error' ? 'Telemetry couldn’t be loaded.' : 'No telemetry reported for this run yet — older daemons don’t send it.'}</p> : null}
 		</section>
@@ -230,7 +230,7 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, now = 
 					</button>
 					<div className="relative h-full min-w-0">
 						<span className="absolute top-1.5 max-w-full truncate text-[11px] text-[var(--g-ink-3)]" style={{ left: `${Math.min(start, 85)}%` }}>
-							sub-team{r.run_name ? <> · <span className="g-mono">{r.run_name}</span></> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>
+							sub-team{r.run_name ? <> · <span className="g-mono">{r.run_name}</span></> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>{r.usage?.cost_usd != null ? <> · <span data-testid={`sub-run-cost-${r.run_id}`}>{fmt_usd(r.usage.cost_usd)}</span></> : null}
 						</span>
 					</div>
 				</div>
