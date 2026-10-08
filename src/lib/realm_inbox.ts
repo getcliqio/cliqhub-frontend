@@ -204,6 +204,8 @@ export interface Run_detail_data {
 	attempts?: Run_attempt[] | null;
 	/** `events`: from the run's lifecycle events; `phases`: reconstructed from phase history. */
 	attempts_source?: 'events' | 'phases' | null;
+	/** Why a failed / crashed / cancelled run stopped (absent from an older BFF). */
+	failure?: Run_failure | null;
 	/** Set when this run is a sub-team run. */
 	parent?: Run_parent | null;
 	/** Sub-team runs this run's team phases spawned, oldest first. */
@@ -234,4 +236,26 @@ export function format_duration(ms: number | null | undefined): string {
 	if (m < 60) return `${m}m ${s % 60}s`;
 	const h = Math.floor(m / 60);
 	return `${h}h ${m % 60}m`;
+}
+
+/** Why a run stopped, in words a person can act on. */
+export type Run_failure_reason =
+	| 'review_timed_out' | 'review_rejected' | 'review_escalated' | 'gate_exhausted'
+	| 'permission' | 'agent_crashed' | 'agent_error' | 'timed_out' | 'missing_setup'
+	| 'cancelled' | 'daemon_crashed' | 'unknown';
+
+/** One hop from the run down to where it failed; the last hop's `phase` failed. */
+export interface Run_failure_step { run_id: string; run_name: string | null; team: string | null; phase: string | null }
+
+/** Who a failed review went to and what they answered (action null = no answer). */
+export interface Run_failure_reviewer { name: string; action: string | null; responded_at: string | null; comment: string | null }
+
+export interface Run_failure {
+	reason: Run_failure_reason;
+	summary: string;
+	detail: string | null;
+	hint: string | null;
+	chain: Run_failure_step[];
+	resume_from: string | null;
+	review: { review_id: string; status: string | null; policy: 'any' | 'all' | null; reviewers: Run_failure_reviewer[]; route_targets: string[] } | null;
 }

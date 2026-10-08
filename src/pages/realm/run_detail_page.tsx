@@ -44,6 +44,7 @@ import { use_access, type Gate } from '@/lib/access';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
+import { Run_failure_card } from '@/components/graphite/g_run_failure';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
 import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_phase_output';
 import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
@@ -575,6 +576,14 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const [selected, set_selected] = useState<Telemetry_bar | null>(null);
 	const [focus, set_focus] = useState<string | null>(null);
 	const [log_q, set_log_q] = useState<string | null>(null);
+	// `?resume=<phase>` (from a parent run's "Why it failed"): open the resume panel set to it, once.
+	useEffect(() => {
+		const phase = search.get('resume');
+		if (!phase) return;
+		set_resume_initial(phase);
+		set_panel('resume');
+		set_search((prev) => { const p = new URLSearchParams(prev); p.delete('resume'); return p; }, { replace: true });
+	}, []); // eslint-disable-line react-hooks/exhaustive-deps
 	const open_in_timeline = (phase: string) => { set_focus(null); setTimeout(() => set_focus(phase), 0); set_tab('timeline'); };
 
 	const phases = useMemo(() => sort_phases_workflow(data.phases.map((p) => ({ ...p, agent_name: p.agent })) as unknown as Parameters<typeof sort_phases_workflow>[0]) as unknown as Run_detail_phase[], [data.phases]);
@@ -732,7 +741,15 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 
 			<Attempts_strip attempts={data.attempts} source={data.attempts_source} />
 
-			{run.error ? (
+			{data.failure ? (
+				<Run_failure_card
+					failure={data.failure}
+					run_href={(id) => `${base}/runs/${id}`}
+					on_resume={(phase) => { set_resume_initial(phase); set_panel('resume'); }}
+					on_logs={() => { set_log_q(null); set_tab('logs'); }}
+					can_run={gates.run.ok}
+				/>
+			) : run.error ? (
 				<div className="g-mono whitespace-pre-wrap break-words rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-bad-soft)] px-4 py-3 text-[12px] text-[var(--g-ink)]" data-testid="run-error">{run.error}</div>
 			) : null}
 

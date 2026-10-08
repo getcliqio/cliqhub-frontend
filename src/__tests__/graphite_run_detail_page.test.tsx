@@ -254,6 +254,50 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/runs/cancel')).toEqual([{ run_id: 'run-77' }]);
 	});
 
+	it('why it failed: follows the failure into the sub-team review, with who answered what, and a two-step resume', async () => {
+		route_fetch(run_detail({ failure: {
+			reason: 'review_timed_out', summary: "Review timed out after 30m — krupali's reject didn't decide it",
+			detail: "Gate 'hug-lld' escalated: Review abc timed out after 30m", hint: null, resume_from: 'draft-lld',
+			chain: [
+				{ run_id: 'run-77', run_name: 'Nightly reconcile', team: '@measureone/architect', phase: 'design' },
+				{ run_id: 'run-lld', run_name: 'solar-lilac-fox', team: '@measureone/design-lld', phase: 'hug-lld' },
+			],
+			review: { review_id: 'rv-1', status: 'expired', policy: 'any', route_targets: ['draft-lld'], reviewers: [
+				{ name: 'krupali', action: 'REJECT', responded_at: new Date().toISOString(), comment: 'jobs too big' },
+				{ name: 'sapan', action: null, responded_at: null, comment: null },
+			] },
+		} }));
+		render_page();
+		await ready();
+		const card = screen.getByTestId('run-failure');
+		expect(screen.queryByTestId('run-error')).toBeNull();
+		expect(within(card).getByTestId('failure-reason')).toHaveTextContent('Review timed out');
+		expect(within(card).getByTestId('failure-where')).toHaveTextContent('design›sub-team design-lldsolar-lilac-fox›hug-lld');
+		expect(within(card).getAllByTestId('failure-reviewer').map((r) => r.textContent)).toEqual([
+			expect.stringMatching(/^krupali“jobs too big”Rejected/), expect.stringMatching(/^sapanNo response—$/),
+		]);
+		expect(within(card).getByTestId('failure-resume')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld?resume=draft-lld');
+		expect(within(card).getByTestId('failure-two-step')).toHaveTextContent('resume this run from design');
+		expect(within(card).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/reviews/rv-1');
+	});
+
+	it('why it failed in this run: resume opens the panel at that phase; ?resume= does the same', async () => {
+		route_fetch(run_detail({ failure: {
+			reason: 'permission', summary: 'Jira refused access', detail: 'jira: 401 Unauthorized', hint: 'Check the Jira connection or token this team uses has access, then resume.',
+			chain: [{ run_id: 'run-77', run_name: 'Nightly reconcile', team: '@measureone/recon', phase: 'fetch' }], resume_from: 'fetch', review: null,
+		} }));
+		const { unmount } = render_page();
+		await ready();
+		expect(screen.getByTestId('failure-hint')).toHaveTextContent('Check the Jira connection');
+		fireEvent.click(screen.getByTestId('failure-resume'));
+		expect(screen.getByTestId('resume-select')).toHaveValue('fetch');
+		unmount();
+		render_page('/o/measureone/realms/prod-us/runs/run-77?resume=fetch');
+		await ready();
+		expect(await screen.findByTestId('resume-select')).toHaveValue('fetch');
+		await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('resume='));
+	});
+
 	it('resume defaults to the failed phase and posts from_phase', async () => {
 		const spy = route_fetch(run_detail(), { '/v1/runs/resume': () => ({ body: { ok: true } }) });
 		render_page();
