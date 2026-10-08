@@ -10,7 +10,7 @@ import { RefreshCw } from 'lucide-react';
 import { use_overview, relative_time } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { run_href } from '@/lib/realm_inbox';
-import { duration, RANGE_MS, type Realm_runs_data, type Run_range, type Run_state_filter } from '@/lib/realm_runs';
+import { duration, nest_runs, RANGE_MS, type Realm_run_row, type Realm_runs_data, type Run_range, type Run_state_filter } from '@/lib/realm_runs';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
@@ -42,6 +42,14 @@ function parse_range(v: string | null): Run_range | null {
 export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const navigate = useNavigate();
+	/** Main runs whose sub-team rows are folded away. */
+	const [collapsed, set_collapsed] = useState<Set<string>>(new Set());
+	const toggle = (id: string) => set_collapsed((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+	const hidden_under = (r: Realm_run_row) => {
+		const by_id = new Map((data?.items ?? []).map((x) => [x.run_id, x]));
+		for (let p = r.parent?.run_id, hops = 0; p && hops < 5; p = by_id.get(p)?.parent?.run_id, hops++) if (collapsed.has(p)) return true;
+		return false;
+	};
 	const overview = use_overview();
 	const [search, set_search] = useSearchParams();
 	const state = parse_state(search.get('state'));
@@ -135,13 +143,27 @@ export function Component() {
 										</tr>
 									</thead>
 									<tbody>
-										{data.items.map((r) => {
+										{nest_runs(data.items).filter((n) => !hidden_under(n.row)).map(({ row: r, depth, subs, parent_on_page }) => {
 											const href = run_href(org, slug, r.run_id);
+											const short = (r.team ?? '').replace(/^@[^/]+\//, '');
 											return (
-												<tr key={r.run_id} onClick={() => navigate(href)} className="cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 hover:bg-[var(--g-soft)]" data-testid={`run-${r.run_id}`}>
-													<td className="max-w-[340px] px-4 py-2.5">
-														<Link to={href} onClick={(e) => e.stopPropagation()} className="block truncate text-[13px] font-semibold text-[var(--g-ink)] hover:underline">{r.run_name || r.run_id}</Link>
-														{r.error && (r.state === 'failed' || r.state === 'crashed') ? <span className="g-mono block truncate text-[11px] text-[var(--g-bad)]">{r.error}</span> : <span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{r.run_id}</span>}
+												<tr key={r.run_id} onClick={() => navigate(href)} className={`cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 hover:bg-[var(--g-soft)] ${depth ? 'bg-[var(--g-panel-2,transparent)]' : ''}`} data-testid={`run-${r.run_id}`}>
+													<td className="max-w-[340px] px-4 py-2.5" style={depth ? { paddingLeft: `${16 + depth * 20}px` } : undefined}>
+														<span className="flex min-w-0 items-center gap-1.5">
+															{subs ? (
+																<button type="button" aria-expanded={!collapsed.has(r.run_id)} aria-label={`${collapsed.has(r.run_id) ? 'Show' : 'Hide'} sub-team runs of ${r.run_name || r.run_id}`} onClick={(e) => { e.stopPropagation(); toggle(r.run_id); }} className="text-[11px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{collapsed.has(r.run_id) ? '▸' : '▾'}</button>
+															) : null}
+															{depth ? <span aria-hidden className="text-[var(--g-ink-3)]">↳</span> : null}
+															{depth && r.parent?.phase ? <span className="g-mono shrink-0 text-[11.5px] text-[var(--g-ink-3)]">{r.parent.phase} ›</span> : null}
+															<Link to={href} onClick={(e) => e.stopPropagation()} className="min-w-0 truncate text-[13px] font-semibold text-[var(--g-ink)] hover:underline">{r.parent && short ? short : r.run_name || r.run_id}</Link>
+															{r.parent && short && r.run_name ? <span className="g-mono min-w-0 truncate text-[11.5px] text-[var(--g-ink-3)]">{r.run_name}</span> : null}
+															{subs ? <span className="shrink-0 text-[11px] text-[var(--g-ink-3)]" data-testid="sub-count">{subs} sub-team{subs === 1 ? '' : 's'}</span> : null}
+														</span>
+														{r.parent && !parent_on_page ? (
+															<span className="block truncate text-[11px] text-[var(--g-ink-3)]" data-testid="sub-team-of">
+																sub-team of <Link to={run_href(org, slug, r.parent.run_id)} onClick={(e) => e.stopPropagation()} className="g-mono text-[var(--g-acc)] hover:underline">{r.parent.run_name || r.parent.run_id}</Link>{r.parent.phase ? <> › <span className="g-mono">{r.parent.phase}</span></> : null}
+															</span>
+														) : r.error && (r.state === 'failed' || r.state === 'crashed') ? <span className="g-mono block truncate text-[11px] text-[var(--g-bad)]">{r.error}</span> : <span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{r.run_id}</span>}
 													</td>
 													<td className="g-mono max-w-[200px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{r.team ?? '—'}</td>
 													<td className="px-4 py-2.5"><State_pill state={r.state} /></td>

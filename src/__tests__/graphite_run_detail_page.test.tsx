@@ -298,6 +298,24 @@ describe('Graphite run detail', () => {
 		await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('resume='));
 	});
 
+	it('a main run shows its sub-team runs by team in the header; a sub-team run leads with its team and a crumb back', async () => {
+		const child = { run_id: 'run-lld', run_name: 'solar-lilac-fox', team_label: '@measureone/design-lld', parent_phase: 'design', state: 'completed', started_at: Date.now(), completed_at: Date.now(), realm_slug: null, org_slug: null };
+		route_fetch(run_detail({ children: [child] }, { state: 'completed', error: null }));
+		const { unmount } = render_page();
+		await ready();
+		const chips = screen.getByTestId('sub-team-chips');
+		expect(within(chips).getByRole('link', { name: /design-lld\s*completed/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
+		unmount();
+		vi.restoreAllMocks();
+		route_fetch(run_detail({ parent: { run_id: 'run-main', run_name: 'easy-carmine-spruce', phase: 'design', state: 'failed', realm_slug: null, org_slug: null } },
+			{ run_id: 'run-77', run_name: 'solar-lilac-fox', team_label: '@measureone/design-lld' }));
+		render_page();
+		expect(await screen.findByRole('heading', { level: 1, name: 'design-lld' })).toBeInTheDocument();
+		const crumb = screen.getByTestId('parent-crumb');
+		expect(crumb).toHaveTextContent('easy-carmine-spruce›design›this sub-team run');
+		expect(within(crumb).getByRole('link', { name: 'easy-carmine-spruce' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-main');
+	});
+
 	it('resume defaults to the failed phase and posts from_phase', async () => {
 		const spy = route_fetch(run_detail(), { '/v1/runs/resume': () => ({ body: { ok: true } }) });
 		render_page();

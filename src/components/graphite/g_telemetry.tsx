@@ -6,6 +6,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { Link } from 'react-router';
 import { useAuthFetch } from '@/lib/auth_context';
 import { relative_time } from '@/lib/overview';
 import type { Run_attempt } from '@/lib/realm_inbox';
@@ -113,7 +114,7 @@ export function short_error(e: string): string {
 	return e.replace(/\s*\b[0-9a-f]{16,}\b/gi, '').replace(/^Phase '[^']+' failed:\s*/, '').replace(/\s+—\s+escalating$/, '').replace(/\s{2,}/g, ' ').trim();
 }
 
-export function Timeline({ t, selected, on_select, focus_phase, attempts, now = Date.now() }: { t: Run_telemetry_data; selected: string | null; on_select: (b: Telemetry_bar | null) => void; focus_phase?: string | null; /** The run's attempts (resumes); absent when unknown. */ attempts?: Run_attempt[] | null; now?: number }) {
+export function Timeline({ t, selected, on_select, focus_phase, attempts, run_href, now = Date.now() }: { t: Run_telemetry_data; selected: string | null; on_select: (b: Telemetry_bar | null) => void; focus_phase?: string | null; /** The run's attempts (resumes); absent when unknown. */ attempts?: Run_attempt[] | null; /** Page path of a run (links a sub-team row to its run). */ run_href?: (run_id: string) => string; now?: number }) {
 	const [filter, set_filter] = useState<Kind_filter>('all');
 	const [hide_waiting, set_hide_waiting] = useState(false);
 	const [crit_on, set_crit_on] = useState(false);
@@ -230,7 +231,7 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, now = 
 					</button>
 					<div className="relative h-full min-w-0">
 						<span className="absolute top-1.5 max-w-full truncate text-[11px] text-[var(--g-ink-3)]" style={{ left: `${Math.min(start, 85)}%` }}>
-							sub-team{r.run_name ? <> · <span className="g-mono">{r.run_name}</span></> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>{r.usage?.cost_usd != null ? <> · <span data-testid={`sub-run-cost-${r.run_id}`}>{fmt_usd(r.usage.cost_usd)}</span></> : null}
+							sub-team{r.run_name ? <> · {run_href ? <Link to={run_href(r.run_id)} data-testid={`sub-run-link-${r.run_id}`} onMouseDown={(e) => e.stopPropagation()} className="g-mono text-[var(--g-acc)] hover:underline">{r.run_name} ↗</Link> : <span className="g-mono">{r.run_name}</span>}</> : null} · <span className={failed ? 'text-[var(--g-bad)]' : ''}>{r.state}</span>{r.usage?.cost_usd != null ? <> · <span data-testid={`sub-run-cost-${r.run_id}`}>{fmt_usd(r.usage.cost_usd)}</span></> : null}
 						</span>
 					</div>
 				</div>

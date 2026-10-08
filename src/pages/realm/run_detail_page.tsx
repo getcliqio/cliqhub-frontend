@@ -614,7 +614,9 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const can_resume = (failed || awaiting) && !state_lost;
 	const again_target = parse_team_id(run.team_id);
 	const inputs = parse_inputs(run.inputs);
-	const title = run.run_name || run.run_id;
+	// A sub-team run reads as its team ("design-lld"), with its run name beside it.
+	const sub_team_name = data.parent ? (run.team_label ?? '').replace(/^@[^/]+\//, '') : '';
+	const title = sub_team_name || run.run_name || run.run_id;
 
 	async function control(kind: 'supply' | 'cancel' | 'resume', path: string, body: Record<string, unknown>, on_ok: (payload: unknown) => string) {
 		set_error(null);
@@ -655,9 +657,31 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 			{/* Header */}
 			<div className="flex flex-wrap items-start gap-4">
 				<div className="min-w-0 flex-1">
+					{data.parent ? (
+						<nav aria-label="Part of" data-testid="parent-crumb" className="mb-1 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--g-ink-3)]">
+							<span aria-hidden>↰</span>
+							<Link to={other_run_link(data.parent)} className="font-semibold text-[var(--g-acc)] hover:underline">{data.parent.run_name || data.parent.run_id}</Link>
+							{data.parent.phase ? <><span aria-hidden>›</span><span className="g-mono">{data.parent.phase}</span></> : null}
+							<span aria-hidden>›</span><span>this sub-team run</span>
+							{data.parent.state ? <span className="ml-1"><State_pill state={data.parent.state} /></span> : null}
+						</nav>
+					) : null}
 					<div className="flex flex-wrap items-center gap-2.5">
 						<h1 className="min-w-0 truncate text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
+						{sub_team_name && run.run_name ? <span className="g-mono text-[13px] text-[var(--g-ink-3)]">{run.run_name}</span> : null}
 						<State_pill state={run.state} />
+						{children.length ? (
+							<span className="flex flex-wrap items-center gap-1.5" data-testid="sub-team-chips">
+								<span className="text-[11.5px] text-[var(--g-ink-3)]">Sub-team runs</span>
+								{children.map((c) => (
+									<Link key={c.run_id} to={other_run_link(c)} title={c.run_name ?? undefined} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--g-line)] px-2 py-0.5 text-[12px] hover:bg-[var(--g-soft)]">
+										<State_dot state={c.state} pulse={is_live_state(c.state)} />
+										<span className="g-mono font-semibold">{(c.team_label ?? c.run_name ?? c.run_id).replace(/^@[^/]+\//, '')}</span>
+										<span className="text-[var(--g-ink-3)]">{c.state}</span>
+									</Link>
+								))}
+							</span>
+						) : null}
 					</div>
 					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">
 						{[run.team_label || run.team_id, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null].filter(Boolean).join(' · ')}
@@ -799,7 +823,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 							</section>
 						) : tab === 'timeline' || tab === 'usage' || tab === 'dag' ? (
 							!telemetry ? <div className="h-[320px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading telemetry" />
-								: tab === 'timeline' ? <Timeline t={telemetry} selected={selected?.id ?? null} on_select={set_selected} focus_phase={focus} attempts={data.attempts} />
+								: tab === 'timeline' ? <Timeline t={telemetry} selected={selected?.id ?? null} on_select={set_selected} focus_phase={focus} attempts={data.attempts} run_href={(id) => `${base}/runs/${encodeURIComponent(id)}`} />
 								: tab === 'usage' ? <Usage t={telemetry} />
 								: <Dag t={telemetry} on_open={open_in_timeline} />
 						) : data.realm ? (

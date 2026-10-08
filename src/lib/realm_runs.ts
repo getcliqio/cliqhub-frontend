@@ -10,6 +10,36 @@ export interface Realm_run_row {
 	completed_at: number | null;
 	updated_at: number | null;
 	error: string | null;
+	/** Set on a sub-team run: its main run and the phase that started it (absent from an older BFF). */
+	parent?: { run_id: string; run_name: string | null; phase: string | null } | null;
+}
+
+/** A runs-list row in display order: `depth` 1+ = under its main run; `subs` = its sub-team rows on the page. */
+export interface Nested_run_row { row: Realm_run_row; depth: number; subs: number; parent_on_page: boolean }
+
+/**
+ * Order a page of runs so each sub-team run follows its main run (indented), keeping the page's
+ * order otherwise. A sub-team run whose main run isn't on this page stays where it is.
+ */
+export function nest_runs(items: Realm_run_row[]): Nested_run_row[] {
+	const ids = new Set(items.map((r) => r.run_id));
+	const kids = new Map<string, Realm_run_row[]>();
+	for (const r of items) {
+		const p = r.parent?.run_id;
+		if (p && ids.has(p)) kids.set(p, [...(kids.get(p) ?? []), r]);
+	}
+	const out: Nested_run_row[] = [];
+	const seen = new Set<string>();
+	const add = (r: Realm_run_row, depth: number) => {
+		if (seen.has(r.run_id)) return;
+		seen.add(r.run_id);
+		const mine = kids.get(r.run_id) ?? [];
+		out.push({ row: r, depth, subs: mine.length, parent_on_page: depth > 0 });
+		for (const k of mine) add(k, depth + 1);
+	};
+	for (const r of items) if (!(r.parent?.run_id && ids.has(r.parent.run_id))) add(r, 0);
+	for (const r of items) add(r, 0);
+	return out;
 }
 
 export interface Realm_runs_data {

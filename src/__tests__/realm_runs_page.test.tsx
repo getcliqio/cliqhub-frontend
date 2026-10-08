@@ -75,6 +75,29 @@ describe('Realm runs page', () => {
 		expect(within(nav).getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
 	});
 
+	it('sub-team runs sit under their main run (foldable); one whose main run is elsewhere links to it', async () => {
+		const base = runs().items[0];
+		const row = (run_id: string, run_name: string, team: string, parent: { run_id: string; run_name: string | null; phase: string | null } | null = null) => ({ ...base, run_id, run_name, team, parent });
+		route_fetch(() => ({ body: { ok: true, data: runs({ items: [
+			row('sub-1', 'solar-lilac-fox', '@measureone/design-lld', { run_id: 'main-1', run_name: 'easy-carmine-spruce', phase: 'design' }),
+			row('main-1', 'easy-carmine-spruce', '@measureone/architect'),
+			row('sub-2', 'misty-oak', '@measureone/design-lld', { run_id: 'main-9', run_name: 'quiet-amber-heron', phase: 'design' }),
+		] }) } }));
+		render_page();
+		await screen.findByTestId('run-main-1');
+		expect(screen.getAllByTestId(/^run-/).map((r) => r.getAttribute('data-testid'))).toEqual(['run-main-1', 'run-sub-1', 'run-sub-2']);
+		expect(within(screen.getByTestId('run-main-1')).getByTestId('sub-count')).toHaveTextContent('1 sub-team');
+		expect(within(screen.getByTestId('run-sub-1')).getByRole('link', { name: 'design-lld' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/sub-1');
+		expect(screen.getByTestId('run-sub-1')).toHaveTextContent('design ›design-lldsolar-lilac-fox');
+		const away = within(screen.getByTestId('run-sub-2')).getByTestId('sub-team-of');
+		expect(away).toHaveTextContent('sub-team of quiet-amber-heron › design');
+		expect(within(away).getByRole('link', { name: 'quiet-amber-heron' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/main-9');
+		fireEvent.click(screen.getByRole('button', { name: 'Hide sub-team runs of easy-carmine-spruce' }));
+		expect(screen.queryByTestId('run-sub-1')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Show sub-team runs of easy-carmine-spruce' }));
+		expect(screen.getByTestId('run-sub-1')).toBeInTheDocument();
+	});
+
 	it('state chip, range, search and paging go to the BFF and the URL', async () => {
 		const calls = route_fetch();
 		render_page();

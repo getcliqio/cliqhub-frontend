@@ -128,7 +128,8 @@ describe('Run page telemetry', () => {
 		// The sub-team is inside the design lane, not a sibling of it.
 		const sub = within(lane).getByTestId('sub-run-child-1');
 		expect(sub).toHaveTextContent('design-lld');
-		expect(sub).toHaveTextContent('solar-lilac-fox · failed');
+		expect(sub).toHaveTextContent('solar-lilac-fox ↗ · failed');
+		expect(within(sub).getByTestId('sub-run-link-child-1')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/child-1');
 		expect(within(sub).getByTestId('sub-run-cost-child-1')).toHaveTextContent('$0.75');
 		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('Failed: Gate \'hug-lld\' escalated: Review timed out after 30m');
 		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
