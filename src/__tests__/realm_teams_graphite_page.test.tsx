@@ -1,7 +1,7 @@
 /** Graphite realm Teams — one BFF read per page; add/update/remove are single Core writes. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { overview_for_realm } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
 import type { Realm_teams_data } from '@/lib/realm_teams';
@@ -45,8 +45,9 @@ function route_fetch() {
 	return calls;
 }
 
+function Where() { const l = useLocation(); return <div data-testid="where">{l.pathname}</div>; }
 function render_page(path = '/o/measureone/realms/prod-us/teams') {
-	return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/o/:org/realms/:slug/teams" element={<TeamsPage />} /></Routes></MemoryRouter>);
+	return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/o/:org/realms/:slug/teams" element={<TeamsPage />} /><Route path="*" element={<Where />} /></Routes></MemoryRouter>);
 }
 
 describe('Realm teams page', () => {
@@ -65,6 +66,19 @@ describe('Realm teams page', () => {
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText(/not on the realm’s team list/)).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: /On some daemons\s*2/ })).toBeInTheDocument();
 		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: 'Teams' })).toHaveAttribute('aria-current', 'page');
+	});
+
+	it('a row opens its team: the name is the link, Open leads the row\'s buttons, other buttons do only their own thing', async () => {
+		route_fetch();
+		render_page();
+		const rowel = await screen.findByTestId('team-@measureone/recon');
+		const href = '/o/measureone/realms/prod-us/teams/measureone/recon';
+		expect(within(rowel).getByRole('link', { name: '@measureone/recon' })).toHaveAttribute('href', href);
+		expect(within(rowel).getByTestId('row-open')).toHaveAttribute('href', href);
+		fireEvent.click(within(rowel).getByRole('button', { name: /More for/ }));
+		expect(screen.queryByTestId('where')).toBeNull();
+		fireEvent.click(within(rowel).getByText('0.8.3'));
+		expect(await screen.findByTestId('where')).toHaveTextContent(href);
 	});
 
 	it('coverage chip and search go to the BFF', async () => {

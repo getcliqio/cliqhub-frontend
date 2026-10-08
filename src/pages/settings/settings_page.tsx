@@ -20,6 +20,7 @@ import { Org_status_pill } from '@/components/graphite/g_invites';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Tab = 'profile' | 'password' | 'tokens' | 'scopes';
 const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Access tokens', 'Account'], ['scopes', 'My scopes', 'Publishing']];
@@ -41,6 +42,7 @@ export const LEGACY_SETTINGS_TAB: Record<string, string> = {
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
 
 function Profile() {
+	const row = use_row_open();
 	const { user, refresh } = useAuth();
 	const overview = use_overview();
 	const post = use_post();
@@ -89,7 +91,7 @@ function Profile() {
 					{orgs.map((o) => {
 						const manager = o.role === 'owner' || o.role === 'admin';
 						return (
-							<li key={o.id} className="flex items-center gap-2.5" data-testid={`my-org-${o.slug}`}>
+							<li key={o.id} {...row({ to: manager ? `/orgs/${o.id}` : null })} className={`flex items-center gap-2.5 rounded-md px-1 ${manager ? ROW_OPENS : ''}`} data-testid={`my-org-${o.slug}`}>
 								<Avatar name={o.display_name || o.slug} size={24} />
 								<span>{o.display_name || o.slug}</span><span className="text-[12.5px] text-[var(--g-ink-3)]">{o.role}</span>{o.org_status !== 'active' ? <Org_status_pill status={o.org_status} /> : null}
 								<span className="ml-auto flex gap-2">
@@ -235,6 +237,7 @@ function Tokens() {
 interface Scope_row { id: string; slug: string; display_name?: string; visibility?: string; scope_type?: string; team_count?: number | string; org_id?: string | null }
 
 function Scopes() {
+	const row = use_row_open();
 	const { user } = useAuth();
 	// orgs/get_scopes answers PagedData (`items`); `scopes` is kept for older BFFs.
 	const read = use_bff_read<{ items?: Scope_row[]; scopes?: Scope_row[] }>('/v1/orgs/get_scopes', user ? { user_id: user.id, limit: 100 } : null, { fallback_error: 'Could not load your scopes.' });
@@ -253,8 +256,8 @@ function Scopes() {
 						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
 						{read.data && !rows.length ? <Empty_row cols={5}>No scopes.</Empty_row> : null}
 						{rows.map((s) => (
-							<tr key={s.id} className={TR}>
-								<td className="g-mono px-4 py-2.5">@{s.slug}</td>
+							<tr key={s.id} {...row({ to: `/browse/s/${encodeURIComponent(s.slug)}` })} className={`${TR} ${ROW_OPENS}`}>
+								<td className="g-mono px-4 py-2.5"><Link to={`/browse/s/${encodeURIComponent(s.slug)}`} className="hover:underline">@{s.slug}</Link></td>
 								<td className="px-4 text-[var(--g-ink-3)]">{s.scope_type === 'user' || !s.org_id ? 'personal' : 'org'}</td>
 								<td className="px-4"><Pill tone={s.visibility === 'public' ? 'ok' : 'muted'}>{s.visibility ?? 'private'}</Pill></td>
 								<td className="g-mono px-4">{Number(s.team_count ?? 0)}</td>

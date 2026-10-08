@@ -15,6 +15,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Agent_tile, G_INPUT, G_PILL, G_PRIMARY, Kind_chip, Origin_badge, Register_dialog, Setup_badge } from '@/components/graphite/g_agents';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Filter = 'all' | 'needs_setup' | 'in_use' | 'custom' | 'builtin';
 const FILTERS: Array<{ id: Filter; label: string }> = [
@@ -32,6 +33,7 @@ export function matches(r: Agent_list_row, f: Filter, q: string, kind: string): 
 }
 
 export function Component() {
+	const row = use_row_open();
 	const overview = use_overview();
 	const navigate = useNavigate();
 	const [search, set_search] = useSearchParams();
@@ -114,7 +116,7 @@ export function Component() {
 							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={sort} k="name" className="px-4 py-2.5 font-semibold">Agent</Sort_th><Sort_th sort={sort} k="kind" className="px-4 font-semibold">Kind</Sort_th><th className="px-4 font-semibold">Version</th><Sort_th sort={sort} k="setup" className="px-4 font-semibold">Setup (org)</Sort_th><th className="px-4 font-semibold">Realm overrides</th><Sort_th sort={sort} k="used" className="px-4 font-semibold">Used by</Sort_th><th className="w-[1%]" /></tr></thead>
 							<tbody>
 								{rows.map((r) => (
-									<tr key={r.id} className="cursor-pointer border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 hover:bg-[var(--g-soft)]" onClick={() => navigate(agent_href(r.id, org?.slug ?? null))} data-testid={`agent-${r.name}`}>
+									<tr key={r.id} {...row({ to: agent_href(r.id, org?.slug ?? null) })} className={`border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 ${ROW_OPENS}`} data-testid={`agent-${r.name}`}>
 										<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Agent_tile agent_type={r.agent_type} name={r.name} /><div className="min-w-0"><div className="flex items-center gap-1.5"><Link to={agent_href(r.id, org?.slug ?? null)} onClick={(e) => e.stopPropagation()} className="g-mono text-[13px] font-semibold text-[var(--g-ink)] hover:underline">{r.name}</Link><Origin_badge is_system={r.is_system} /></div><div className="truncate text-[12px] text-[var(--g-ink-3)]">{r.description}</div></div></div></td>
 										<td className="px-4"><Kind_chip agent_type={r.agent_type} name={r.name} /></td>
 										<td className="g-mono px-4 text-[12px]">{r.version ?? '—'}{r.versions.length > 1 ? <span className="text-[var(--g-ink-3)]"> +{r.versions.length - 1}</span> : null}</td>

@@ -19,6 +19,7 @@ import { Realm_nav } from '@/components/graphite/realm_nav';
 import { Agent_tile, G_BTN, Kind_chip, Origin_badge, Settings_form, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 const TABS: Array<{ id: Agent_view; label: string }> = [
 	{ id: 'settings', label: 'Settings' }, { id: 'realms', label: 'Realms' }, { id: 'used_by', label: 'Used by' }, { id: 'manifest', label: 'Manifest' }, { id: 'versions', label: 'Versions' },
@@ -35,6 +36,7 @@ function Key_cell({ v }: { v: 'org' | 'realm' | 'missing' }) {
 
 /** Shared body. `realm` set → realm-scoped (A7): only that realm's values + teams used there. */
 export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; org_slug: string | null; id: string; realm: { org_slug: string; slug: string } | null }) {
+	const row = use_row_open();
 	const navigate = useNavigate();
 	const post = use_post();
 	const [search, set_search] = useSearchParams();
@@ -89,7 +91,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 							<h3 className={H3}>Realm overrides<span className="text-[12px] font-normal text-[var(--g-ink-3)]">{d.overrides ? `${d.overrides.length} realm${d.overrides.length === 1 ? '' : 's'}` : ''}</span></h3>
 							<div className="px-4 py-3 text-[12.5px] text-[var(--g-ink-2)]">
 								{d.overrides?.length ? d.overrides.map((o) => (
-									<div key={o.realm_id} className="flex items-center gap-2 py-0.5"><b>{o.realm_slug}</b><span className="text-[var(--g-run-text)]">overrides {o.keys.join(', ')}</span>{org_slug ? <Link to={`${realm_path(org_slug, o.realm_slug)}/agents/${a.id}`} className="ml-auto text-[var(--g-acc)]">Open →</Link> : null}</div>
+									<div key={o.realm_id} {...row({ to: org_slug ? `${realm_path(org_slug, o.realm_slug)}/agents/${a.id}` : null })} className={`flex items-center gap-2 rounded px-1 py-0.5 ${org_slug ? ROW_OPENS : ''}`}><b>{o.realm_slug}</b><span className="text-[var(--g-run-text)]">overrides {o.keys.join(', ')}</span>{org_slug ? <Link to={`${realm_path(org_slug, o.realm_slug)}/agents/${a.id}`} className="ml-auto text-[var(--g-acc)]">Open →</Link> : null}</div>
 								)) : <p className="text-[var(--g-ink-3)]">No realm overrides these values.</p>}
 								<p className="mt-2 text-[var(--g-ink-3)]">Overrides are edited in each realm’s Agents page. <button type="button" onClick={() => go_tab('realms')} className="text-[var(--g-acc)]">See all realms →</button></p>
 							</div>
@@ -111,7 +113,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 						<table className="w-full text-[12.5px]">
 							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={realm_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={realm_sort} k="used" className="px-4 font-semibold">Used here</Sort_th>{d.required_keys.map((k) => <th key={k} className="g-mono px-4 font-normal normal-case">{k}</th>)}<Sort_th sort={realm_sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th /></tr></thead>
 							<tbody>{realm_rows.map((r) => (
-								<tr key={r.realm.id} className="border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0" data-testid={`realm-${r.realm.slug}`}>
+								<tr key={r.realm.id} {...row({ to: org_slug ? `${realm_path(org_slug, r.realm.slug)}/agents/${a.id}` : null })} className={`border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 ${org_slug ? ROW_OPENS : ''}`} data-testid={`realm-${r.realm.slug}`}>
 									<td className="px-4 py-2.5 font-semibold">{r.realm.slug}</td>
 									<td className="px-4">{d.used_by === null ? '?' : r.used_here.length ? <><span>{r.used_here.length} team{r.used_here.length === 1 ? '' : 's'}</span><div className="g-mono text-[11px] text-[var(--g-ink-3)]">{r.used_here.map((t) => t.split('/')[1]).join(' · ')}</div></> : <span className="text-[var(--g-ink-3)]">not used</span>}</td>
 									{d.required_keys.map((k) => <td key={k} className="px-4"><Key_cell v={r.keys[k] ?? 'missing'} /></td>)}
@@ -130,7 +132,7 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 			<div className={CARD}>
 				{d.used_by === null ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">Usage isn’t available from this Core version.</p> : !used.length ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">No team uses this agent.</p> : (
 					<table className="w-full text-[12.5px]"><thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={team_sort} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th><Sort_th sort={team_sort} k="version" className="px-4 font-semibold">Version checked</Sort_th><Sort_th sort={team_sort} k="installed" className="px-4 font-semibold">Installed in</Sort_th></tr></thead>
-						<tbody>{used.map((u) => <tr key={`${u.scope}/${u.name}`} className="border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0"><td className="px-4 py-2.5"><Link to={team_href(u.scope, u.name)} className="g-mono font-semibold text-[var(--g-ink)] hover:underline">@{u.scope}/{u.name}</Link></td><td className="g-mono px-4">{u.version ?? '—'}</td><td className="px-4">{u.realms.length ? u.realms.map((r) => r.slug).join(', ') : <span className="text-[var(--g-ink-3)]">not installed</span>}</td></tr>)}</tbody></table>
+						<tbody>{used.map((u) => <tr key={`${u.scope}/${u.name}`} {...row({ to: team_href(u.scope, u.name) })} className={`border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 ${ROW_OPENS}`}><td className="px-4 py-2.5"><Link to={team_href(u.scope, u.name)} className="g-mono font-semibold text-[var(--g-ink)] hover:underline">@{u.scope}/{u.name}</Link></td><td className="g-mono px-4">{u.version ?? '—'}</td><td className="px-4">{u.realms.length ? u.realms.map((r) => r.slug).join(', ') : <span className="text-[var(--g-ink-3)]">not installed</span>}</td></tr>)}</tbody></table>
 				)}
 			</div>
 		);

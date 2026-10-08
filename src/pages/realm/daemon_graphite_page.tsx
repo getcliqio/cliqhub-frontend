@@ -17,6 +17,7 @@ import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Daemon_status, G_DANGER, Host_runs, Run_here, Run_state, team_label, type Daemon_page_data, type Host_team } from '@/components/graphite/g_host';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 type Msg = { tone: 'ok' | 'bad'; text: string } | null;
 
@@ -25,6 +26,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise<void> }) {
+	const row = use_row_open();
 	const post = use_post();
 	const daemon_id = String(data.daemon.id ?? '');
 	const [pick, set_pick] = useState('');
@@ -66,12 +68,12 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 							{installed.map((t) => {
 								const key = `${t.scope}/${t.slug}`;
 								return (
-									<tr key={key} className={TR} data-testid={`installed-${t.slug}`}>
+									<tr key={key} {...row({ to: `/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`installed-${t.slug}`}>
 										<td className="g-mono px-4 py-2.5"><Link to={`/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="hover:underline">{team_label(t)}</Link></td>
 										<td className="g-mono px-4 text-[var(--g-ink-2)]">{t.version ?? '—'}</td>
 										<td className="px-4 text-right">{confirm === key
 											? <span className="inline-flex gap-2"><button type="button" disabled={busy} onClick={() => void uninstall(t)} className={G_DANGER}>Uninstall</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
-											: <button type="button" onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Uninstall…</button>}</td>
+											: <span className="inline-flex items-center gap-2"><Row_open to={`/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} label={`Open ${team_label(t)}`} /><button type="button" onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Uninstall…</button></span>}</td>
 									</tr>
 								);
 							})}
@@ -93,6 +95,7 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 }
 
 function Workspaces({ data, base, reload }: { data: Daemon_page_data; base: string; reload: () => Promise<void> }) {
+	const row = use_row_open();
 	const [run_in, set_run_in] = useState<string | null>(null);
 	const wsort = use_table_sort({ keys: ['workspace', 'teams', 'last_run_at'], mode: 'client', param: 'workspaces', first_dir: { last_run_at: 'desc', teams: 'desc' } });
 	// Every workspace of the daemon is loaded; null = couldn't be loaded.
@@ -109,11 +112,11 @@ function Workspaces({ data, base, reload }: { data: Daemon_page_data; base: stri
 					<tbody>
 						{ws === null ? <Empty_row cols={4}>Workspaces couldn’t be loaded.</Empty_row> : !ws.length ? <Empty_row cols={4}>No workspaces yet — one is created the first time a team runs in a folder.</Empty_row> : null}
 						{(ws ?? []).map((w) => (
-							<tr key={w.id} className={TR} data-testid={`workspace-${w.id}`}>
+							<tr key={w.id} {...row({ to: `${base}/workspaces/${encodeURIComponent(w.id)}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`workspace-${w.id}`}>
 								<td className="max-w-[320px] px-4 py-2.5"><Link to={`${base}/workspaces/${encodeURIComponent(w.id)}`} className="block truncate font-semibold hover:underline">{w.name || w.path.split('/').pop() || w.id}</Link><span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{w.path}</span></td>
 								<td className="g-mono max-w-[260px] truncate px-4 text-[var(--g-ink-2)]">{w.teams.length ? w.teams.join(', ') : '—'}</td>
 								<td className="whitespace-nowrap px-4">{w.last_run_state ? <><Run_state state={w.last_run_state} /> <span className="text-[var(--g-ink-3)]">{w.last_run_at ? relative_time(w.last_run_at) : ''}</span></> : <span className="text-[var(--g-ink-3)]">—</span>}{w.active_runs ? <span className="g-mono ml-2 text-[11px] text-[var(--g-ink-3)]">{w.active_runs} live</span> : null}</td>
-								<td className="px-4 text-right"><button type="button" onClick={() => set_run_in(run_in === w.id ? null : w.id)} className={G_BTN}>Run here</button></td>
+								<td className="px-4 text-right"><span className="inline-flex items-center gap-2"><Row_open to={`${base}/workspaces/${encodeURIComponent(w.id)}`} label={`Open ${w.name || w.id}`} /><button type="button" onClick={() => set_run_in(run_in === w.id ? null : w.id)} className={G_BTN}>Run here</button></span></td>
 							</tr>
 						))}
 					</tbody>

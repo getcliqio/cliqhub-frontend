@@ -4,7 +4,7 @@
  * Create: `orgs/new` with an owner picked from `users/get` (search) or invited by email.
  */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Plus, X } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_bff_read } from '@/lib/use_bff_read';
@@ -16,6 +16,7 @@ import { G_BTN, G_INPUT, G_PILL, G_PRIMARY, use_post } from '@/components/graphi
 import { Org_status_pill, Sent_or_link } from '@/components/graphite/g_invites';
 import { Deleted_notice } from '@/components/graphite/g_reactivate';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 const LIMIT = 25;
 type Status_filter = 'all' | 'active' | 'waiting_for_owner';
@@ -178,7 +179,7 @@ function New_org({ on_close, on_created }: { on_close: () => void; on_created: (
 }
 
 export function Component() {
-	const navigate = useNavigate();
+	const row = use_row_open();
 	const { user } = useAuth();
 	const [sp, set_sp] = useSearchParams();
 	const q = sp.get('q') ?? '';
@@ -227,8 +228,8 @@ export function Component() {
 						{read.status === 'loading' ? <Empty_row cols={7}>Loading…</Empty_row> : null}
 						{d && !d.orgs.length ? <Empty_row cols={7}>{q ? `No orgs match “${q}”.` : 'No organizations.'}</Empty_row> : null}
 						{d?.orgs.map((o) => (
-							<tr key={o.id} onClick={() => navigate(`/admin/orgs/${o.id}`)} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${o.deleted_at ? 'opacity-60' : ''}`} data-testid={`org-${o.slug}`}>
-								<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={o.display_name || o.slug} /><div><b>{o.display_name || o.slug}</b> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{o.slug}</span></div></div></td>
+							<tr key={o.id} {...row({ to: `/admin/orgs/${o.id}` })} className={`${TR} ${ROW_OPENS} ${o.deleted_at ? 'opacity-60' : ''}`} data-testid={`org-${o.slug}`}>
+								<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={o.display_name || o.slug} /><div><Link to={`/admin/orgs/${o.id}`} className="font-bold hover:underline">{o.display_name || o.slug}</Link> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{o.slug}</span></div></div></td>
 								<td className="px-4"><Org_status_pill status={o.deleted_at ? 'deleted' : o.status} /></td>
 								<td className="px-4 text-[var(--g-ink-2)]">{!o.owner ? <span className="text-[var(--g-ink-3)]">—</span> : !o.owner.username ? <span className="text-[var(--g-ink-3)]">Invited</span> : <>{o.owner.username}{o.owner.status === 'invited' ? <span className="text-[var(--g-ink-3)]"> · invited</span> : null}</>}</td>
 								<td className="g-mono px-4">{o.member_count}</td>

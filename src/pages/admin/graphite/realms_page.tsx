@@ -3,7 +3,7 @@
  * Read: `POST /v1/admin_list/get {kind:'realms'}` (hub-wide on Core API 3).
  */
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, realm_href, type Admin_list_data, type Admin_realm_row } from '@/lib/admin';
 import { Admin_header, Empty_row, Hub_scope_note, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
@@ -11,11 +11,12 @@ import { Org_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 const LIMIT = 25;
 
 export function Component() {
-	const navigate = useNavigate();
+	const row = use_row_open();
 	const p = use_list_params();
 	const q = p.get('q');
 	const org_id = p.get('org');
@@ -44,12 +45,12 @@ export function Component() {
 						{d?.items.map((r) => {
 							const href = realm_href(r);
 							return (
-								<tr key={r.id} onClick={href ? () => navigate(href) : undefined} className={`${TR} ${href ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid={`realm-${r.slug}`}>
-									<td className="px-4 py-2.5"><b>{r.name || r.slug}</b> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{r.slug}</span></td>
+								<tr key={r.id} {...row({ to: href })} className={`${TR} ${href ? ROW_OPENS : ''}`} data-testid={`realm-${r.slug}`}>
+									<td className="px-4 py-2.5">{href ? <Link to={href} className="font-bold hover:underline">{r.name || r.slug}</Link> : <b>{r.name || r.slug}</b>} <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{r.slug}</span></td>
 									<td className="g-mono px-4 text-[var(--g-ink-2)]">{r.org_slug ?? '—'}</td>
 									<td className="px-4 text-[var(--g-ink-2)]">{r.created_by_username ?? '—'}</td>
 									<td className="px-4 text-[var(--g-ink-3)]">{r.created_at ? `${ago(r.created_at)} ago` : '—'}</td>
-									<td className="px-4 text-right">{href ? <Link to={`${href}/daemons`} onClick={(e) => e.stopPropagation()} className="text-[12.5px] text-[var(--g-acc)]">Daemons →</Link> : null}</td>
+									<td className="px-4 text-right">{href ? <Link to={`${href}/daemons`} className="text-[12.5px] text-[var(--g-acc)]">Daemons →</Link> : null}</td>
 								</tr>
 							);
 						})}

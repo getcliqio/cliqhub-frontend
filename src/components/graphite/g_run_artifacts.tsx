@@ -11,6 +11,7 @@ import { useMemo, useState } from 'react';
 import { Download } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import type { Run_artifact, Section_status } from '@/lib/realm_inbox';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 /** Byte count as a short size. */
 export function format_size(bytes: number): string {
@@ -49,6 +50,7 @@ export function group_by_phase(artifacts: Run_artifact[]): Array<{ phase: string
 }
 
 export function G_run_artifacts({ artifacts: all, status }: { artifacts: Run_artifact[]; status: Section_status | undefined }) {
+	const row = use_row_open();
 	const artifacts = useMemo(() => file_rows(all), [all]);
 	const auth_fetch = useAuthFetch();
 	const [busy, set_busy] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export function G_run_artifacts({ artifacts: all, status }: { artifacts: Run_art
 									const text = open[a.artifact_id];
 									return (
 										<li key={a.artifact_id} className="px-4 py-2" data-testid="artifact-row">
-											<div className="flex items-center gap-3">
+											<div {...row({ on_open: is_file || busy === a.artifact_id ? null : () => void read(a) })} className={`-mx-2 flex items-center gap-3 rounded px-2 ${is_file ? '' : ROW_OPENS}`}>
 												<div className="min-w-0 flex-1">
 													<p className="g-mono truncate text-[12.5px] font-semibold" title={a.name}>{a.name}</p>
 													<p className="truncate text-[11.5px] text-[var(--g-ink-3)]">

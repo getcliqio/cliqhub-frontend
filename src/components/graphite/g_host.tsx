@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { relative_time } from '@/lib/overview';
 import { Empty_row, Pill, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 export interface Host_run { run_id: string; run_name: string | null; state: string; team: string | null; phase: string | null; started_at: number | null; completed_at: number | null; last_updated_at: number | null }
 export interface Host_team { team_id: string | null; scope: string; slug: string; version: string | null }
@@ -62,6 +63,7 @@ export function parse_inputs(text: string): { ok: true; inputs: Record<string, s
 
 /** Runs table with cancel (confirm) for live runs; awaiting input opens the run page. */
 export function Host_runs({ runs, total, base, on_changed, empty }: { runs: Host_run[] | null; total: number | null; base: string; on_changed: () => Promise<void> | void; empty: string }) {
+	const row = use_row_open();
 	const post = use_post();
 	const [confirm, set_confirm] = useState<string | null>(null);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -86,13 +88,13 @@ export function Host_runs({ runs, total, base, on_changed, empty }: { runs: Host
 							const live = r.state === 'running' || r.state === 'awaiting_input';
 							const at = r.last_updated_at ?? r.completed_at ?? r.started_at;
 							return (
-								<tr key={r.run_id} className={TR} data-testid={`run-${r.run_id}`}>
+								<tr key={r.run_id} {...row({ to: `${base}/runs/${encodeURIComponent(r.run_id)}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`run-${r.run_id}`}>
 									<td className="max-w-[260px] px-4 py-2.5"><Link to={`${base}/runs/${encodeURIComponent(r.run_id)}`} className="block truncate font-semibold hover:underline">{r.run_name || r.run_id}</Link>{r.phase ? <span className="text-[11.5px] text-[var(--g-ink-3)]">{r.phase}</span> : null}</td>
 									<td className="g-mono max-w-[220px] truncate px-4 text-[var(--g-ink-2)]">{r.team ?? '—'}</td>
 									<td className="px-4"><Run_state state={r.state} /></td>
 									<td className="whitespace-nowrap px-4 text-[var(--g-ink-3)]">{at ? relative_time(at) : '—'}</td>
 									<td className="px-4 text-right">
-										{r.state === 'awaiting_input' ? <Link to={`${base}/runs/${encodeURIComponent(r.run_id)}`} className={`${G_BTN} mr-2`}>Provide input</Link> : null}
+										{r.state === 'awaiting_input' ? <Link to={`${base}/runs/${encodeURIComponent(r.run_id)}`} className={`${G_BTN} mr-2`}>Provide input</Link> : live ? <span className="mr-2 inline-block"><Row_open to={`${base}/runs/${encodeURIComponent(r.run_id)}`} label={`Open ${r.run_name || r.run_id}`} /></span> : null}
 										{live ? (confirm === r.run_id
 											? <span className="inline-flex gap-2"><button type="button" disabled={busy} onClick={() => void cancel(r.run_id)} className={G_DANGER}>Cancel run</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
 											: <button type="button" onClick={() => set_confirm(r.run_id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Cancel…</button>) : null}

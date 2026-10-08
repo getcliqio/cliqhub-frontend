@@ -9,6 +9,7 @@ import { ago, audit_summary, type Admin_home_data } from '@/lib/admin';
 import { Admin_header, Avatar, Hub_scope_note, Stat_tile } from '@/components/graphite/g_admin';
 import { G_BTN } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('en-US'));
 
@@ -27,6 +28,7 @@ function Core_badge({ core }: { core: Admin_home_data['core'] }) {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const read = use_bff_read<Admin_home_data>('/v1/admin_home/get', {}, { refresh_ms: 60_000, fallback_error: 'Could not load the admin home.' });
 	const d = read.data;
 	const c = d?.counts;
@@ -61,7 +63,7 @@ export function Component() {
 						<h2 className="flex items-center gap-2 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold">Needs attention <span className="g-mono text-[12px] font-normal text-[var(--g-ink-3)]">{d.attention.length}</span></h2>
 						{d.attention.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">Nothing needs an admin right now.</p> : (
 							<ul>{d.attention.map((a) => (
-								<li key={a.id} className="flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0" data-testid={`attn-${a.id}`}>
+								<li key={a.id} {...row({ to: a.href })} className={`flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${ROW_OPENS}`} data-testid={`attn-${a.id}`}>
 									<span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot[a.severity]}`} />
 									<div className="min-w-0 flex-1"><b className="block text-[13px] font-semibold">{a.title}</b><span className="text-[12.5px] text-[var(--g-ink-3)]">{a.detail}</span></div>
 									<Link to={a.href} className={G_BTN}>{a.action}</Link>

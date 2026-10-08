@@ -51,6 +51,7 @@ import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_ph
 import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
 import { fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_bar, type Telemetry_phase } from '@/lib/run_telemetry';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 export const LIVE_POLL_MS = 4_000;
 export const IDLE_POLL_MS = 20_000;
@@ -243,6 +244,7 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 	/** Sub-team tree state: which sub-team runs are open and which step is selected. */
 	tree?: { open: Set<string>; toggle: (run_id: string) => void; selected: { run_id: string; phase: string } | null; on_select: (s: Tree_step) => void; run_href: (run_id: string) => string };
 }) {
+	const row = use_row_open();
 	const tel = new Map<string, Telemetry_phase>((telemetry?.phases ?? []).map((x) => [x.name, x]));
 	const [shown, set_shown] = useState<Set<string>>(() => new Set());
 	const now = Date.now();
@@ -261,7 +263,7 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 				const latest = mine[mine.length - 1];
 				const open = Boolean(latest) && shown.has(p.phase);
 				return (
-					<li key={`${p.phase}-${i}`} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open && tel.get(p.phase)?.start_ms != null ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid="phase-row" onClick={() => { if (on_open && tel.get(p.phase)?.start_ms != null) on_open(p.phase); }}>
+					<li key={`${p.phase}-${i}`} {...row({ on_open: on_open && tel.get(p.phase)?.start_ms != null ? () => on_open(p.phase) : null })} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open && tel.get(p.phase)?.start_ms != null ? ROW_OPENS : ''}`} data-testid="phase-row">
 						{i < phases.length - 1 ? <span aria-hidden className="absolute left-[29px] top-[26px] h-[calc(100%-12px)] w-px bg-[var(--g-line)]" /> : null}
 						<span className="relative z-[1] mt-1 grid h-4 w-4 place-items-center justify-self-center rounded-full bg-[var(--g-panel)]">
 							<State_dot state={p.status} pulse={live} />
@@ -270,6 +272,7 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 							<p className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold">
 								<span className="g-mono">{p.phase}</span>
 								<State_pill state={p.status} />
+								{on_open && tel.get(p.phase)?.start_ms != null ? <span className="ml-auto font-normal"><Row_open on_open={() => on_open(p.phase)} label={`Open ${p.phase} in the timeline`}>Timeline</Row_open></span> : null}
 							</p>
 							<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">
 								{[p.agent ? `agent ${p.agent}` : null, p.started_at ? `started ${relative_time(p.started_at)}` : 'not started', tel.get(p.phase)?.tokens_in != null ? `${fmt_count(tel.get(p.phase)!.tokens_in)} / ${fmt_count(tel.get(p.phase)!.tokens_out)} tokens` : null, ran > 1 ? `ran ${ran}×` : null, resumed && p.status === 'skipped' && p.started_at ? 'kept from an earlier attempt' : null].filter(Boolean).join(' · ')}
@@ -385,6 +388,7 @@ function Details({ run, base, parent, children, run_link }: {
 	children?: Run_child[];
 	run_link: (r: { run_id: string; org_slug: string | null; realm_slug: string | null }) => string;
 }) {
+	const row = use_row_open();
 	const inputs = parse_inputs(run.inputs);
 	const labels = Object.entries(run.context_labels ?? {}).filter(([k]) => k !== 'external_url');
 	const kids = children ?? [];
@@ -439,7 +443,7 @@ function Details({ run, base, parent, children, run_link }: {
 					<h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Sub-team runs</h3>
 					<ul className="mt-2 grid gap-2">
 						{kids.map((c) => (
-							<li key={c.run_id} className="min-w-0" data-testid="child-run">
+							<li key={c.run_id} {...row({ to: run_link(c) })} className={`-mx-1 min-w-0 rounded px-1 py-0.5 ${ROW_OPENS}`} data-testid="child-run">
 								<span className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
 									<State_dot state={c.state} pulse={is_live_state(c.state)} />
 									<Link to={run_link(c)} className="min-w-0 truncate font-semibold hover:underline">{c.run_name || c.run_id}</Link>

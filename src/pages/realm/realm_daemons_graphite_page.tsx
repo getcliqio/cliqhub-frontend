@@ -18,6 +18,7 @@ import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
@@ -31,6 +32,7 @@ const STATUS: Record<string, { label: string; color: string }> = {
 const STATUS_RANK: Record<string, number> = { online: 0, stale: 1, offline: 2 };
 
 export function Component() {
+	const row = use_row_open();
 	const { org = '', slug = '' } = useParams();
 	const auth_fetch = useAuthFetch();
 	const overview = use_overview();
@@ -136,7 +138,7 @@ export function Component() {
 											const st = STATUS[d.status] ?? { label: d.status, color: 'var(--g-ink-3)' };
 											const short = data.teams_total !== null && d.teams_ready !== null && d.teams_ready < data.teams_total;
 											return (
-												<tr key={d.id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`daemon-${d.id}`}>
+												<tr key={d.id} {...row({ to: `${base}/daemons/${encodeURIComponent(d.id)}` })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${ROW_OPENS}`} data-testid={`daemon-${d.id}`}>
 													<td className="max-w-[260px] px-4 py-2.5">
 														<Link to={`${base}/daemons/${encodeURIComponent(d.id)}`} className="block truncate text-[13px] font-semibold hover:underline">{d.name || d.id}</Link>
 														<span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{d.name ? d.id : d.owner_email ?? ''}</span>
@@ -153,7 +155,7 @@ export function Component() {
 																<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 															</span>
 														) : (
-															<button type="button" aria-label={`Remove ${d.name || d.id}`} disabled={!removable.ok} title={removable.reason ?? undefined} onClick={() => set_confirm(d.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:text-[var(--g-ink-3)]">Remove…</button>
+															<span className="inline-flex items-center gap-2"><Row_open to={`${base}/daemons/${encodeURIComponent(d.id)}`} label={`Open ${d.name || d.id}`} /><button type="button" aria-label={`Remove ${d.name || d.id}`} disabled={!removable.ok} title={removable.reason ?? undefined} onClick={() => set_confirm(d.id)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:text-[var(--g-ink-3)]">Remove…</button></span>
 														)}
 													</td>
 												</tr>

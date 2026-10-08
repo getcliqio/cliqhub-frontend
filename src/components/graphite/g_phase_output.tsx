@@ -10,6 +10,7 @@ import { Link } from 'react-router';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import { Md } from '@/components/graphite/g_review';
 import type { Phase_output_view, Run_artifact, Run_phase_output } from '@/lib/realm_inbox';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 /** Commands listed before "Show all". */
 const COMMANDS_SHOWN = 8;
@@ -200,6 +201,7 @@ export function G_phase_output({ outputs, handoffs = [], run_link }: { outputs: 
  * summary, opened into its output panel. Outputs of one phase are grouped.
  */
 export function G_phase_outputs_list({ outputs, run_link }: { outputs: Run_phase_output[]; run_link: (run_id: string) => string }) {
+	const row = use_row_open();
 	const [shown, set_shown] = useState<Set<string>>(() => new Set());
 	const groups = new Map<string, Run_phase_output[]>();
 	for (const o of outputs) groups.set(o.phase, [...(groups.get(o.phase) ?? []), o]);
@@ -209,7 +211,7 @@ export function G_phase_outputs_list({ outputs, run_link }: { outputs: Run_phase
 				const open = shown.has(phase);
 				return (
 					<li key={phase} className="px-4 py-2.5">
-						<div className="flex min-w-0 items-center gap-2 text-[12.5px]">
+						<div {...row({ on_open: () => set_shown((cur) => { const next = new Set(cur); if (next.has(phase)) next.delete(phase); else next.add(phase); return next; }) })} className={`-mx-2 flex min-w-0 items-center gap-2 rounded px-2 text-[12.5px] ${ROW_OPENS}`}>
 							<span className="g-mono shrink-0 font-semibold">{phase}</span>
 							<span className="min-w-0 flex-1 truncate text-[var(--g-ink-2)]">{list[list.length - 1]!.view.summary}</span>
 							<button

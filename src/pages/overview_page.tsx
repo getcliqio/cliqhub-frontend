@@ -28,6 +28,7 @@ import { is_problem_event } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import { KIND_STYLE, KIND_STRIPE, Kind_icon, ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Count_badge, Graphite_shell, Org_chip, Realm_dot } from '@/components/graphite/graphite_shell';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 function greeting(now = new Date()): string {
 	const h = now.getHours();
@@ -76,9 +77,10 @@ function Where({ item, show_org, org }: { item: Overview_item; show_org: boolean
 }
 
 function Needs_row({ item, show_org, org }: { item: Overview_item; show_org: boolean; org?: Overview_org }) {
+	const row = use_row_open();
 	const meta = KIND_STYLE[item.kind];
 	return (
-		<li className="flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0">
+		<li {...row({ to: item_href(item) })} className={`flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${ROW_OPENS}`}>
 			<Kind_icon kind={item.kind} />
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-[13.5px] font-semibold">

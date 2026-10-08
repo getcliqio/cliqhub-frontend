@@ -12,6 +12,7 @@ import { Org_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 const LIMIT = 25;
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
@@ -84,6 +85,7 @@ function Scope_editor({ s, on_close, on_done }: { s: Admin_scope_row; on_close: 
 
 export function Component() {
 	const p = use_list_params();
+	const row = use_row_open();
 	const q = p.get('q');
 	const org_id = p.get('org');
 	const sel = p.get('s');
@@ -116,8 +118,8 @@ export function Component() {
 							{read.status === 'loading' ? <Empty_row cols={6}>Loading…</Empty_row> : null}
 							{d && !d.items.length ? <Empty_row cols={6}>{q ? `No scopes match “${q}”.` : 'No scopes.'}</Empty_row> : null}
 							{d?.items.map((s) => (
-								<tr key={s.id} onClick={() => p.set({ s: s.id, offset: p.offset ? String(p.offset) : null })} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${sel === s.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`scope-${s.slug}`}>
-									<td className="px-4 py-2.5"><b className="g-mono">@{s.slug}</b>{s.display_name && s.display_name !== s.slug ? <span className="ml-2 text-[var(--g-ink-3)]">{s.display_name}</span> : null}</td>
+								<tr key={s.id} {...row({ on_open: () => p.set({ s: s.id, offset: p.offset ? String(p.offset) : null }) })} className={`${TR} ${ROW_OPENS} ${sel === s.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`scope-${s.slug}`}>
+									<td className="px-4 py-2.5"><button type="button" onClick={() => p.set({ s: s.id, offset: p.offset ? String(p.offset) : null })} className="g-mono font-bold hover:underline">@{s.slug}</button>{s.display_name && s.display_name !== s.slug ? <span className="ml-2 text-[var(--g-ink-3)]">{s.display_name}</span> : null}</td>
 									<td className="g-mono px-4 text-[var(--g-ink-2)]">{s.org_slug ?? (s.org_id ? '…' : <span className="font-sans text-[var(--g-ink-3)]">personal</span>)}</td>
 									<td className="px-4 text-[var(--g-ink-2)]">{s.owner_username ?? '—'}</td>
 									<td className="px-4"><Pill tone={s.visibility === 'public' ? 'ok' : 'muted'}>{s.visibility}</Pill></td>

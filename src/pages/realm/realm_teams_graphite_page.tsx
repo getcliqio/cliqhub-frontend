@@ -21,6 +21,7 @@ import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 export const TEAMS_PAGE_SIZE = 25;
 
@@ -162,6 +163,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 }
 
 export function Component() {
+	const row = use_row_open();
 	const { org = '', slug = '' } = useParams();
 	const overview = use_overview();
 	const access = use_access(overview.data);
@@ -266,9 +268,9 @@ export function Component() {
 										{data.items.map((r) => {
 											const full = r.online_daemon_count > 0 && r.installed_count >= r.online_daemon_count;
 											return (
-												<tr key={r.label} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`team-${r.label}`}>
+												<tr key={r.label} {...row({ to: r.scope ? `${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${r.scope ? ROW_OPENS : ''}`} data-testid={`team-${r.label}`}>
 													<td className="max-w-[360px] px-4 py-2.5">
-														<span className="block truncate text-[13px] font-semibold">{r.label}</span>
+														{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} className="block truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="block truncate text-[13px] font-semibold">{r.label}</span>}
 														<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
 															{r.origin === 'local' ? <span>local install (not published)</span> : null}
 															{!r.in_team_list ? <span>on a daemon, not on the realm’s team list</span> : null}
@@ -289,6 +291,7 @@ export function Component() {
 															</span>
 														) : (
 															<span className="inline-flex items-center gap-1.5">
+																{r.scope ? <Row_open to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} label={`Open ${r.label}`} /> : null}
 																{r.scope && r.in_team_list ? <button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_running(r)} className={`${ROW_ACTION_CLS} ${GATED} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
 																{r.update_available ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'update')} className={`${ROW_ACTION_CLS} ${GATED}`}>{busy === `update:${r.label}` ? 'Updating…' : 'Update'}</button> : null}
 																{!r.in_team_list && r.scope ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'add')} className={`${ROW_ACTION_CLS} ${GATED}`}>Add to realm</button> : null}

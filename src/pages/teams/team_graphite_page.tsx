@@ -27,6 +27,7 @@ import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 export const TEAM_RUNS_PAGE_SIZE = 25;
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
@@ -186,6 +187,7 @@ function highlight_yaml(line: string): ReactNode {
 // ── page ─────────────────────────────────────────────────────────────────
 
 export function Component() {
+	const row = use_row_open();
 	const { scope: scope_param = '', name = '' } = useParams();
 	const team_scope = scope_param === '_' ? '' : scope_param;
 	const navigate = useNavigate();
@@ -493,7 +495,7 @@ export function Component() {
 									const realm = x.realm_id ? realm_by_id.get(x.realm_id) : undefined;
 									const href = x.org_slug && x.realm_slug ? run_href(x.org_slug, x.realm_slug, x.run_id) : realm ? run_href(realm.org_slug, realm.slug, x.run_id) : null;
 									return (
-										<tr key={x.run_id} onClick={href ? () => navigate(href) : undefined} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${href ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid={`run-${x.run_id}`}>
+										<tr key={x.run_id} {...row({ to: href })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${href ? ROW_OPENS : ''}`} data-testid={`run-${x.run_id}`}>
 											<td className="max-w-[320px] px-4 py-2.5">{href ? <Link to={href} onClick={(e) => e.stopPropagation()} className="block truncate font-semibold text-[var(--g-ink)] hover:underline">{x.run_name || x.run_id}</Link> : <span className="block truncate font-semibold">{x.run_name || x.run_id}</span>}</td>
 											<td className="px-4 py-2.5">{x.realm_slug ?? realm?.slug ? <span className="rounded-[5px] bg-[var(--g-run-soft)] px-1.5 py-px text-[11.5px] text-[var(--g-run-text)]">{x.realm_slug ?? realm?.slug}</span> : '—'}</td>
 											<td className="px-4 py-2.5"><State_pill state={x.state} /></td>
@@ -538,7 +540,7 @@ export function Component() {
 								{ins.items.map((i) => {
 									const short = i.installed_count < i.online_daemon_count;
 									return (
-										<tr key={i.realm_id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`install-${i.realm_slug}`}>
+										<tr key={i.realm_id} {...row({ to: i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${i.org_slug ? ROW_OPENS : ''}`} data-testid={`install-${i.realm_slug}`}>
 											<td className="px-4 py-2.5"><Link to={i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : '#'} className="font-semibold text-[var(--g-ink)] hover:underline">{i.realm_slug}</Link></td>
 											<td className="px-4 py-2.5"><span className={`g-mono ${i.behind ? 'text-[var(--g-warn-text)]' : ''}`}>{i.version ?? '—'}</span>{i.behind ? <span className="ml-2 rounded-full bg-[var(--g-warn-soft)] px-2 py-px text-[11px] font-semibold text-[var(--g-warn-text)]">{team?.latest_version} available</span> : i.version && i.version === team?.latest_version ? <span className="ml-2 text-[11.5px] text-[var(--g-ink-3)]">latest</span> : null}
 												{i.missing_agents.length ? <span className="block text-[11px] text-[var(--g-warn-text)]">needs agents: {i.missing_agents.join(', ')}</span> : null}</td>
@@ -552,6 +554,7 @@ export function Component() {
 													</span>
 												) : (
 													<span className="inline-flex gap-1.5">
+														{i.org_slug ? <Row_open to={`/o/${i.org_slug}/realms/${i.realm_slug}/teams`} label={`Open ${i.realm_slug}`} /> : null}
 														{i.behind ? <button type="button" disabled={busy !== null} onClick={() => void act(`up:${i.realm_id}`, '/v1/realms/add_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Upgrading ${i.realm_slug} to ${team?.latest_version}.`)} className={PRIMARY}>{busy === `up:${i.realm_id}` ? 'Upgrading…' : `Upgrade to ${team?.latest_version}`}</button>
 															: short ? <button type="button" disabled={busy !== null} onClick={() => void act(`sync:${i.realm_id}`, '/v1/realms/add_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Syncing ${i.realm_slug}’s daemons.`)} className={ROW_ACTION_CLS}>{busy === `sync:${i.realm_id}` ? 'Syncing…' : 'Sync daemons'}</button> : null}
 														<button type="button" onClick={() => set_confirm(`rm:${i.realm_id}`)} className={ROW_ACTION_CLS}>Uninstall</button>
@@ -583,7 +586,7 @@ export function Component() {
 				<div className={`${CARD} py-1.5 pl-3 pr-4`}>
 					{vs.items.length === 0 ? <p className="px-2 py-6 text-[12.5px] text-[var(--g-ink-3)]">No published versions yet.</p> : null}
 					{vs.items.map((v) => (
-						<div key={v.version} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3" data-testid={`version-${v.version}`}>
+						<div key={v.version} {...row({ on_open: v.version !== team?.version ? () => set_params({ v: v.is_latest ? null : v.version, tab: null }) : null })} className={`grid grid-cols-[18px_minmax(0,1fr)] gap-3 ${v.version !== team?.version ? ROW_OPENS : ''}`} data-testid={`version-${v.version}`}>
 							<div className="relative before:absolute before:bottom-0 before:left-2 before:top-0 before:w-px before:bg-[var(--g-line)]">
 								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_var(--g-acc-soft)]' : 'border-[var(--g-line-strong)] bg-[var(--g-panel)]'}`} />
 							</div>

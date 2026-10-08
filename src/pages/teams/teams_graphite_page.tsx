@@ -5,7 +5,7 @@
  * teams and realms. Write: `/v1/realms/add_team` (install into one realm).
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Plus, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
@@ -17,6 +17,7 @@ import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { avatar_outline } from '@/lib/admin';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 export const TEAM_LIST_PAGE_SIZE = 25;
 
@@ -128,8 +129,8 @@ export function Install_popover({
 }
 
 export function Component() {
+	const row = use_row_open();
 	const overview = use_overview();
-	const navigate = useNavigate();
 	const scope = use_view_scope(overview.data);
 	const [search, set_search] = useSearchParams();
 	const status = ((v) => (v === 'published' || v === 'draft' ? v : 'all'))(search.get('status')) as Status;
@@ -217,7 +218,7 @@ export function Component() {
 										{data.items.map((t) => {
 											const key = `${t.scope}/${t.name}`;
 											return (
-												<tr key={key} onClick={() => navigate(href(t))} className="cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 hover:bg-[var(--g-soft)]" data-testid={`team-${key}`}>
+												<tr key={key} {...row({ to: href(t) })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${ROW_OPENS}`} data-testid={`team-${key}`}>
 													<td className="max-w-[380px] px-4 py-2.5">
 														<div className="flex items-center gap-3">
 															<Team_avatar name={t.name} />

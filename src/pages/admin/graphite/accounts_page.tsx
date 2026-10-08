@@ -21,6 +21,7 @@ import { Deleted_notice } from '@/components/graphite/g_reactivate';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PILL, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Filter = 'all' | 'admins' | 'suspended';
 const LIMIT = 25;
@@ -68,6 +69,7 @@ function Reactivate_account({ u, on_done }: { u: Admin_user_detail; on_done: (da
 }
 
 function Account_panel({ id, on_close, on_changed }: { id: string; on_close: () => void; on_changed: (msg: string) => void }) {
+	const row = use_row_open();
 	const { user: me, act_as } = useAuth();
 	const navigate = useNavigate();
 	const post = use_post();
@@ -144,7 +146,7 @@ function Account_panel({ id, on_close, on_changed }: { id: string; on_close: () 
 					<div className="border-b border-[var(--g-line)] px-4 py-3">
 						<div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Organizations</div>
 						{u.orgs.length ? u.orgs.map((o) => (
-							<div key={o.id} className="flex justify-between py-0.5 text-[13px]"><Link to={`/admin/orgs/${o.id}`} className="hover:underline">{o.display_name || o.slug}</Link><span className="text-[var(--g-ink-3)]">{o.role}</span></div>
+							<div key={o.id} {...row({ to: `/admin/orgs/${o.id}` })} className={`flex justify-between rounded px-1 py-0.5 text-[13px] ${ROW_OPENS}`}><Link to={`/admin/orgs/${o.id}`} className="hover:underline">{o.display_name || o.slug}</Link><span className="text-[var(--g-ink-3)]">{o.role}</span></div>
 						)) : <p className="text-[12.5px] text-[var(--g-ink-3)]">Not in any org.</p>}
 					</div>
 					<div className="border-b border-[var(--g-line)] px-4 py-3 text-[12.5px] text-[var(--g-ink-2)]">
@@ -257,6 +259,7 @@ export function Component() {
 	const include_deleted = site_admin && sp.get('deleted') === '1';
 	const [draft, set_draft] = useState(q);
 	const [creating, set_creating] = useState(false);
+	const row = use_row_open();
 	const [flash, set_flash] = useState<string | null>(null);
 	const sort = use_table_sort({ keys: ['username', 'role', 'created_at', 'suspended_at'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { created_at: 'desc' } });
 	const read = use_bff_read<Admin_list_data<Admin_account_row>>('/v1/admin_list/get', { kind: 'accounts', filter, ...(include_deleted ? { include_deleted: true } : {}), ...sort.body, ...(q ? { query: q } : {}), limit: LIMIT, offset }, { fallback_error: 'Could not load accounts.' });
@@ -294,8 +297,8 @@ export function Component() {
 							{read.status === 'loading' ? <Empty_row cols={4}>Loading…</Empty_row> : null}
 							{d && !d.items.length ? <Empty_row cols={4}>{q ? `No accounts match “${q}”.` : 'No accounts.'}</Empty_row> : null}
 							{d?.items.map((u) => (
-								<tr key={u.id} onClick={() => { set_creating(false); set({ u: u.id }); }} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${u.deleted_at ? 'opacity-60' : ''} ${selected === u.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`acct-${u.username ?? u.id}`}>
-									<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(u)} /><div className="min-w-0"><b className="font-semibold">{person_name(u)}</b> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{handle(u.username)}</span><div className="truncate text-[12px] text-[var(--g-ink-3)]">{u.email}</div></div></div></td>
+								<tr key={u.id} {...row({ on_open: () => { set_creating(false); set({ u: u.id }); } })} className={`${TR} ${ROW_OPENS} ${u.deleted_at ? 'opacity-60' : ''} ${selected === u.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`acct-${u.username ?? u.id}`}>
+									<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(u)} /><div className="min-w-0"><button type="button" onClick={() => { set_creating(false); set({ u: u.id }); }} className="font-semibold hover:underline">{person_name(u)}</button> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{handle(u.username)}</span><div className="truncate text-[12px] text-[var(--g-ink-3)]">{u.email}</div></div></div></td>
 									<td className="px-4">{u.role === 'admin' ? <span className="text-[11.5px] font-bold uppercase tracking-[0.04em] text-[var(--g-orange)]">Site admin</span> : <span className="text-[var(--g-ink-3)]">user</span>}</td>
 									<td className="px-4 text-[var(--g-ink-3)]">{month_year(u.created_at)}</td>
 									<td className="px-4"><Account_status_pill status={u.deleted_at ? 'deleted' : u.status} /></td>

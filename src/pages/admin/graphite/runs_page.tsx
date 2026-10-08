@@ -4,7 +4,7 @@
  * resolves each run's realm for the link).
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, run_href, type Admin_list_data, type Admin_run_row } from '@/lib/admin';
 import { Admin_header, Chips, Empty_row, Hub_scope_note, Pager, TABLE_WRAP, TH, TR, use_list_params } from '@/components/graphite/g_admin';
@@ -13,6 +13,7 @@ import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { State_pill } from '@/components/graphite/g_status';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 type Filter = 'all' | 'running' | 'awaiting_input' | 'failed' | 'completed';
 type Range = '24h' | '7d' | '30d' | 'all';
@@ -27,7 +28,7 @@ function duration(start: number | null, end: number | null): string {
 }
 
 export function Component() {
-	const navigate = useNavigate();
+	const row = use_row_open();
 	const p = use_list_params();
 	const filter = (['running', 'awaiting_input', 'failed', 'completed'].includes(p.get('filter')) ? p.get('filter') : 'all') as Filter;
 	const range = (['7d', '30d', 'all'].includes(p.get('range')) ? p.get('range') : '24h') as Range;
@@ -73,8 +74,8 @@ export function Component() {
 							const href = run_href(r.run_id, r.realm);
 							const done = ['completed', 'failed', 'cancelled', 'crashed'].includes(r.state);
 							return (
-								<tr key={r.run_id} onClick={href ? () => navigate(href) : undefined} className={`${TR} ${href ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid={`run-${r.run_id}`}>
-									<td className="px-4 py-2.5"><b className="block max-w-[320px] truncate">{r.run_name || r.run_id.slice(0, 12)}</b><span className="g-mono text-[11.5px] text-[var(--g-ink-3)]">{r.run_id.slice(0, 12)}{r.workspace_name ? ` · ${r.workspace_name}` : ''}</span></td>
+								<tr key={r.run_id} {...row({ to: href })} className={`${TR} ${href ? ROW_OPENS : ''}`} data-testid={`run-${r.run_id}`}>
+									<td className="px-4 py-2.5">{href ? <Link to={href} className="block max-w-[320px] truncate font-bold hover:underline">{r.run_name || r.run_id.slice(0, 12)}</Link> : <b className="block max-w-[320px] truncate">{r.run_name || r.run_id.slice(0, 12)}</b>}<span className="g-mono text-[11.5px] text-[var(--g-ink-3)]">{r.run_id.slice(0, 12)}{r.workspace_name ? ` · ${r.workspace_name}` : ''}</span></td>
 									<td className="g-mono px-4 text-[12px] text-[var(--g-ink-2)]">{r.team_label ?? '—'}</td>
 									<td className="g-mono px-4 text-[12px] text-[var(--g-ink-2)]">{r.realm?.org_slug ?? '—'}</td>
 									<td className="g-mono px-4 text-[12px] text-[var(--g-ink-2)]">{r.realm?.slug ?? '—'}</td>

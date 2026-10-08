@@ -9,6 +9,7 @@ import { run_href, type Admin_list_data, type Admin_log_row } from '@/lib/admin'
 import { Admin_header, Chips, Pager, TABLE_WRAP, use_list_params } from '@/components/graphite/g_admin';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Level = 'all' | 'error' | 'warn' | 'info' | 'debug';
 type Range = '1h' | '24h' | '7d' | 'all';
@@ -21,6 +22,7 @@ function stamp(ms: number): string {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const p = use_list_params();
 	const level = (['error', 'warn', 'info', 'debug'].includes(p.get('level')) ? p.get('level') : 'all') as Level;
 	const range = (['1h', '7d', 'all'].includes(p.get('range')) ? p.get('range') : '24h') as Range;
@@ -58,7 +60,7 @@ export function Component() {
 						{d.items.map((l) => {
 							const href = run_href(l.run_id, l.realm);
 							return (
-								<li key={l.id} className="grid grid-cols-[150px_52px_minmax(0,1fr)_minmax(0,260px)] items-start gap-3 px-4 py-1.5" data-testid={`log-${l.id}`}>
+								<li key={l.id} {...row({ to: href })} className={`grid grid-cols-[150px_52px_minmax(0,1fr)_minmax(0,260px)] items-start gap-3 px-4 py-1.5 ${href ? ROW_OPENS : ''}`} data-testid={`log-${l.id}`}>
 									<span className="text-[var(--g-ink-3)]">{stamp(l.created_at)}</span>
 									<span className={`uppercase ${LEVEL_CLS[l.level] ?? ''}`}>{l.level}</span>
 									<span className="whitespace-pre-wrap break-words text-[var(--g-ink)]">{l.message}</span>

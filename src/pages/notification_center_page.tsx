@@ -43,6 +43,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Realm_picker, type Picked_realm } from '@/components/graphite/g_realm_picker';
 import { Event_picker } from '@/components/graphite/g_event_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Tab = 'rules' | 'channels' | 'check' | 'custom';
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -474,6 +475,7 @@ export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 }
 
 function Channels_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
+	const row = use_row_open();
 	const post = use_post();
 	const [search] = useSearchParams();
 	// Deep link from the inbox ("Fix channel").
@@ -527,12 +529,12 @@ function Channels_tab({ data, scope, reload, realm_filter }: { data: Notificatio
 								{channels.map((c) => (
 									<tr
 										key={c.id}
-										onClick={() => { set_open_id(c.id); set_msg(null); set_confirm_delete(false); }}
-										className={`cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 hover:bg-[var(--g-soft)] ${open_id === c.id ? 'bg-[var(--g-soft)]' : ''}`}
+										{...row({ on_open: () => { set_open_id(c.id); set_msg(null); set_confirm_delete(false); } })}
+										className={`border-b border-[var(--g-line-2)] last:border-b-0 ${ROW_OPENS} ${open_id === c.id ? 'bg-[var(--g-soft)]' : ''}`}
 										data-testid={`channel-${c.id}`}
 									>
 										<td className="px-4 py-2.5">
-											<button type="button" className="text-left font-semibold" onClick={() => set_open_id(c.id)}>{c.name}</button>
+											<button type="button" className="text-left font-semibold hover:underline" onClick={() => { set_open_id(c.id); set_msg(null); set_confirm_delete(false); }}>{c.name}</button>
 											{c.locked ? <span title={c.lock_reason ?? 'Built in'}><Lock aria-label="Built in" className="ml-1.5 inline h-3 w-3 text-[var(--g-ink-3)]" /></span> : null}
 											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span>}
 										</td>

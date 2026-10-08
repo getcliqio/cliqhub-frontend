@@ -4,7 +4,7 @@
  * Hub-wide on Core API 3; before that, pick one of your orgs.
  */
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, type Admin_daemon_row, type Admin_list_data } from '@/lib/admin';
 import { Admin_header, Chips, Empty_row, Few, Hub_scope_note, Pager, Pill, Stat_tile, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
@@ -12,13 +12,14 @@ import { Org_filter, Realm_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 type Filter = 'all' | 'online' | 'stale' | 'offline';
 const LIMIT = 25;
 const TONE: Record<string, 'ok' | 'warn' | 'bad' | 'muted'> = { online: 'ok', stale: 'warn', offline: 'bad' };
 
 export function Component() {
-	const navigate = useNavigate();
+	const row = use_row_open();
 	const [sp, set_sp] = useSearchParams();
 	const filter = (['all', 'online', 'stale', 'offline'].includes(sp.get('filter') ?? '') ? sp.get('filter') : 'all') as Filter;
 	const q = sp.get('q') ?? '';
@@ -72,8 +73,8 @@ export function Component() {
 							const r = x.realms[0];
 							const href = r?.org_slug ? `/o/${r.org_slug}/realms/${r.slug}/daemons/${x.id}` : null;
 							return (
-								<tr key={x.id} onClick={href ? () => navigate(href) : undefined} className={`${TR} ${href ? 'cursor-pointer hover:bg-[var(--g-soft)]' : ''}`} data-testid={`daemon-${x.id}`}>
-									<td className="px-4 py-2.5"><b className="g-mono">{x.name || x.hostname || x.id.slice(0, 8)}</b>{x.hostname && x.name ? <div className="text-[12px] text-[var(--g-ink-3)]">{x.hostname}</div> : null}</td>
+								<tr key={x.id} {...row({ to: href })} className={`${TR} ${href ? ROW_OPENS : ''}`} data-testid={`daemon-${x.id}`}>
+									<td className="px-4 py-2.5">{href ? <Link to={href} className="g-mono font-bold hover:underline">{x.name || x.hostname || x.id.slice(0, 8)}</Link> : <b className="g-mono">{x.name || x.hostname || x.id.slice(0, 8)}</b>}{x.hostname && x.name ? <div className="text-[12px] text-[var(--g-ink-3)]">{x.hostname}</div> : null}</td>
 									<td className="px-4 text-[var(--g-ink-2)]"><Few items={[...new Set(x.realms.map((rr) => rr.org_slug).filter((s): s is string => Boolean(s)))]} /></td>
 									<td className="px-4 text-[var(--g-ink-2)]"><Few items={x.realms.map((rr) => rr.slug)} max={3} /></td>
 									<td className="px-4"><Pill tone={TONE[x.status] ?? 'muted'}>● {x.status[0].toUpperCase() + x.status.slice(1)}</Pill></td>

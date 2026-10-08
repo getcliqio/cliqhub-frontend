@@ -16,6 +16,7 @@ import { Member_status_pill, Org_invite_form, Org_status_pill, use_invite, Waiti
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Tab = 'members' | 'realms' | 'scopes' | 'roles' | 'settings';
 const TABS: Array<[Tab, string]> = [['members', 'Members'], ['realms', 'Realms'], ['scopes', 'Scopes'], ['roles', 'Roles'], ['settings', 'Settings']];
@@ -26,6 +27,7 @@ function role_of(org: Org_detail, m: Org_member) {
 }
 
 function Realms_tab({ org }: { org: Org_detail }) {
+	const row = use_row_open();
 	// realms/get sorts in Core (before its 100-row cap), so every column it offers is exact.
 	const sort = use_table_sort({ keys: ['slug', 'created_at'], mode: 'client', default_sort: { by: 'slug', dir: 'asc' }, first_dir: { created_at: 'desc' } });
 	const read = use_bff_read<{ items: Array<{ id: string; slug: string; name: string; org_slug: string | null; created_at: number }>; total: number }>('/v1/realms/get', { org_id: org.id, all: true, limit: 100, ...sort.body }, { fallback_error: 'Could not load realms.' });
@@ -39,8 +41,8 @@ function Realms_tab({ org }: { org: Org_detail }) {
 					{read.status === 'error' ? <Empty_row cols={3}>{read.error}</Empty_row> : null}
 					{read.data && !items.length ? <Empty_row cols={3}>No realms you can see. On Core API 3 this lists every realm in {org.slug}.</Empty_row> : null}
 					{items.map((r) => (
-						<tr key={r.id} className={TR}>
-							<td className="px-4 py-2.5"><b>{r.name || r.slug}</b> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{r.slug}</span></td>
+						<tr key={r.id} {...row({ to: `/o/${org.slug}/realms/${r.slug}` })} className={`${TR} ${ROW_OPENS}`}>
+							<td className="px-4 py-2.5"><Link to={`/o/${org.slug}/realms/${r.slug}`} className="font-bold hover:underline">{r.name || r.slug}</Link> <span className="g-mono text-[12px] text-[var(--g-ink-3)]">{r.slug}</span></td>
 							<td className="px-4 text-[var(--g-ink-3)]">{r.created_at ? month_year(new Date(r.created_at).toISOString()) : '—'}</td>
 							<td className="px-4 text-right"><Link to={`/o/${org.slug}/realms/${r.slug}`} className="text-[12.5px] text-[var(--g-acc)]">Open realm →</Link></td>
 						</tr>
@@ -52,6 +54,7 @@ function Realms_tab({ org }: { org: Org_detail }) {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const { id = '' } = useParams();
 	const navigate = useNavigate();
 	const [sp, set_sp] = useSearchParams();
@@ -128,7 +131,7 @@ export function Component() {
 								const r = role_of(org, m);
 								const live = m.status === 'active';
 								return (
-									<tr key={m.user_id} className={TR} data-testid={`member-${m.username ?? m.user_id}`}>
+									<tr key={m.user_id} {...row({ to: `/admin/accounts?u=${m.user_id}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`member-${m.username ?? m.user_id}`}>
 										<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Avatar name={person_name(m)} /><div className="min-w-0"><Link to={`/admin/accounts?u=${m.user_id}`} className="font-semibold hover:underline">{person_name(m)}</Link><div className="truncate text-[12px] text-[var(--g-ink-3)]">{m.email ?? handle(m.username)}</div></div></div></td>
 										<td className="px-4">
 											{org.roles.length && live ? (

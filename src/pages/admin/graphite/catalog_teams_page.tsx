@@ -14,6 +14,7 @@ import { Org_filter, Realm_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, use_post } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 type Filter = 'listed' | 'unlisted';
 const LIMIT = 25;
@@ -26,6 +27,7 @@ function Market_cell({ t }: { t: Admin_team_row }) {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const [sp, set_sp] = useSearchParams();
 	const filter = (sp.get('filter') === 'unlisted' ? 'unlisted' : 'listed') as Filter;
 	const q = sp.get('q') ?? '';
@@ -79,7 +81,7 @@ export function Component() {
 						{read.status === 'loading' ? <Empty_row cols={8}>Loading…</Empty_row> : null}
 						{d && !d.items.length ? <Empty_row cols={8}>{q ? `No teams match “${q}”.` : 'Nothing here.'}</Empty_row> : null}
 						{d?.items.map((t) => (
-							<tr key={t.id} className={TR} data-testid={`team-${t.name}`}>
+							<tr key={t.id} {...row({ to: team_href(t.scope, t.name) })} className={`${TR} ${ROW_OPENS}`} data-testid={`team-${t.name}`}>
 								<td className="px-4 py-2.5"><Link to={team_href(t.scope, t.name)} className="g-mono font-semibold hover:underline">{full(t)}</Link>{t.description ? <div className="max-w-[360px] truncate text-[12px] text-[var(--g-ink-3)]">{t.description}</div> : null}</td>
 								<td className="g-mono px-4 text-[12px] text-[var(--g-ink-2)]">{t.org_slug ?? '—'}</td>
 								<td className="px-4 text-[var(--g-ink-2)]">{t.author_username ?? '—'}</td>
@@ -88,6 +90,7 @@ export function Component() {
 								<td className="g-mono px-4">{t.install_count.toLocaleString('en-US')}</td>
 								<td className="px-4 text-[var(--g-ink-3)]">{t.updated_at ? `${ago(t.updated_at)} ago` : '—'}</td>
 								<td className="px-4 text-right">
+									<span className="mr-2 inline-block"><Row_open to={team_href(t.scope, t.name)} label={`Open ${full(t)}`} /></span>
 									{t.listed || t.version_count ? <button type="button" disabled={busy === t.id} onClick={() => void toggle(t)} className={G_BTN}>{t.listed ? 'Unlist' : 'List'}</button> : null}
 								</td>
 							</tr>

@@ -11,6 +11,7 @@ import { Admin_header, Avatar, Chips, Empty_row, Pager, TABLE_WRAP, TH, TR } fro
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
 type Range = 'all' | '24h' | '7d' | '30d';
 const RANGE_MS: Record<Exclude<Range, 'all'>, number> = { '24h': 864e5, '7d': 7 * 864e5, '30d': 30 * 864e5 };
@@ -40,6 +41,7 @@ export function Component() {
 	const target = sp.get('target') ?? '';
 	const offset = Number(sp.get('offset') ?? 0) || 0;
 	const [open, set_open] = useState<string | null>(null);
+	const row = use_row_open();
 	const [draft, set_draft] = useState({ action, target });
 	// Round to the minute so polling doesn't produce a new request body each render.
 	const since_ms = range === 'all' ? undefined : Math.floor((Date.now() - RANGE_MS[range]) / 60_000) * 60_000;
@@ -84,8 +86,8 @@ export function Component() {
 						{d && !d.items.length ? <Empty_row cols={5}>No matching entries.</Empty_row> : null}
 						{d?.items.map((e) => (
 							<Fragment key={e.id}>
-								<tr onClick={() => set_open(open === e.id ? null : e.id)} aria-expanded={open === e.id} className={`${TR} cursor-pointer hover:bg-[var(--g-soft)] ${open === e.id ? 'bg-[var(--g-soft)]' : ''}`} data-testid={`audit-${e.id}`}>
-									<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-3)]">{when(e.created_at)}</td>
+								<tr {...row({ on_open: () => set_open(open === e.id ? null : e.id) })} className={`${TR} ${ROW_OPENS} ${open === e.id ? 'bg-[var(--g-soft)]' : ''}`} data-testid={`audit-${e.id}`}>
+									<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-3)]"><button type="button" aria-expanded={open === e.id} aria-label={`${open === e.id ? 'Hide' : 'Show'} details of ${e.action}`} onClick={() => set_open(open === e.id ? null : e.id)} className="hover:text-[var(--g-ink)]">{open === e.id ? '▾' : '▸'} {when(e.created_at)}</button></td>
 									<td className="px-4"><div className="flex items-center gap-2"><Avatar name={e.admin_username ?? '?'} size={22} />{e.admin_username ?? <span className="text-[var(--g-ink-3)]">deleted user</span>}</div></td>
 									<td className={`g-mono px-4 ${audit_is_sensitive(e.action) ? 'text-[var(--g-orange)]' : ''}`}>{e.action}</td>
 									<td className="px-4"><span className="text-[var(--g-ink-3)]">{e.target_type}</span> <span className="g-mono">{e.target_id.length > 24 ? `${e.target_id.slice(0, 8)}…` : e.target_id}</span></td>

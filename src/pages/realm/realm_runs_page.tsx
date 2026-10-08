@@ -5,7 +5,7 @@
  * so links and refresh keep them.
  */
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useParams, useSearchParams } from 'react-router';
 import { RefreshCw } from 'lucide-react';
 import { use_overview, relative_time } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
@@ -16,6 +16,7 @@ import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 export const RUNS_PAGE_SIZE = 25;
 export const RUNS_REFRESH_MS = 20_000;
@@ -40,8 +41,8 @@ function parse_range(v: string | null): Run_range | null {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const { org = '', slug = '' } = useParams();
-	const navigate = useNavigate();
 	/** Main runs whose sub-team rows are folded away. */
 	const [collapsed, set_collapsed] = useState<Set<string>>(new Set());
 	const toggle = (id: string) => set_collapsed((c) => { const n = new Set(c); if (n.has(id)) n.delete(id); else n.add(id); return n; });
@@ -147,7 +148,7 @@ export function Component() {
 											const href = run_href(org, slug, r.run_id);
 											const short = (r.team ?? '').replace(/^@[^/]+\//, '');
 											return (
-												<tr key={r.run_id} onClick={() => navigate(href)} className={`cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 hover:bg-[var(--g-soft)] ${depth ? 'bg-[var(--g-panel-2,transparent)]' : ''}`} data-testid={`run-${r.run_id}`}>
+												<tr key={r.run_id} {...row({ to: href })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${ROW_OPENS} ${depth ? 'bg-[var(--g-panel-2,transparent)]' : ''}`} data-testid={`run-${r.run_id}`}>
 													<td className="max-w-[340px] px-4 py-2.5" style={depth ? { paddingLeft: `${16 + depth * 20}px` } : undefined}>
 														<span className="flex min-w-0 items-center gap-1.5">
 															{subs ? (

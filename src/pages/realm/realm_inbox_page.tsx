@@ -15,6 +15,7 @@ import { Count_badge, Graphite_shell } from '@/components/graphite/graphite_shel
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
 import { KIND_STYLE, KIND_STRIPE, Kind_icon, ROW_ACTION_CLS, type G_kind } from '@/components/graphite/g_kinds';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 export const INBOX_REFRESH_MS = 15_000;
 
@@ -37,10 +38,11 @@ function Stat({ label, value, tone, on, onClick }: { label: string; value: numbe
 }
 
 function Row({ item, org_slug, slug }: { item: Inbox_item; org_slug: string; slug: string }) {
+	const row = use_row_open();
 	const kind = item.kind as G_kind;
 	const meta = KIND_STYLE[kind];
 	return (
-		<li className="flex items-start gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0" data-testid={`inbox-row-${item.kind}`}>
+		<li {...row({ to: inbox_item_href(item, org_slug, slug) })} className={`flex items-start gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${ROW_OPENS}`} data-testid={`inbox-row-${item.kind}`}>
 			<span className="mt-0.5"><Kind_icon kind={kind} /></span>
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-[13.5px] font-semibold">

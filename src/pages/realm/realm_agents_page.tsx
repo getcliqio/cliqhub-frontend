@@ -18,6 +18,7 @@ import { Agent_tile, G_INPUT, G_PILL, G_PRIMARY, Setup_badge } from '@/component
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Agent_detail } from '@/pages/agents/agent_page';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Filter = 'used' | 'not_ready' | 'overridden' | 'all';
 
@@ -30,6 +31,7 @@ function Values_cell({ r, realm }: { r: Agent_list_row; realm: string }) {
 }
 
 export function Component() {
+	const row = use_row_open();
 	const { org = '', slug = '', id } = useParams();
 	const overview = use_overview();
 	const navigate = useNavigate();
@@ -101,7 +103,7 @@ export function Component() {
 								<table className="w-full text-[12.5px]">
 									<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={sort} k="name" className="px-4 py-2.5 font-semibold">Agent</Sort_th><Sort_th sort={sort} k="used" className="px-4 font-semibold">Used by (here)</Sort_th><th className="px-4 font-semibold">Values</th><Sort_th sort={sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th className="w-[1%]" /></tr></thead>
 									<tbody>{rows.map((r) => (
-										<tr key={r.id} onClick={() => navigate(`${base}/agents/${r.id}`)} className="cursor-pointer border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 hover:bg-[var(--g-soft)]" data-testid={`ragent-${r.name}`}>
+										<tr key={r.id} {...row({ to: `${base}/agents/${r.id}` })} className={`border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 ${ROW_OPENS}`} data-testid={`ragent-${r.name}`}>
 											<td className="px-4 py-2.5"><div className="flex items-center gap-2.5"><Agent_tile agent_type={r.agent_type} name={r.name} size={28} /><Link to={`${base}/agents/${r.id}`} onClick={(e) => e.stopPropagation()} className="g-mono font-semibold text-[var(--g-ink)] hover:underline">{r.name}</Link></div></td>
 											<td className="px-4">{r.used_count === null ? '?' : r.used_count ? `${r.used_count} team${r.used_count === 1 ? '' : 's'}` : <span className="text-[var(--g-ink-3)]">—</span>}</td>
 											<td className="px-4"><Values_cell r={r} realm={slug} /></td>
