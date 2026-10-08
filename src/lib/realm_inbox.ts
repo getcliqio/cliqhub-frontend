@@ -206,6 +206,8 @@ export interface Run_detail_data {
 	attempts_source?: 'events' | 'phases' | null;
 	/** Why a failed / crashed / cancelled run stopped (absent from an older BFF). */
 	failure?: Run_failure | null;
+	/** The runs above a sub-team run, outermost first (the last is `parent`); absent from an older BFF. */
+	ancestors?: Run_parent[];
 	/** Set when this run is a sub-team run. */
 	parent?: Run_parent | null;
 	/** Sub-team runs this run's team phases spawned, oldest first. */

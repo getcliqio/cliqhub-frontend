@@ -45,6 +45,7 @@ import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
 import { Run_failure_card } from '@/components/graphite/g_run_failure';
+import { Step_details, Sub_team_tree, all_sub_runs, initially_open, type Tree_step } from '@/components/graphite/g_sub_team_tree';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
 import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_phase_output';
 import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
@@ -223,7 +224,7 @@ function phase_duration(p: Run_detail_phase, now: number): string {
 	return format_duration((p.completed_at ?? now) - p.started_at);
 }
 
-function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, run_link, children, child_link, resumed, on_resume_from }: {
+function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, run_link, children, child_link, resumed, on_resume_from, tree }: {
 	phases: Run_detail_phase[];
 	run_state: string;
 	telemetry?: Run_telemetry_data | null;
@@ -239,6 +240,8 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 	resumed?: boolean;
 	/** Offered on a failed team phase whose sub-team run later succeeded. */
 	on_resume_from?: ((phase: string) => void) | null;
+	/** Sub-team tree state: which sub-team runs are open and which step is selected. */
+	tree?: { open: Set<string>; toggle: (run_id: string) => void; selected: { run_id: string; phase: string } | null; on_select: (s: Tree_step) => void; run_href: (run_id: string) => string };
 }) {
 	const tel = new Map<string, Telemetry_phase>((telemetry?.phases ?? []).map((x) => [x.name, x]));
 	const [shown, set_shown] = useState<Set<string>>(() => new Set());
@@ -284,7 +287,9 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 								</p>
 							) : null}
 							{p.error ? <p className="g-mono mt-1 whitespace-pre-wrap break-words text-[11.5px] text-[var(--g-bad)]">{p.error}</p> : null}
-							{kids.length ? (
+							{tree && tel.get(p.phase)?.sub_runs?.length ? (
+								<Sub_team_tree subs={tel.get(p.phase)!.sub_runs!} open={tree.open} toggle={tree.toggle} selected={tree.selected} on_select={tree.on_select} run_href={tree.run_href} now={now} />
+							) : kids.length ? (
 								<ul className="mt-1 flex flex-col gap-0.5 text-[12px]" aria-label={`Sub-team runs of ${p.phase}`} onClick={(e) => e.stopPropagation()}>
 									{kids.map((c) => (
 										<li key={c.run_id} className="flex min-w-0 items-center gap-1.5" data-testid="phase-child-run">
@@ -576,6 +581,13 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const [selected, set_selected] = useState<Telemetry_bar | null>(null);
 	const [focus, set_focus] = useState<string | null>(null);
 	const [log_q, set_log_q] = useState<string | null>(null);
+	// Phases tab: the sub-team tree (open runs, selected step). Failed / live sub-teams start open.
+	const [step, set_step] = useState<Tree_step | null>(null);
+	const [tree_open, set_tree_open] = useState<Set<string> | null>(null);
+	const sub_runs_all = useMemo(() => (telemetry?.phases ?? []).flatMap((p) => p.sub_runs ?? []), [telemetry]);
+	// Until the viewer folds or opens something, the open set follows the data (failed / live open).
+	const tree_open_now = useMemo(() => tree_open ?? initially_open(sub_runs_all), [tree_open, sub_runs_all]);
+	const toggle_tree = (id: string) => set_tree_open(() => { const n = new Set(tree_open_now); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 	// `?resume=<phase>` (from a parent run's "Why it failed"): open the resume panel set to it, once.
 	useEffect(() => {
 		const phase = search.get('resume');
@@ -660,8 +672,13 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					{data.parent ? (
 						<nav aria-label="Part of" data-testid="parent-crumb" className="mb-1 flex flex-wrap items-center gap-1.5 text-[12px] text-[var(--g-ink-3)]">
 							<span aria-hidden>↰</span>
-							<Link to={other_run_link(data.parent)} className="font-semibold text-[var(--g-acc)] hover:underline">{data.parent.run_name || data.parent.run_id}</Link>
-							{data.parent.phase ? <><span aria-hidden>›</span><span className="g-mono">{data.parent.phase}</span></> : null}
+							{(data.ancestors?.length ? data.ancestors : [data.parent]).map((a, i) => (
+								<span key={a.run_id} className="contents">
+									{i > 0 ? <span aria-hidden>›</span> : null}
+									<Link to={other_run_link(a)} className={`hover:underline ${i === 0 ? 'font-semibold text-[var(--g-acc)]' : 'text-[var(--g-acc)]'}`}>{a.run_name || a.run_id}</Link>
+									{a.phase ? <><span aria-hidden>›</span><span className="g-mono">{a.phase}</span></> : null}
+								</span>
+							))}
 							<span aria-hidden>›</span><span>this sub-team run</span>
 							{data.parent.state ? <span className="ml-1"><State_pill state={data.parent.state} /></span> : null}
 						</nav>
@@ -798,11 +815,19 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					<div role="tabpanel">
 						{tab === 'phases' ? (
 							<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
-								{phase_outputs.length ? (
-									<div className="flex justify-end border-b border-[var(--g-line-2)] px-4 py-1.5">
-										<button type="button" onClick={() => download_raw_outputs(run.run_id, phase_outputs)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
-											Download raw outputs
-										</button>
+								{phase_outputs.length || sub_runs_all.length ? (
+									<div className="flex justify-end gap-3 border-b border-[var(--g-line-2)] px-4 py-1.5 text-[12px] text-[var(--g-ink-3)]">
+										{sub_runs_all.length ? (
+											<>
+												<button type="button" onClick={() => set_tree_open(all_sub_runs(sub_runs_all))} className="hover:text-[var(--g-ink)]">Expand all</button>
+												<button type="button" onClick={() => set_tree_open(new Set())} className="hover:text-[var(--g-ink)]">Collapse all</button>
+											</>
+										) : null}
+										{phase_outputs.length ? (
+											<button type="button" onClick={() => download_raw_outputs(run.run_id, phase_outputs)} className="hover:text-[var(--g-ink)]">
+												Download raw outputs
+											</button>
+										) : null}
 									</div>
 								) : null}
 								<Phase_list
@@ -819,6 +844,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 									on_resume_from={can_resume && gates.run.ok && pending?.endpoint !== '/v1/resume'
 										? (phase) => { set_resume_initial(phase); set_panel('resume'); }
 										: null}
+									tree={{ open: tree_open_now, toggle: toggle_tree, selected: step ? { run_id: step.run.run_id, phase: step.phase.name } : null, on_select: set_step, run_href: (id) => `${base}/runs/${encodeURIComponent(id)}` }}
 								/>
 							</section>
 						) : tab === 'timeline' || tab === 'usage' || tab === 'dag' ? (
@@ -834,7 +860,9 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					</div>
 					<G_run_artifacts artifacts={data.artifacts ?? []} status={data.sections.artifacts} />
 				</div>
-				{tab === 'timeline' && selected && telemetry
+				{tab === 'phases' && step
+					? <Step_details step={step} top={run.run_name || run.run_id} failure={data.failure ?? null} run_href={(id) => `${base}/runs/${encodeURIComponent(id)}`} on_close={() => set_step(null)} />
+					: tab === 'timeline' && selected && telemetry
 					? <Span_details bar={selected} t={telemetry} realm_id={data.realm?.id ?? null} on_close={() => set_selected(null)} on_logs={(q) => { set_log_q(q); set_tab('logs'); }} />
 					: <Details run={run} base={base} parent={data.parent ?? null} children={children} run_link={other_run_link} />}
 			</div>

@@ -144,6 +144,35 @@ describe('Run page telemetry', () => {
 		expect(screen.queryByTestId('sub-run-child-1')).toBeNull();
 	});
 
+	it('phases: a team phase opens into its sub-team\'s steps, at any depth; a step opens its details beside', async () => {
+		const base = telemetry();
+		const step = (name: string, status: string, extra: Record<string, unknown> = {}) => ({ ...base.phases[0], name, status, start_ms: t0, end_ms: t0 + 2 * M, cost_usd: null, ...extra });
+		const lint = { run_id: 'grand-1', run_name: 'small-lint', team: '@measureone/lint-lld', state: 'completed', error: null, start_ms: t0, end_ms: t0 + M,
+			phases: [step('lint', 'done')], bars: [], usage: { cost_usd: null, tokens_in: null, tokens_out: null, cached_in: null, model_calls: null } };
+		const lld = { run_id: 'child-1', run_name: 'brave-rust-anchor', team: '@measureone/design-lld', state: 'failed', error: 'Review expired', start_ms: t0, end_ms: t0 + 9 * M,
+			phases: [step('draft-lld', 'done', { runs: 2, kind: 'llm', cost_usd: 1.1 }), step('assemble', 'done', { sub_runs: [lint] }), step('hug-lld', 'failed', { kind: 'human', runs: 2, error: "Gate 'hug-lld' escalated: Review expired" })],
+			bars: [], usage: { cost_usd: 1.26, tokens_in: 1, tokens_out: 1, cached_in: null, model_calls: 3 } };
+		route_fetch(telemetry({ phases: [base.phases[0], { ...base.phases[1], sub_runs: [lld] }] }));
+		open('/o/measureone/realms/prod-us/runs/run-77');
+		const node = await screen.findByTestId('tree-run-child-1');
+		// Failed sub-teams start open; the completed one inside it starts folded.
+		expect(within(node).getByTestId('tree-step-child-1-draft-lld')).toHaveTextContent('ran 2×');
+		expect(within(node).getByTestId('tree-step-child-1-hug-lld')).toHaveTextContent('2 rounds');
+		expect(within(node).getByTestId('tree-run-grand-1')).toHaveTextContent('1 step');
+		expect(screen.queryByTestId('tree-step-grand-1-lint')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Open sub-team lint-lld' }));
+		expect(screen.getByTestId('tree-step-grand-1-lint')).toBeInTheDocument();
+		fireEvent.click(screen.getByTestId('tree-step-child-1-hug-lld'));
+		const d = screen.getByTestId('step-details');
+		expect(within(d).getByTestId('step-path')).toHaveTextContent('Nightly reconcile › design-lld ›');
+		expect(within(d).getByTestId('step-error')).toHaveTextContent('Review expired');
+		expect(within(d).getByRole('link', { name: 'Resume sub-team from hug-lld' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/child-1?resume=hug-lld');
+		fireEvent.click(screen.getByRole('button', { name: 'Collapse all' }));
+		expect(screen.queryByTestId('tree-step-child-1-draft-lld')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Expand all' }));
+		expect(screen.getByTestId('tree-step-grand-1-lint')).toBeInTheDocument();
+	});
+
 	it('timeline: lanes, filters, select a bar → details replace the side column → logs for that agent', async () => {
 		const calls = route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');

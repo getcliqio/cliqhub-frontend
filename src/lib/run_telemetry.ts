@@ -40,6 +40,8 @@ export interface Telemetry_phase {
 	gate_outcome: string | null;
 	depends_on: string[];
 	/** Sub-team runs this phase started, each with its own steps (nested in the timeline). */
+	/** The phase's error as recorded; absent from an older BFF. */
+	error?: string | null;
 	sub_runs?: Telemetry_sub_run[];
 }
 
