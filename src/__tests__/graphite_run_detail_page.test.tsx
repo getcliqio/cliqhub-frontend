@@ -369,6 +369,25 @@ describe('Graphite run detail', () => {
 		expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs');
 	});
 
+	it('logs include the sub-teams\' runs, tagged, and can be narrowed to one run', async () => {
+		const child = { run_id: 'run-lld', run_name: 'lld-1', team_label: '@measureone/design-lld', parent_phase: 'design', state: 'failed', started_at: Date.now() - 60_000, completed_at: Date.now(), realm_slug: null, org_slug: null };
+		const spy = route_fetch(run_detail({ children: [child] }), {
+			'/v1/runs/get_logs': () => ({ body: { ok: true, total: 2, lines: [
+				{ id: 'l2', run_id: 'run-lld', created_at: Date.now(), level: 'info', message: 'draft-lld started' },
+				{ id: 'l1', run_id: 'run-77', created_at: Date.now() - 1000, level: 'info', message: 'design started' },
+			] } }),
+		});
+		render_page('/o/measureone/realms/prod-us/runs/run-77?tab=logs');
+		await ready();
+		expect(await screen.findByText('draft-lld started')).toBeInTheDocument();
+		expect(calls(spy, '/v1/runs/get_logs')[0]).toMatchObject({ run_ids: ['run-77', 'run-lld'] });
+		expect(screen.getAllByTestId('log-source').map((t) => t.textContent)).toEqual(['⤷ design-lld']);
+		fireEvent.click(screen.getByRole('button', { name: '⤷ design-lld' }));
+		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ run_ids: ['run-lld'] }));
+		fireEvent.click(screen.getByRole('button', { name: 'This run' }));
+		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ run_ids: ['run-77'] }));
+	});
+
 	it('redirects to the run’s real realm when opened under another realm URL', async () => {
 		route_fetch(run_detail({ realm: { id: 'r-x', slug: 'sandbox', name: 'Sandbox', org_slug: 'acme-labs' } }));
 		render_page('/o/measureone/realms/prod-us/runs/run-77');

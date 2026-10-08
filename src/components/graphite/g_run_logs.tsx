@@ -2,6 +2,9 @@
  * Graphite log viewer for one run — `POST /v1/runs/get_logs` (single Core
  * resource, paged and tailed; not a composition).
  *
+ * A run's sub-team runs log under their own run ids: with `sub_runs` the view reads them in the
+ * same call (`run_ids`), tags their lines, and can narrow to one run.
+ *
  * Newest first. Live tail polls with `since_ms` while the run is live;
  * "Load older" pages with `until_ms`. Search + level filters are server-side.
  */
@@ -17,6 +20,14 @@ export interface G_log_line {
 	level: string;
 	message: string;
 	concern?: string | null;
+	run_id?: string;
+}
+
+/** A sub-team run whose logs can be shown with its parent's. */
+export interface G_log_source {
+	run_id: string;
+	/** Short label, e.g. the sub-team's name. */
+	label: string;
 }
 
 export const LOG_PAGE_SIZE = 200;
@@ -41,7 +52,7 @@ function dedupe(lines: G_log_line[]): G_log_line[] {
 	return lines.filter((l) => (seen.has(l.id) ? false : (seen.add(l.id), true)));
 }
 
-export function G_run_logs({ run_id, realm_id, live, initial_query }: { run_id: string; realm_id: string; live: boolean; initial_query?: string }) {
+export function G_run_logs({ run_id, realm_id, live, initial_query, sub_runs = [] }: { run_id: string; realm_id: string; live: boolean; initial_query?: string; sub_runs?: G_log_source[] }) {
 	const auth_fetch = useAuthFetch();
 	const [lines, set_lines] = useState<G_log_line[]>([]);
 	const [total, set_total] = useState(0);
@@ -51,15 +62,21 @@ export function G_run_logs({ run_id, realm_id, live, initial_query }: { run_id: 
 	const [q, set_q] = useState(initial_query ?? '');
 	const [query, set_query] = useState(initial_query ?? '');
 	const [levels, set_levels] = useState<string[]>([]);
+	/** 'all' = this run and its sub-teams; else one run id. */
+	const [source, set_source] = useState<string>('all');
+	const sub_key = sub_runs.map((r) => r.run_id).join(',');
+	const run_ids = source === 'all' ? [run_id, ...sub_runs.map((r) => r.run_id)] : [source];
+	const run_ids_key = run_ids.join(',');
+	const label_of = new Map(sub_runs.map((r) => [r.run_id, r.label]));
 	const lines_ref = useRef<G_log_line[]>([]);
 	lines_ref.current = lines;
 
 	const body = useCallback((extra: Record<string, unknown>) => {
-		const b: Record<string, unknown> = { realm_id, run_ids: [run_id], limit: LOG_PAGE_SIZE, offset: 0, ...extra };
+		const b: Record<string, unknown> = { realm_id, run_ids: run_ids_key.split(','), limit: LOG_PAGE_SIZE, offset: 0, ...extra };
 		if (query) b.q = query;
 		if (levels.length) b.levels = levels;
 		return JSON.stringify(b);
-	}, [realm_id, run_id, query, levels]);
+	}, [realm_id, run_ids_key, query, levels]);
 
 	const fetch_logs = useCallback(async (extra: Record<string, unknown>) => {
 		const res = await auth_fetch('/v1/runs/get_logs', { method: 'POST', body: body(extra) });
@@ -138,6 +155,21 @@ export function G_run_logs({ run_id, realm_id, live, initial_query }: { run_id: 
 						</button>
 					))}
 				</div>
+				{sub_key ? (
+					<div className="flex flex-wrap gap-1" role="group" aria-label="Log source">
+						{[['all', 'All'], [run_id, 'This run'], ...sub_runs.map((r) => [r.run_id, `⤷ ${r.label}`])].map(([id, label]) => (
+							<button
+								key={id}
+								type="button"
+								aria-pressed={source === id}
+								onClick={() => set_source(id)}
+								className={`rounded-full border px-2 py-0.5 text-[11.5px] ${source === id ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}
+							>
+								{label}
+							</button>
+						))}
+					</div>
+				) : null}
 				<span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">
 					{live ? <><span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--g-run)]" />live · </> : null}
 					{lines.length} of {total}
@@ -153,7 +185,10 @@ export function G_run_logs({ run_id, realm_id, live, initial_query }: { run_id: 
 					<div key={l.id} className="grid grid-cols-[72px_46px_minmax(0,1fr)] gap-2 px-3 hover:bg-[var(--g-soft)]" data-testid="log-line">
 						<span className="text-[var(--g-ink-3)]">{clock(l.created_at)}</span>
 						<span className="uppercase" style={{ color: level_color(l.level) }}>{l.level.slice(0, 5)}</span>
-						<span className="whitespace-pre-wrap break-words text-[var(--g-ink-2)]">{l.message}</span>
+						<span className="whitespace-pre-wrap break-words text-[var(--g-ink-2)]">
+							{source === 'all' && l.run_id && label_of.has(l.run_id) ? <span data-testid="log-source" className="mr-1.5 rounded bg-[var(--g-soft)] px-1 text-[10.5px] text-[var(--g-ink-3)]">⤷ {label_of.get(l.run_id)}</span> : null}
+							{l.message}
+						</span>
 					</div>
 				))}
 				{!loading && lines.length > 0 && lines.length < total ? (

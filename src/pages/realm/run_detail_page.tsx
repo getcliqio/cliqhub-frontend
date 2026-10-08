@@ -786,7 +786,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 								: tab === 'usage' ? <Usage t={telemetry} />
 								: <Dag t={telemetry} on_open={open_in_timeline} />
 						) : data.realm ? (
-							<div className="h-[560px]"><G_run_logs key={log_q ?? ''} run_id={run.run_id} realm_id={data.realm.id} live={live} initial_query={log_q ?? undefined} /></div>
+							<div className="h-[560px]"><G_run_logs key={log_q ?? ''} run_id={run.run_id} realm_id={data.realm.id} live={live} initial_query={log_q ?? undefined} sub_runs={(data.children ?? []).map((c) => ({ run_id: c.run_id, label: (c.team_label ?? c.run_name ?? c.run_id).replace(/^@[^/]+\//, '') }))} /></div>
 						) : (
 							<p className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Logs are unavailable because this run’s realm couldn’t be loaded.</p>
 						)}
