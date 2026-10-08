@@ -39,6 +39,23 @@ export interface Telemetry_phase {
 	runs: number;
 	gate_outcome: string | null;
 	depends_on: string[];
+	/** Sub-team runs this phase started, each with its own steps (nested in the timeline). */
+	sub_runs?: Telemetry_sub_run[];
+}
+
+/** A sub-team run nested under the phase that started it. */
+export interface Telemetry_sub_run {
+	run_id: string;
+	run_name: string | null;
+	/** `@scope/name` of the sub-team. */
+	team: string | null;
+	state: string;
+	/** Why it failed, as the run recorded it. */
+	error: string | null;
+	start_ms: number | null;
+	end_ms: number | null;
+	phases: Telemetry_phase[];
+	bars: Telemetry_bar[];
 }
 
 export interface Run_telemetry_data {

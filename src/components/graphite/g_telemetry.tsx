@@ -4,7 +4,7 @@
  * Data: one `POST /v1/run_telemetry/get` (BFF) passed in as `t`.
  * Span log lines: `POST /v1/runs/get_logs` (single Core read, time-windowed).
  */
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
@@ -26,6 +26,7 @@ import {
 	type Run_telemetry_data,
 	type Telemetry_bar,
 	type Telemetry_phase,
+	type Telemetry_sub_run,
 } from '@/lib/run_telemetry';
 
 const CARD = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
@@ -153,6 +154,67 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 			</button>
 		);
 	};
+	const toggle = (key: string) => set_collapsed((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+	/**
+	 * One phase lane: its header (with its own span), its agent bars, and — for a phase that
+	 * started a sub-team — that run nested inside it, indented one level per sub-team.
+	 */
+	const lane = (p: Telemetry_phase, bars: Telemetry_bar[], depth: number, key: string): ReactNode => {
+		const rows = bars.filter((x) => x.phase === p.name && in_filter(filter, x.kind) && !(hide_waiting && x.kind === 'human'));
+		const subs = p.sub_runs ?? [];
+		if (!rows.length && !subs.length && (filter !== 'all' || hide_waiting)) return null;
+		const open = !collapsed.has(key);
+		const multi = new Set(rows.map((x) => x.agent)).size < rows.length;
+		const top = depth === 0;
+		const indent = { paddingLeft: `${depth * 14}px` };
+		return (
+			<div key={key} data-testid={`lane-${key}`}>
+				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
+					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} className={`truncate text-left text-[12.5px] font-semibold ${top && crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''} ${p.status === 'failed' ? 'text-[var(--g-bad)]' : ''}`}>{open ? '▾' : '▸'} <span className="g-mono">{p.name}</span>{p.runs > 1 ? <span className="ml-1 text-[11px] font-normal text-[var(--g-warn-text)]">↻{p.runs}</span> : null}</button>
+					<div className="relative h-full">
+						{p.start_ms != null ? <i aria-hidden className="absolute top-2 h-3 rounded-[3px]" style={{ left: `${pct(Math.max(p.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(p.end_ms ?? now, b)) - pct(Math.max(p.start_ms, a))}%)`, background: `${KIND_COLOR[p.kind]}40`, backgroundImage: p.kind === 'human' ? HATCH : undefined, opacity: top && crit_on && !crit.has(p.name) ? 0.25 : 1 }} /> : null}
+					</div>
+				</div>
+				{open ? rows.map((x, i) => {
+					const prev = x.run_index > 1 ? rows.slice(0, i).reverse().find((r) => r.agent === x.agent) : undefined;
+					return (
+						<div key={x.id} className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
+							<span className="truncate text-[12px] text-[var(--g-ink-2)]" style={{ paddingLeft: `${depth * 14 + 16}px` }}>{agent_label(x)}{multi && rows.filter((r) => r.agent === x.agent).length > 1 ? ` · ${x.kind === 'gate' ? 'iter' : 'run'} ${x.run_index}` : ''}{x.model ? <span className="g-mono ml-1.5 text-[10.5px] text-[var(--g-ink-3)]">{x.model.replace(/^claude-/, '')}</span> : null}</span>
+							<div className="relative h-full">
+								{prev?.end_ms != null ? <i aria-hidden className="absolute top-[13px] border-t-[1.5px] border-dashed" style={{ borderColor: KIND_COLOR.gate, left: `${pct(Math.max(prev.end_ms, a))}%`, width: `${Math.max(0, pct(Math.min(x.start_ms, b)) - pct(Math.max(prev.end_ms, a)))}%` }} title="sent back for rework" /> : null}
+								{bar_el(x, x.kind === 'human' && pct(Math.min(x.end_ms ?? now, b)) - pct(Math.max(x.start_ms, a)) > 18 ? `waiting for review · ${fmt_ms((x.end_ms ?? now) - x.start_ms)}` : undefined)}
+							</div>
+						</div>
+					);
+				}) : null}
+				{open ? subs.map((r) => sub_run(r, depth + 1, `${key}/${r.run_id}`)) : null}
+			</div>
+		);
+	};
+	/** A sub-team run inside its parent phase: team, state, why it failed, then its own lanes. */
+	const sub_run = (r: Telemetry_sub_run, depth: number, key: string): ReactNode => {
+		const open = !collapsed.has(key);
+		const failed = r.state === 'failed' || r.state === 'crashed';
+		const indent = { paddingLeft: `${depth * 14}px` };
+		return (
+			<div key={key} data-testid={`sub-run-${r.run_id}`} className="rounded-md bg-[var(--g-panel-2,transparent)]">
+				<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
+					<button type="button" aria-expanded={open} onClick={() => toggle(key)} style={indent} title={r.run_name ?? undefined} className="truncate text-left text-[12px] text-[var(--g-ink-2)]">
+						{open ? '▾' : '▸'} <span className="text-[var(--g-ink-3)]">sub-team</span> <span className="g-mono font-semibold text-[var(--g-ink)]">{r.team ?? r.run_name ?? 'run'}</span>
+					</button>
+					<div className="relative h-full">
+						{r.start_ms != null ? <i aria-hidden className="absolute top-[11px] h-[5px] rounded-full" style={{ left: `${pct(Math.max(r.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(r.end_ms ?? now, b)) - pct(Math.max(r.start_ms, a))}%)`, background: failed ? 'var(--g-bad)' : 'var(--g-ink-3)' }} /> : null}
+					</div>
+				</div>
+				{failed && r.error ? (
+					<p role="note" data-testid={`sub-run-error-${r.run_id}`} className="pb-1 text-[11.5px] leading-snug text-[var(--g-bad)]" style={{ paddingLeft: `${depth * 14 + 16}px` }}>
+						{r.state === 'crashed' ? 'Crashed' : 'Failed'}: {r.error}
+					</p>
+				) : null}
+				{open ? r.phases.map((cp) => lane(cp, r.bars, depth, `${key}/${cp.name}`)) : null}
+			</div>
+		);
+	};
 	return (
 		<div className="flex flex-col gap-2" data-testid="timeline">
 			<div className="flex flex-wrap items-center gap-2">
@@ -181,34 +243,7 @@ export function Timeline({ t, selected, on_select, focus_phase, now = Date.now()
 						{running && now <= b ? <i className="absolute inset-y-0 border-l border-[var(--g-acc)]" style={{ left: `${pct(now)}%` }} title="now" /> : null}
 						{drag ? <i className="absolute inset-y-0 bg-[var(--g-acc-soft)]" style={{ left: `${Math.min(...drag) * 100}%`, width: `${Math.abs(drag[1] - drag[0]) * 100}%` }} /> : null}
 					</div>
-					{t.phases.map((p) => {
-						const rows = t.bars.filter((x) => x.phase === p.name && in_filter(filter, x.kind) && !(hide_waiting && x.kind === 'human'));
-						if (!rows.length && (filter !== 'all' || hide_waiting)) return null;
-						const open = !collapsed.has(p.name);
-						const multi = new Set(rows.map((x) => x.agent)).size < rows.length;
-						return (
-							<div key={p.name} data-testid={`lane-${p.name}`}>
-								<div className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-									<button type="button" aria-expanded={open} onClick={() => set_collapsed((s) => { const n = new Set(s); if (n.has(p.name)) n.delete(p.name); else n.add(p.name); return n; })} className={`truncate text-left text-[12.5px] font-semibold ${crit_on && crit.has(p.name) ? 'text-[var(--g-acc)]' : ''}`}>{open ? '▾' : '▸'} <span className="g-mono">{p.name}</span>{p.runs > 1 ? <span className="ml-1 text-[11px] font-normal text-[var(--g-warn-text)]">↻{p.runs}</span> : null}</button>
-									<div className="relative h-full">
-										{p.start_ms != null ? <i aria-hidden className="absolute top-2 h-3 rounded-[3px]" style={{ left: `${pct(Math.max(p.start_ms, a))}%`, width: `max(3px, ${pct(Math.min(p.end_ms ?? now, b)) - pct(Math.max(p.start_ms, a))}%)`, background: `${KIND_COLOR[p.kind]}40`, backgroundImage: p.kind === 'human' ? HATCH : undefined, opacity: crit_on && !crit.has(p.name) ? 0.25 : 1 }} /> : null}
-									</div>
-								</div>
-								{open ? rows.map((x, i) => {
-									const prev = x.run_index > 1 ? rows.slice(0, i).reverse().find((r) => r.agent === x.agent) : undefined;
-									return (
-										<div key={x.id} className="grid h-7 grid-cols-[170px_minmax(0,1fr)] items-center">
-											<span className="truncate pl-4 text-[12px] text-[var(--g-ink-2)]">{agent_label(x)}{multi && rows.filter((r) => r.agent === x.agent).length > 1 ? ` · ${x.kind === 'gate' ? 'iter' : 'run'} ${x.run_index}` : ''}{x.model ? <span className="g-mono ml-1.5 text-[10.5px] text-[var(--g-ink-3)]">{x.model.replace(/^claude-/, '')}</span> : null}</span>
-											<div className="relative h-full">
-												{prev?.end_ms != null ? <i aria-hidden className="absolute top-[13px] border-t-[1.5px] border-dashed" style={{ borderColor: KIND_COLOR.gate, left: `${pct(Math.max(prev.end_ms, a))}%`, width: `${Math.max(0, pct(Math.min(x.start_ms, b)) - pct(Math.max(prev.end_ms, a)))}%` }} title="sent back for rework" /> : null}
-												{bar_el(x, x.kind === 'human' && pct(Math.min(x.end_ms ?? now, b)) - pct(Math.max(x.start_ms, a)) > 18 ? `waiting for review · ${fmt_ms((x.end_ms ?? now) - x.start_ms)}` : undefined)}
-											</div>
-										</div>
-									);
-								}) : null}
-							</div>
-						);
-					})}
+					{t.phases.map((p) => lane(p, t.bars, 0, p.name))}
 				</div>
 				<div className="mt-3 flex flex-wrap gap-3 border-t border-[var(--g-line)] pt-2 text-[11px] text-[var(--g-ink-3)]">
 					{(['llm', 'gate', 'human', 'connector', 'shell'] as Agent_kind[]).filter((k) => t.bars.some((x) => x.kind === k)).map((k) => <span key={k} className="flex items-center gap-1.5"><Swatch color={KIND_COLOR[k]} hatch={k === 'human'} />{k === 'human' ? 'waiting on people' : KIND_LABEL[k]}</span>)}

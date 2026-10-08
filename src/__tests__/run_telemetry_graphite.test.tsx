@@ -88,6 +88,35 @@ describe('Run page telemetry', () => {
 		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases 2', 'Timeline', 'Usage', 'DAG', 'Logs']);
 	});
 
+	it('timeline: a sub-team nests inside the phase that started it, with its steps and why it failed', async () => {
+		const base = telemetry();
+		const bar = (id: string, phase: string, agent: string, kind: 'llm' | 'human', s0: number, e0: number) => ({ ...base.bars[0], id, phase, agent, kind, start_ms: t0 + s0 * M, end_ms: t0 + e0 * M });
+		const step = (name: string, status: string, s0: number, e0: number, kind: 'llm' | 'human') => ({ ...base.phases[0], name, kind, status, start_ms: t0 + s0 * M, end_ms: t0 + e0 * M });
+		const design = {
+			...step('design', 'failed', 1, 9, 'llm'),
+			sub_runs: [{
+				run_id: 'child-1', run_name: 'solar-lilac-fox', team: '@measureone/design-lld', state: 'failed',
+				error: "Gate 'hug-lld' escalated: Review timed out after 30m", start_ms: t0 + 1 * M, end_ms: t0 + 9 * M,
+				phases: [step('draft-lld', 'done', 1, 3, 'llm'), step('hug-lld', 'failed', 3, 9, 'human')],
+				bars: [bar('c1', 'draft-lld', 'cursor', 'llm', 1, 3), bar('c2', 'hug-lld', 'hug', 'human', 3, 9)],
+			}],
+		};
+		route_fetch(telemetry({ phases: [base.phases[0], design], bars: [base.bars[0]] }));
+		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
+		const lane = await screen.findByTestId('lane-design');
+		// The sub-team is inside the design lane, not a sibling of it.
+		const sub = within(lane).getByTestId('sub-run-child-1');
+		expect(sub).toHaveTextContent('@measureone/design-lld');
+		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('Failed: Gate \'hug-lld\' escalated: Review timed out after 30m');
+		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
+		expect(within(sub).getByTestId('lane-design/child-1/hug-lld')).toBeInTheDocument();
+		expect(within(sub).getByTestId('bar-c2')).toBeInTheDocument();
+		expect(screen.queryByTestId('lane-draft-lld')).toBeNull();
+		// Collapsing the parent phase hides the sub-team with it.
+		fireEvent.click(within(lane).getAllByRole('button', { name: /design/ })[0]);
+		expect(screen.queryByTestId('sub-run-child-1')).toBeNull();
+	});
+
 	it('timeline: lanes, filters, select a bar → details replace the side column → logs for that agent', async () => {
 		const calls = route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
