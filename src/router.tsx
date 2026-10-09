@@ -6,6 +6,7 @@ import { GraphiteLayout } from '@/layouts/graphite_layout';
 import { GraphiteAdminLayout } from '@/layouts/graphite_admin_layout';
 import { Realm_runtime_redirect } from '@/pages/account/realm_runtime_redirect';
 import { use_overview } from '@/lib/overview';
+import { Route_error } from '@/components/graphite/g_route_error';
 
 function Legacy_account_team_redirect() {
   const { scope = '_', name = '' } = useParams();
@@ -65,6 +66,8 @@ function Account_to_settings_redirect() {
 export const router = createBrowserRouter([
   {
     path: '/',
+    // Our error page instead of React Router's developer screen when a page throws.
+    errorElement: <Route_error />,
     element: <RootLayout />,
     HydrateFallback: () => null,
     children: [

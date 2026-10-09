@@ -157,8 +157,14 @@ function Tokens() {
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [busy, set_busy] = useState(false);
 	const orgs = overview.data?.orgs ?? [];
-	const org_label = (id: string) => { const o = orgs.find((x) => x.id === id); return o ? o.display_name || o.slug : id.slice(0, 8); };
-	const works_in = (t: Token_row) => { const ids = t.permissions?.domains?.orgs; return !ids || ids === '*' || !ids.length ? 'All my orgs' : ids.map(org_label).join(', '); };
+	// Stored grants can be old: an org id may be a number (pre-UUID tokens) or the list a single value.
+	const org_label = (id: unknown) => { const key = String(id); const o = orgs.find((x) => x.id === key); return o ? o.display_name || o.slug : key.slice(0, 8); };
+	const works_in = (t: Token_row) => {
+		const ids: unknown = t.permissions?.domains?.orgs;
+		if (!ids || ids === '*') return 'All my orgs';
+		const list = Array.isArray(ids) ? ids : [ids];
+		return list.length && !list.includes('*') ? list.map((id) => org_label(id)).join(', ') : 'All my orgs';
+	};
 	async function create(e: FormEvent) {
 		e.preventDefault();
 		set_busy(true); set_msg(null);

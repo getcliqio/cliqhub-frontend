@@ -305,6 +305,20 @@ describe('Settings page', () => {
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/change_password')?.body).toEqual({ current_password: 'old', new_password: 'newpassword' }));
 	});
 
+	it('tokens: old grants (a numeric org id, a single value, *) render instead of crashing the page', async () => {
+		route_fetch({
+			'/v1/auth/get_tokens': () => ({ ok: true, data: { tokens: [
+				{ id: 't1', name: 'old-int', permissions: { domains: { orgs: [42] } }, created_at: '2025-01-01T00:00:00Z', last_used_at: null },
+				{ id: 't2', name: 'one-org', permissions: { domains: { orgs: 'org-uuid-123456' } }, created_at: '2025-01-01T00:00:00Z', last_used_at: null },
+				{ id: 't3', name: 'every-org', permissions: { domains: { orgs: ['*'] } }, created_at: '2025-01-01T00:00:00Z', last_used_at: null },
+			] } }),
+		});
+		open_settings('/settings?tab=tokens');
+		expect(await screen.findByTestId('token-old-int')).toHaveTextContent('42');
+		expect(screen.getByTestId('token-one-org')).toHaveTextContent('org-uuid');
+		expect(screen.getByTestId('token-every-org')).toHaveTextContent('All my orgs');
+	});
+
 	it('tokens: create shows the secret once; revoke needs a confirm', async () => {
 		const calls = route_fetch({
 			'/v1/auth/get_tokens': () => ({ ok: true, data: { tokens: [{ id: 't1', name: 'laptop', created_at: '2026-01-01T00:00:00Z', last_used_at: null }] } }),
