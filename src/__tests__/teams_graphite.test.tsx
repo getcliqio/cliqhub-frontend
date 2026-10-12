@@ -63,7 +63,8 @@ function page_data(view: Team_view, over: Partial<Team_page_data> = {}): Team_pa
 }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(team_over: (view: Team_view) => Partial<Team_page_data> = () => ({})) {
+/** `install` answers the multi-realm `realms/add_team` (default: everything installed). */
+function route_fetch(team_over: (view: Team_view) => Partial<Team_page_data> = () => ({}), install?: (body: Record<string, unknown>) => Response | Promise<Response>) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -73,6 +74,7 @@ function route_fetch(team_over: (view: Team_view) => Partial<Team_page_data> = (
 		calls.push({ url: u, body });
 		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: list_data() }));
 		if (u === '/v1/team_page/get') { const v = (body.view ?? 'overview') as Team_view; return new Response(JSON.stringify({ ok: true, data: page_data(v, team_over(v)) })); }
+		if (u === '/v1/realms/add_team' && install && body.realm_ids) return install(body);
 		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { name: 'feature-dev-js', description: 'x', workflow: { phases: [{ name: 'a', type: 'standard' }] }, roles: [], agents: {} } }));
 		return new Response(JSON.stringify({ ok: true, data: {} }));
 	});
@@ -163,7 +165,7 @@ describe('Build › Teams list', () => {
 		expect(screen.getByRole('tab', { name: /Drafts/ })).toHaveAttribute('aria-selected', 'true');
 	});
 
-	it('install into one realm of the current org is one Core write', async () => {
+	it('install from the list: realms of the current org only, one request with realm_ids', async () => {
 		window.localStorage.setItem('cliqhub.last_org', 'acme-labs');
 		const calls = route_fetch();
 		render_at('/teams');
@@ -171,10 +173,10 @@ describe('Build › Teams list', () => {
 		fireEvent.click(within(row).getByRole('button', { name: 'Install ▾' }));
 		const dlg = screen.getByRole('dialog', { name: 'Install @measureone/feature-dev-js' });
 		// Only this org's realms are offered.
-		expect(within(dlg).queryByRole('radio', { name: /prod-us/ })).toBeNull();
-		fireEvent.click(within(dlg).getByRole('radio', { name: /sandbox/ }));
+		expect(within(dlg).queryByRole('checkbox', { name: /prod-us/ })).toBeNull();
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /sandbox/ }));
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ realm_id: 'r-sand', scope: 'measureone', slug: 'feature-dev-js' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-sand'] }));
 		expect(await screen.findByText(/added to sandbox/)).toBeInTheDocument();
 	});
 });
@@ -349,6 +351,75 @@ describe('Team page', () => {
 		const dlg = screen.getByRole('dialog', { name: 'Open in Builder' });
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Start from v1.4.2' }));
 		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/builder?draft=tid&fresh=1&from='));
+	});
+
+	/** The team with no installs yet, so both measureone realms can be picked. */
+	const NOT_INSTALLED = (v: Team_view): Partial<Team_page_data> => (v === 'overview' ? { overview: { ...page_data('overview').overview!, installs: [] } } : {});
+
+	it('Install dialog: several realms in one request; the button is busy while it runs', async () => {
+		let release!: (r: Response) => void;
+		const calls = route_fetch(NOT_INSTALLED, () => new Promise<Response>((res) => { release = res; }));
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: 'Install ▾' }));
+		const dlg = screen.getByRole('dialog', { name: 'Install @measureone/feature-dev-js' });
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /staging/ }));
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /prod-us/ }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Install in 2 realms' }));
+		const busy = await within(dlg).findByRole('button', { name: 'Installing…' });
+		expect(busy).toBeDisabled();
+		expect(within(dlg).getByRole('checkbox', { name: /staging/ })).toBeDisabled();
+		expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-stage', 'r-prod'] });
+		release(new Response(JSON.stringify({ ok: true, data: { installed: [{ realm_id: 'r-stage', realm_slug: 'staging' }, { realm_id: 'r-prod', realm_slug: 'prod-us' }] } })));
+		expect(await screen.findByText(/added to staging, prod-us/)).toBeInTheDocument();
+		expect(screen.queryByRole('dialog', { name: /Install/ })).toBeNull();
+	});
+
+	it('Install dialog: a realm without permission blocks the install; it is marked, fixed, and the retry succeeds', async () => {
+		let attempt = 0;
+		const calls = route_fetch(NOT_INSTALLED, (body) => {
+			attempt += 1;
+			if (attempt === 1) {
+				return new Response(JSON.stringify({ ok: false, error: {
+					code: 'install_blocked', message: 'Nothing was installed. Fix this realm and try again — prod-us: You can only view this realm; installing needs operator or admin.',
+					details: { failed: [{ realm_id: 'r-prod', realm_slug: 'prod-us', code: 'level_too_low', error: 'You can only view this realm; installing needs operator or admin.' }] },
+				} }), { status: 403 });
+			}
+			return new Response(JSON.stringify({ ok: true, data: { installed: (body.realm_ids as string[]).map((id) => ({ realm_id: id, realm_slug: id })) } }));
+		});
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: 'Install ▾' }));
+		const dlg = screen.getByRole('dialog', { name: 'Install @measureone/feature-dev-js' });
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /staging/ }));
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /prod-us/ }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Install in 2 realms' }));
+		expect(await within(dlg).findByRole('alert')).toHaveTextContent(/Nothing was installed.*Untick the marked realms/);
+		expect(within(screen.getByTestId('install-realm-prod-us')).getByText(/only view this realm/)).toBeInTheDocument();
+		// The selection is kept; untick the failing realm and try again.
+		expect(within(dlg).getByRole('checkbox', { name: /staging/ })).toBeChecked();
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /prod-us/ }));
+		expect(within(screen.getByTestId('install-realm-prod-us')).queryByText(/only view/)).toBeNull();
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/add_team').at(-1)?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-stage'] }));
+		expect(await screen.findByText(/added to staging/)).toBeInTheDocument();
+	});
+
+	it('Install dialog: Core refuses one realm after the check — installed ones are marked, the rest stay to fix', async () => {
+		route_fetch(NOT_INSTALLED, () => new Response(JSON.stringify({ ok: false, error: {
+			code: 'install_incomplete', message: 'Installed in staging. Installation was not successful on prod-us — prod-us: Realm is archived',
+			details: { installed: [{ realm_id: 'r-stage', realm_slug: 'staging' }], failed: [{ realm_id: 'r-prod', realm_slug: 'prod-us', code: 'conflict', error: 'Realm is archived' }] },
+		} }), { status: 409 }));
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: 'Install ▾' }));
+		const dlg = screen.getByRole('dialog', { name: 'Install @measureone/feature-dev-js' });
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /staging/ }));
+		fireEvent.click(within(dlg).getByRole('checkbox', { name: /prod-us/ }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Install in 2 realms' }));
+		expect(await within(dlg).findByRole('alert')).toHaveTextContent('Installation was not successful on prod-us');
+		expect(within(screen.getByTestId('install-realm-staging')).getByText('installed')).toBeInTheDocument();
+		expect(within(screen.getByTestId('install-realm-prod-us')).getByText('Realm is archived')).toBeInTheDocument();
+		// Closing reports what was added.
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Close' }));
+		expect(await screen.findByText(/added to staging\./)).toBeInTheDocument();
 	});
 
 	it('404 shows the blocking error', async () => {

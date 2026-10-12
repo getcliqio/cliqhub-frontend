@@ -60,7 +60,15 @@ function Phase_squares({ types, names }: { types: string[] | null; names?: strin
 	);
 }
 
-/** Install one team into one realm (realms come from the overview the shell already loaded). */
+/** A realm the BFF says will not, or did not, get the team. */
+interface Install_failure { realm_id: string; realm_slug: string | null; error: string }
+
+/**
+ * Install one team into one or more realms (realms come from the overview the shell already
+ * loaded). One request: the BFF checks every realm first and installs nothing when any fails;
+ * then it installs realm by realm. On an error the dialog stays open with the message and each
+ * failing realm marked, so the selection can be fixed and tried again.
+ */
 export function Install_popover({
 	label, scope, name, realms, installed, on_close, on_done,
 }: {
@@ -74,54 +82,82 @@ export function Install_popover({
 }) {
 	const auth_fetch = useAuthFetch();
 	const [q, set_q] = useState('');
-	const [pick, set_pick] = useState<string | null>(null);
+	const [picked, set_picked] = useState<Set<string>>(new Set());
 	const [busy, set_busy] = useState(false);
 	const [err, set_err] = useState<string | null>(null);
+	const [failed, set_failed] = useState<Map<string, string>>(new Map());
+	// Realms installed by an earlier, partly successful attempt in this dialog.
+	const [added, set_added] = useState<Set<string>>(new Set());
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		const down = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) on_close(); };
-		const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') on_close(); };
+		const down = (e: MouseEvent) => { if (!busy && ref.current && !ref.current.contains(e.target as Node)) on_close(); };
+		const esc = (e: KeyboardEvent) => { if (!busy && e.key === 'Escape') on_close(); };
 		document.addEventListener('mousedown', down);
 		document.addEventListener('keydown', esc);
 		return () => { document.removeEventListener('mousedown', down); document.removeEventListener('keydown', esc); };
-	}, [on_close]);
+	}, [on_close, busy]);
+	const has = (id: string) => installed.has(id) || added.has(id);
 	const shown = realms.filter((r) => !q || `${r.slug} ${r.name} ${r.org_slug}`.toLowerCase().includes(q.toLowerCase())).slice(0, 30);
+	const slug_of = (id: string) => realms.find((r) => r.id === id)?.slug ?? id;
+	function toggle(id: string) {
+		set_picked((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+		set_failed((prev) => { if (!prev.has(id)) return prev; const next = new Map(prev); next.delete(id); return next; });
+	}
 	async function install() {
-		if (!pick) return;
-		set_busy(true); set_err(null);
+		const realm_ids = [...picked].filter((id) => !has(id));
+		if (!realm_ids.length) return;
+		set_busy(true); set_err(null); set_failed(new Map());
 		try {
-			const res = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ realm_id: pick, scope, slug: name }) });
+			const res = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ scope, slug: name, realm_ids }) });
 			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) { set_err(api_message(payload, 'Could not install.')); return; }
-			const realm = realms.find((r) => r.id === pick);
-			on_done(`${label} added to ${realm?.slug ?? 'the realm'}; its online daemons install it.`);
+			if (!res.ok || !payload?.ok) {
+				const details = payload?.error?.details as { failed?: Install_failure[]; installed?: Array<{ realm_id: string }> } | undefined;
+				set_failed(new Map((details?.failed ?? []).map((f) => [f.realm_id, f.error])));
+				if (details?.installed?.length) {
+					const done = details.installed.map((i) => i.realm_id);
+					set_added((prev) => new Set([...prev, ...done]));
+					set_picked((prev) => new Set([...prev].filter((id) => !done.includes(id))));
+				}
+				set_err(api_message(payload, 'Could not install.'));
+				return;
+			}
+			const names = realm_ids.map(slug_of);
+			on_done(`${label} added to ${names.join(', ')}; their online daemons install it.`);
 		} catch {
-			set_err('Network error — check your connection.');
+			set_err('Network error — check your connection, then try again.');
 		} finally {
 			set_busy(false);
 		}
 	}
+	const count = [...picked].filter((id) => !has(id)).length;
 	return (
-		<div ref={ref} role="dialog" aria-label={`Install ${label}`} className="absolute right-0 top-full z-40 mt-1.5 w-[320px] overflow-hidden rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] text-left shadow-[var(--g-pop-shadow)]">
+		<div ref={ref} role="dialog" aria-label={`Install ${label}`} aria-busy={busy} className="absolute right-0 top-full z-40 mt-1.5 w-[340px] overflow-hidden rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] text-left shadow-[var(--g-pop-shadow)]">
 			<div className="border-b border-[var(--g-line)] px-3.5 py-2.5 text-[13px] font-semibold">Install {label}</div>
-			<div className="border-b border-[var(--g-line)] px-3.5 py-2"><input autoFocus aria-label="Search realms" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search realms…" className={`${INPUT} w-full`} /></div>
-			<div className="max-h-[240px] overflow-auto py-1" role="radiogroup" aria-label="Realm">
+			<div className="border-b border-[var(--g-line)] px-3.5 py-2"><input autoFocus aria-label="Search realms" value={q} disabled={busy} onChange={(e) => set_q(e.target.value)} placeholder="Search realms…" className={`${INPUT} w-full`} /></div>
+			<div className="max-h-[260px] overflow-auto py-1" role="group" aria-label="Realms">
 				{shown.length === 0 ? <p className="px-3.5 py-3 text-[12px] text-[var(--g-ink-3)]">No realms match.</p> : null}
 				{shown.map((r) => {
-					const has = installed.has(r.id);
+					const done = has(r.id);
+					const why = failed.get(r.id);
 					return (
-						<label key={r.id} className={`flex items-center gap-2.5 px-3.5 py-1.5 text-[13px] ${has ? 'text-[var(--g-ink-3)]' : 'cursor-pointer hover:bg-[var(--g-soft)]'}`}>
-							<input type="radio" name="install-realm" disabled={has} checked={pick === r.id} onChange={() => set_pick(r.id)} />
-							<span className="truncate">{r.slug}</span>
-							{has ? <span className="ml-auto text-[11px] text-[var(--g-ink-3)]">installed</span> : null}
+						<label key={r.id} data-testid={`install-realm-${r.slug}`} className={`flex items-start gap-2.5 px-3.5 py-1.5 text-[13px] ${done ? 'text-[var(--g-ink-3)]' : 'cursor-pointer hover:bg-[var(--g-soft)]'} ${why ? 'bg-[var(--g-bad-soft)]' : ''}`}>
+							<input type="checkbox" className="mt-[3px]" disabled={done || busy} checked={done || picked.has(r.id)} onChange={() => toggle(r.id)} />
+							<span className="min-w-0 flex-1">
+								<span className="block truncate">{r.slug}</span>
+								{why ? <span className="block text-[11.5px] text-[var(--g-bad)]">{why}</span> : null}
+							</span>
+							{done ? <span className="ml-auto text-[11px] text-[var(--g-ink-3)]">installed</span> : null}
 						</label>
 					);
 				})}
 			</div>
-			{err ? <p role="alert" className="px-3.5 pb-2 text-[12px] text-[var(--g-bad)]">{err}</p> : null}
+			{err ? <p role="alert" className="border-t border-[var(--g-line)] px-3.5 py-2 text-[12px] text-[var(--g-bad)]">{err}{failed.size ? ' Untick the marked realms or fix access, then try again.' : ''}</p> : null}
 			<div className="flex gap-2 border-t border-[var(--g-line)] px-3.5 py-2.5">
-				<button type="button" disabled={!pick || busy} onClick={() => void install()} className={PRIMARY}>{busy ? 'Installing…' : 'Install'}</button>
-				<button type="button" onClick={on_close} className={ROW_ACTION_CLS}>Cancel</button>
+				<button type="button" disabled={!count || busy} onClick={() => void install()} className={PRIMARY}>
+					{busy ? 'Installing…' : count > 1 ? `Install in ${count} realms` : 'Install'}
+				</button>
+				{/* After a partly successful attempt, closing reports what was added (and refreshes the page). */}
+				<button type="button" disabled={busy} onClick={added.size ? () => on_done(`${label} added to ${[...added].map(slug_of).join(', ')}.`) : on_close} className={ROW_ACTION_CLS}>{added.size ? 'Close' : 'Cancel'}</button>
 			</div>
 		</div>
 	);
