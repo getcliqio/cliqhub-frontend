@@ -845,7 +845,7 @@ function Notifications_inner({ data, reload, tab, scope, on_tab, realm_filter }:
 	return (
 		<div className="flex flex-col gap-[18px]">
 			<div>
-				<h1 className="text-[24px] font-semibold tracking-[-0.02em]">Notifications</h1>
+				<h1 className="text-[24px] font-semibold tracking-[-0.02em]">Events</h1>
 				<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Who gets told what — every org, realm and team you can see, in one place. Each rule says <b className="text-[var(--g-ink)]">when</b>, <b className="text-[var(--g-ink)]">where it applies</b> and <b className="text-[var(--g-ink)]">where it goes</b>.</p>
 			</div>
 			{data.partial ? (
@@ -958,7 +958,7 @@ export function Component() {
 		<Graphite_shell
 			data={overview.data}
 			current_realm_id={scope.kind === 'realm' ? scope.realm.id : null}
-			title="Notifications"
+			title="Events"
 			actions={
 				<button type="button" onClick={() => void center.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
 					<RefreshCw className="h-3.5 w-3.5" />
