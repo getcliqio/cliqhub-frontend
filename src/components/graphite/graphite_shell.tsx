@@ -22,7 +22,6 @@ import {
 	Search,
 	Settings,
 	Shield,
-	Store,
 	UsersRound,
 	UserRound,
 	KeyRound,
@@ -682,10 +681,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 						<Crumbs scope={scope} fallback={scope.kind === 'realm' ? null : route_realm} title={title} />
 						<div className="ml-auto flex shrink-0 items-center gap-2">
 							{actions}
-							<Link to="/browse" aria-label="Marketplace" title="Marketplace" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--g-line)] px-2.5 text-[12.5px] font-medium text-[var(--g-ink-2)] hover:text-[var(--g-ink)]" data-testid="marketplace-link">
-								{/* Icon only on narrower screens, where page actions need the room. */}
-								<Store aria-hidden className="h-3.5 w-3.5" /><span className="hidden xl:inline">Marketplace</span>
-							</Link>
 							<Theme_toggle />
 							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
 						</div>

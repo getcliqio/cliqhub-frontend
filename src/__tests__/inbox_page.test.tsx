@@ -94,7 +94,8 @@ describe('Shell nav', () => {
 		// Events is for everyone (members land on "Reaches you"), not only org admins.
 		expect(within(nav).getByRole('link', { name: /^Events/ })).toHaveAttribute('href', '/notifications?org=measureone');
 		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
-		expect(screen.getByTestId('marketplace-link')).toHaveAttribute('href', '/browse');
+		// No Marketplace button in the top bar for now.
+		expect(screen.queryByTestId('marketplace-link')).toBeNull();
 	});
 
 	it('members (not admins) see no Org admin group', async () => {

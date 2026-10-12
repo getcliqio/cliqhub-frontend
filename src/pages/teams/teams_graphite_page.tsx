@@ -1,12 +1,12 @@
 /**
- * Build › Teams (Graphite). Read: one `POST /v1/team_list/get` per page
- * (BFF: the caller's teams, status counts, phase shape per team, realms each
- * is installed in). Follows the view switcher: an org view shows that org's
- * teams and realms. Write: `/v1/realms/add_team` (install into one realm).
+ * Build › Teams (Graphite): two tabs, Published and Drafts. Read: one `POST /v1/team_list/get` per
+ * page (BFF: the caller's teams, counts per status, phase shape per team). Follows the view
+ * switcher: an org view shows that org's teams and realms. Write: `/v1/realms/add_team` (install
+ * a published team into one realm). A row opens the team.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
@@ -21,13 +21,12 @@ import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 export const TEAM_LIST_PAGE_SIZE = 25;
 
-const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
+const TAB = (on: boolean) => `-mb-px inline-flex items-center gap-1.5 border-b-2 px-1 pb-2 text-[13px] ${on ? 'border-[var(--g-acc)] font-semibold text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 
-type Status = 'all' | 'published' | 'draft';
+type Status = 'published' | 'draft';
 const TABS: Array<{ id: Status; label: string }> = [
-	{ id: 'all', label: 'All' },
 	{ id: 'published', label: 'Published' },
 	{ id: 'draft', label: 'Drafts' },
 ];
@@ -133,10 +132,8 @@ export function Component() {
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
 	const [search, set_search] = useSearchParams();
-	const status = ((v) => (v === 'published' || v === 'draft' ? v : 'all'))(search.get('status')) as Status;
-	const q = search.get('q') ?? '';
+	const status: Status = search.get('status') === 'draft' ? 'draft' : 'published';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
-	const [draft, set_draft] = useState(q);
 	const [open_install, set_open_install] = useState<string | null>(null);
 	const [msg, set_msg] = useState<string | null>(null);
 	const view_org = scope.kind === 'all' ? null : scope.org;
@@ -147,12 +144,11 @@ export function Component() {
 		if (!keep_page) p.delete('page');
 		return p;
 	}, { replace: true });
-	useEffect(() => { const t = setTimeout(() => { if (draft.trim() !== q) set_param('q', draft.trim() || null); }, 300); return () => clearTimeout(t); }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	// The BFF sorts the whole list before paging it (team_list/get sort_by).
-	const sort = use_table_sort({ keys: ['name', 'status'] });
+	const sort = use_table_sort({ keys: ['name'] });
 	const body = overview.data || overview.status === 'error'
-		? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...(q ? { q } : {}), ...sort.body, ...(view_org ? { org_id: view_org.id, scope: view_org.slug } : {}) }
+		? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...sort.body, ...(view_org ? { org_id: view_org.id, scope: view_org.slug } : {}) }
 		: null;
 	const read = use_bff_read<Team_list_data>('/v1/team_list/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load teams.' });
 	const data = read.data;
@@ -164,42 +160,32 @@ export function Component() {
 	const href = (t: Team_list_row) => `${team_href(t.scope, t.name)}${org_q}`;
 
 	return (
-		<Graphite_shell
-			data={overview.data}
-			title="Teams"
-			actions={
-				<>
-					<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>
-					<Link to="/builder" className={PRIMARY}><Plus aria-hidden className="h-3.5 w-3.5" />New team</Link>
-				</>
-			}
-		>
+		<Graphite_shell data={overview.data} title="Teams">
 			<div className="flex flex-col gap-4 px-7 py-6">
-				<div>
-					<h1 className="text-[22px] font-semibold tracking-tight">Teams</h1>
-					<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds and owns.` : 'Teams you and your orgs build and own.'} Build here, then install into any realm.</p>
+				<div className="flex flex-wrap items-start gap-3">
+					<div className="min-w-0 flex-1">
+						<h1 className="text-[22px] font-semibold tracking-tight">Teams</h1>
+						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds and owns.` : 'Teams you and your orgs build and own.'} Build here, then install into any realm.</p>
+					</div>
+					<Link to="/builder" className={PRIMARY}><Plus aria-hidden className="h-3.5 w-3.5" />New team</Link>
 				</div>
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="teams" />
 				) : (
 					<>
-						<div className="flex flex-wrap items-center gap-2">
-							<div role="group" aria-label="Status" className="flex gap-2">
-								{TABS.map((t) => (
-									<button key={t.id} type="button" aria-pressed={status === t.id} onClick={() => set_param('status', t.id === 'all' ? null : t.id)} className={PILL(status === t.id)}>
-										{t.label}{data ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]"> {data.counts[t.id]}</span> : null}
-									</button>
-								))}
-							</div>
-							<input aria-label="Search teams" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search teams…" className={`${INPUT} ml-2 w-[260px]`} />
-							{data?.partial ? <span className="ml-auto text-[11.5px] text-[var(--g-ink-3)]" title={`Checked ${data.realms_checked} of ${data.realms_total} realms`}>“Installed in” may be incomplete</span> : null}
+						<div role="tablist" aria-label="Teams" className="flex gap-5 border-b border-[var(--g-line)]">
+							{TABS.map((t) => (
+								<button key={t.id} type="button" role="tab" aria-selected={status === t.id} onClick={() => set_param('status', t.id === 'published' ? null : t.id)} className={TAB(status === t.id)}>
+									{t.label}{data ? <span className="g-mono text-[11px] font-normal text-[var(--g-ink-3)]">{data.counts[t.id]}</span> : null}
+								</button>
+							))}
 						</div>
 						{msg ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]">{msg}</p> : null}
 						<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
 							{data && data.items.length === 0 ? (
 								<div className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">
-									{q || status !== 'all' ? 'No teams match these filters.' : <>No teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link> or find one in the <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace</Link>.</>}
+									{status === 'draft' ? 'No drafts.' : <>No published teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link>.</>}
 								</div>
 							) : null}
 							{data && data.items.length ? (
@@ -208,10 +194,8 @@ export function Component() {
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 											<Sort_th sort={cols} k="name" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Phases</th>
-											<Sort_th sort={cols} k="status" className="px-4 py-2.5 font-semibold">Status</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Latest</th>
-											<th className="px-4 py-2.5 font-semibold">Installed in</th>
-											<th className="w-[170px] px-4 py-2.5" />
+											<th className="w-[120px] px-4 py-2.5" />
 										</tr>
 									</thead>
 									<tbody>
@@ -230,23 +214,9 @@ export function Component() {
 														</div>
 													</td>
 													<td className="px-4 py-2.5"><Phase_squares types={t.phase_kinds ?? t.phase_types} names={t.phase_names} /></td>
-													<td className="px-4 py-2.5"><Status_badge status={t.status} /></td>
 													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}</td>
-													<td className="max-w-[260px] px-4 py-2.5">
-														{t.installs.length ? (
-															<span className="flex flex-wrap gap-1">
-																{t.installs.slice(0, 4).map((i) => (
-																	<span key={i.realm_id} title={i.behind ? `${i.realm_slug} runs ${i.version}; ${t.latest_version} is out` : `${i.realm_slug} · ${i.version ?? ''}`} className={`whitespace-nowrap rounded-[5px] px-1.5 py-px text-[11.5px] ${i.behind ? 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]' : 'bg-[var(--g-run-soft)] text-[var(--g-run-text)]'}`}>
-																		{i.realm_slug}{i.behind ? ` · on ${i.version}` : ''}
-																	</span>
-																))}
-																{t.installs.length > 4 ? <span className="text-[11.5px] text-[var(--g-ink-3)]">+{t.installs.length - 4}</span> : null}
-															</span>
-														) : <span className="text-[var(--g-ink-3)]">not installed</span>}
-													</td>
 													<td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
 														<span className="relative inline-flex items-center gap-1.5">
-															<Link to={href(t)} className={ROW_ACTION_CLS}>Open</Link>
 															{t.status === 'published' && t.scope ? (
 																<button type="button" aria-expanded={open_install === key} onClick={() => set_open_install(open_install === key ? null : key)} className={ROW_ACTION_CLS}>Install ▾</button>
 															) : null}
@@ -276,9 +246,6 @@ export function Component() {
 									<button type="button" aria-label="Next page" disabled={to >= data.total} onClick={() => set_param('page', String(page + 1), true)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">›</button>
 								</div>
 							) : null}
-						</div>
-						<div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
-							<span>Looking for other people’s teams? <Link to="/browse" className="text-[var(--g-acc)] hover:underline">Marketplace →</Link></span>
 						</div>
 					</>
 				)}

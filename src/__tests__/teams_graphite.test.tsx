@@ -130,29 +130,37 @@ describe('team page helpers', () => {
 describe('Build › Teams list', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one read; rows show phases, status, installs (behind in amber)', async () => {
+	it('Published tab by default: one read; rows show phases and latest, no status, installs or Open', async () => {
 		const calls = route_fetch();
 		render_at('/teams');
 		const row = await screen.findByTestId('team-measureone/feature-dev-js');
 		const reads = calls.filter((c) => c.url === '/v1/team_list/get');
 		expect(reads).toHaveLength(1);
-		expect(reads[0]!.body).toMatchObject({ status: 'all', limit: 25, offset: 0, scope: 'measureone' });
-		expect(within(row).getByText('Published')).toBeInTheDocument();
+		expect(reads[0]!.body).toMatchObject({ status: 'published', limit: 25, offset: 0, scope: 'measureone' });
 		expect(within(row).getByLabelText(/3 phases/)).toBeInTheDocument();
-		expect(within(row).getByText('staging · on 1.3.0')).toBeInTheDocument();
-		expect(within(screen.getByTestId('team-measureone/kyc-summary')).getByText('never published')).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /Drafts\s*1/ })).toBeInTheDocument();
+		expect(within(row).getByText('1.4.2')).toBeInTheDocument();
+		expect(within(row).queryByText('Published')).toBeNull();
+		expect(within(row).queryByText(/staging/)).toBeNull();
+		expect(within(row).queryByRole('link', { name: 'Open' })).toBeNull();
+		expect(screen.queryByRole('columnheader', { name: /Status|Installed in/ })).toBeNull();
+		// Two tabs only, with counts; no filters.
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Published1', 'Drafts1']);
+		expect(screen.getByRole('tab', { name: /Published/ })).toHaveAttribute('aria-selected', 'true');
+		expect(screen.queryByLabelText('Search teams')).toBeNull();
+		// The primary action is on the page, not in the top bar; no Marketplace.
+		expect(within(screen.getByRole('main')).getByRole('link', { name: 'New team' })).toHaveAttribute('href', '/builder');
+		expect(screen.queryByRole('link', { name: /Marketplace/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 	});
 
-	it('org view scopes the read; status + search go to the BFF', async () => {
+	it('org view scopes the read; the Drafts tab reads drafts', async () => {
 		const calls = route_fetch();
 		render_at('/teams?org=measureone');
 		await screen.findByTestId('team-measureone/feature-dev-js');
-		expect(calls.at(-1)!.body).toMatchObject({ org_id: expect.any(String), scope: 'measureone' });
-		fireEvent.click(screen.getByRole('button', { name: /Drafts/ }));
+		expect(calls.at(-1)!.body).toMatchObject({ org_id: expect.any(String), scope: 'measureone', status: 'published' });
+		fireEvent.click(screen.getByRole('tab', { name: /Drafts/ }));
 		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ status: 'draft' }));
-		fireEvent.change(screen.getByLabelText('Search teams'), { target: { value: 'kyc' } });
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ q: 'kyc', status: 'draft' }));
+		expect(screen.getByRole('tab', { name: /Drafts/ })).toHaveAttribute('aria-selected', 'true');
 	});
 
 	it('install into one realm of the current org is one Core write', async () => {
