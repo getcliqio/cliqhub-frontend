@@ -79,7 +79,7 @@ describe('Shell nav', () => {
 		render_page();
 		await screen.findByTestId('inbox-item-a');
 		const nav = screen.getByRole('navigation', { name: 'Main' });
-		const main = ['Dashboard', 'HUGs', 'Realms', 'Teams'];
+		const main = ['Dashboard', 'HUGs', 'Realms', 'Teams', 'Events'];
 		for (const label of main) expect(within(nav).getByRole('link', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
 		// The inbox lives behind the bell, not in the sidebar.
 		expect(within(nav).queryByRole('link', { name: /^Inbox/ })).toBeNull();
@@ -90,8 +90,9 @@ describe('Shell nav', () => {
 		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
 		// measureone: you're the owner → Org admin.
 		const admin = within(nav).getByTestId('nav-org-admin');
-		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Events', 'Org settings']);
-		expect(within(admin).getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/notifications?org=measureone');
+		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Org settings']);
+		// Events is for everyone (members land on "Reaches you"), not only org admins.
+		expect(within(nav).getByRole('link', { name: /^Events/ })).toHaveAttribute('href', '/notifications?org=measureone');
 		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
 		expect(screen.getByTestId('marketplace-link')).toHaveAttribute('href', '/browse');
 	});

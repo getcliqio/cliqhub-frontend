@@ -56,6 +56,11 @@ export function Inbox_row({ item, is_new, compact = false, show_realm_org = fals
 						<span className="g-mono inline-flex items-center gap-1.5 rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 py-px text-[11px] text-[var(--g-ink-2)]">
 							{show_realm_org ? org_chip : null}{item.realm_slug}
 						</span>
+					) : item.org_slug ? (
+						// Org-wide (the org's In-app channel): name the org, not "Account".
+						<span className="g-mono inline-flex items-center gap-1.5 rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 py-px text-[11px] text-[var(--g-ink-2)]" data-testid="inbox-org">
+							org · {item.org_slug}
+						</span>
 					) : <span className="text-[11px]">Account</span>}
 					{!compact && item.team ? <span>{item.team}</span> : null}
 					{!compact && item.run_id ? <span className="g-mono">#{item.run_id.slice(0, 8)}</span> : null}

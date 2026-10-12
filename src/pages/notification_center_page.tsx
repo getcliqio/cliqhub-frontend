@@ -9,8 +9,9 @@
  *
  * Follows the view switcher: all orgs, one org, or one realm (org-wide rules
  * that reach that realm are included). Built-in (locked) rules and channels
- * show a lock and the reason, with no edit controls; seeded defaults carry a
- * "Default" tag and stay editable. Rule recipients show as chips.
+ * show a lock and the reason, with no edit controls; defaults (a realm's
+ * "All realm members" rules) carry a "Default" tag and stay editable. Invite
+ * and account messages are built in, listed read-only under the rules.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -26,7 +27,6 @@ import {
 	can_edit_realm,
 	can_edit_rule,
 	event_label,
-	recipient_label,
 	view_only_orgs,
 	event_options,
 	rule_effect,
@@ -65,7 +65,6 @@ const LABEL = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.07em
 const TAG_STYLE: Record<Notif_scope_kind | 'personal', { fg: string; bg: string; word: string }> = {
 	org: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'org' },
 	realm: { fg: 'var(--g-run-text)', bg: 'rgba(91,157,255,.12)', word: 'realm' },
-	team: { fg: 'var(--g-acc-text)', bg: 'rgba(182,156,255,.13)', word: 'team in realm' },
 	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'person' },
 };
 
@@ -103,12 +102,37 @@ function Event_cell({ selector, tag }: { selector: string; tag?: React.ReactNode
 	);
 }
 
-function Recipient_chips({ recipients }: { recipients: string[] }) {
-	if (!recipients.length) return null;
+/**
+ * Invite and account messages CliqHub always sends to the people involved. They are built in,
+ * not rules: nothing here can be turned off or redirected.
+ */
+const BUILT_IN_MESSAGES: Array<{ what: string; to: string; how: string }> = [
+	{ what: 'Invite sent, invite reminder', to: 'The invited person', how: 'Email · in-app once they have an account' },
+	{ what: 'Invite accepted, declined or expired', to: 'Who sent the invite, and the org’s owners', how: 'Email · in-app' },
+	{ what: 'Org never claimed by its owner', to: 'Who sent the owner invite', how: 'In-app' },
+	{ what: 'New account: set your password', to: 'The person', how: 'Email' },
+	{ what: 'Password reset, password changed', to: 'The person', how: 'Email · in-app' },
+];
+
+function Built_in_messages() {
 	return (
-		<span className="mt-1 flex flex-wrap gap-1" aria-label="Recipients">
-			{recipients.map((r) => <span key={r} className="rounded-full border border-[var(--g-line)] bg-[var(--g-soft)] px-2 py-0.5 text-[11px] text-[var(--g-ink-2)]" data-testid="recipient-chip">{recipient_label(r)}</span>)}
-		</span>
+		<section aria-label="Built-in messages" className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="built-in-messages">
+			<div className="border-b border-[var(--g-line)] px-4 py-2.5">
+				<b className="text-[13px] font-semibold">Built-in messages</b>
+				<span className="ml-2 text-[12px] text-[var(--g-ink-3)]">Always sent to the people involved — not rules, nothing to set up.</span>
+			</div>
+			<table className="w-full text-left text-[12.5px]">
+				<tbody>
+					{BUILT_IN_MESSAGES.map((m) => (
+						<tr key={m.what} className="border-b border-[var(--g-line-2)] last:border-b-0">
+							<td className="px-4 py-2 font-medium">{m.what}</td>
+							<td className="px-4 py-2 text-[var(--g-ink-2)]">{m.to}</td>
+							<td className="px-4 py-2 text-[var(--g-ink-3)]">{m.how}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</section>
 	);
 }
 
@@ -146,7 +170,6 @@ const REACH_TONE: Record<Reach, string> = {
 	direct: 'var(--g-ok)',
 	email: 'var(--g-ok)',
 	inbox: 'var(--g-run)',
-	about_you: 'var(--g-ink-2)',
 	none: 'var(--g-ink-3)',
 };
 
@@ -186,13 +209,10 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 		set_search(p, { replace: true });
 	}
 	const reach_of = useMemo(() => {
-		const role_by_org = new Map(data.orgs.map((o) => [o.id, o.role]));
 		const m = new Map<string, Reach>();
 		if (!user) return m;
-		for (const r of data.rules) {
-			const me = { id: String(user.id), email: user.email ?? null, is_owner: role_by_org.get(r.scope.org_id) === 'owner' };
-			m.set(r.id, rule_reach(r, channel_by_id.get(r.channel_id), me).reach);
-		}
+		const me = { id: String(user.id), email: user.email ?? null };
+		for (const r of data.rules) m.set(r.id, rule_reach(r, channel_by_id.get(r.channel_id), me).reach);
 		return m;
 	}, [data, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -227,7 +247,7 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 					<button type="button" aria-pressed={reaches_only} onClick={() => set_show('reaches')} className={PILL(reaches_only)} data-testid="reaches-you">Reaches you</button>
 				</div>
 				<div role="group" aria-label="Applies to" className="flex gap-1">
-					{(['all', 'org', 'realm', 'team'] as const).map((k) => (
+					{(['all', 'org', 'realm'] as const).map((k) => (
 						<button
 							key={k}
 							type="button"
@@ -235,12 +255,12 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 							onClick={() => set_kind(k)}
 							className={`h-8 rounded-full border px-3 text-[12.5px] ${kind === k ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}
 						>
-							{k === 'all' ? 'All levels' : k === 'org' ? 'Org-wide' : k === 'realm' ? 'Realm' : 'Team in realm'}
+							{k === 'all' ? 'All levels' : k === 'org' ? 'Org-wide' : 'Realm'}
 						</button>
 					))}
 				</div>
 				<button type="button" aria-pressed={mine} onClick={() => set_mine((v) => !v)} className={`h-8 rounded-full border px-3 text-[12.5px] ${mine ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>Only ones I can edit</button>
-				<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">Most specific wins: team › realm › org</span>
+				<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">A realm’s rules replace the org’s there</span>
 				{any_editable ? <button type="button" onClick={() => set_creating(true)} className={`${PRIMARY} inline-flex items-center gap-1.5`}><Plus className="h-3.5 w-3.5" aria-hidden />New rule</button> : null}
 			</div>
 			{read_only.length ? (
@@ -287,7 +307,6 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 												<b className="font-medium">{r.channel_name ?? <span className="text-[var(--g-ink-3)]">unknown channel</span>}</b>
 												{ch && !ch.enabled ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span> : null}
 											</span>
-											<Recipient_chips recipients={r.recipients} />
 											{reaches_only ? <div><Reach_badge reach={reach_of.get(r.id) ?? 'none'} /></div> : null}
 										</td>
 										<td className="px-4 py-2.5">
@@ -328,6 +347,8 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 					</table>
 				)}
 			</div>
+
+			<Built_in_messages />
 
 			{creating ? <New_rule_drawer data={data} scope={scope} on_close={() => set_creating(false)} on_saved={async () => { set_creating(false); await reload(); }} on_channel_created={async () => { await reload(); }} /> : null}
 		</div>
@@ -373,7 +394,6 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 	);
 	const realm_id = realm?.id ?? '';
 	const [making_channel, set_making_channel] = useState(false);
-	const [team, set_team] = useState('');
 	const [channel_id, set_channel_id] = useState('');
 	const { user } = useAuth();
 	const me_id = user ? String(user.id) : null;
@@ -382,11 +402,10 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 
 	const org = data.orgs.find((o) => o.id === org_id);
 	const channels = data.channels.filter((c) => c.owner.org_id === org_id && (c.owner.kind !== 'realm' || (kind !== 'org' && c.owner.realm_id === realm_id)));
-	const team_options = [...new Set(data.rules.filter((r) => r.scope.realm_id === realm_id && r.scope.team_slug).map((r) => r.scope.team_slug as string))];
 
 	const draft_scope: Notif_scope = {
 		kind, org_id, org_slug: org?.slug ?? '', realm_id: kind === 'org' ? null : realm_id || null,
-		realm_slug: kind === 'org' ? null : realm?.slug ?? null, team_slug: kind === 'team' ? team.trim() || null : null,
+		realm_slug: kind === 'org' ? null : realm?.slug ?? null,
 	};
 	// Combine the effect of every chosen event; only the nearest broader level would have fired.
 	const uniq = (rs: Notif_rule[]) => [...new Map(rs.map((r) => [r.id, r])).values()];
@@ -399,8 +418,8 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 	const overridden = uniq(effects.flatMap((ef) => ef.overridden_by));
 	const channel = data.channels.find((c) => c.id === channel_id);
 	const allowed = kind === 'org' ? can_edit_org(data, org_id) : Boolean(realm_id) && can_edit_realm(data, realm_id);
-	const ready = Boolean(allowed && org_id && events.length && channel_id && (kind === 'org' || realm_id) && (kind !== 'team' || team.trim()));
-	const where = kind === 'org' ? `every realm in ${org?.display_name ?? 'the org'}` : kind === 'realm' ? realm?.slug ?? 'this realm' : `${team.trim() || 'the team'} in ${realm?.slug ?? 'the realm'}`;
+	const ready = Boolean(allowed && org_id && events.length && channel_id && (kind === 'org' || realm_id));
+	const where = kind === 'org' ? `every realm in ${org?.display_name ?? 'the org'}` : realm?.slug ?? 'this realm';
 	const what = events.length <= 3 ? events.map((e) => `“${event_label(e)}”`).join(', ') : `${events.slice(0, 2).map((e) => `“${event_label(e)}”`).join(', ')} and ${events.length - 2} more`;
 
 	async function save() {
@@ -409,7 +428,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 		// One request; the BFF writes one rule per event (Core takes one at a time).
 		const body = kind === 'org'
 			? { org_id, events, channel_id }
-			: { realm_id, events, channel_id, ...(kind === 'team' ? { team_slug: team.trim() } : {}) };
+			: { realm_id, events, channel_id };
 		const res = await post('/v1/notification_center/set_rules', body);
 		set_busy(false);
 		if (!res.ok) { set_error(res.error); return; }
@@ -432,8 +451,8 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 
 			<div>
 				<span className={LABEL}>2 · Applies to</span>
-				<div role="radiogroup" aria-label="Applies to" className="grid grid-cols-3 gap-2">
-					{([['org', 'Whole org'], ['realm', 'One realm'], ['team', 'A team in a realm']] as const).map(([k, l]) => (
+				<div role="radiogroup" aria-label="Applies to" className="grid grid-cols-2 gap-2">
+					{([['org', 'Whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
 						<button
 							key={k}
 							type="button"
@@ -459,12 +478,6 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 							on_change={(r) => { set_realm(r); set_channel_id(''); }}
 							blocked={(id) => (can_edit_realm(data, id) ? null : 'view only')}
 						/>
-					) : null}
-					{kind === 'team' ? (
-						<>
-							<input aria-label="Team" list="nr-teams" value={team} onChange={(e) => set_team(e.target.value)} placeholder="team slug, e.g. feature-dev-js" className={INPUT} />
-							<datalist id="nr-teams">{team_options.map((t) => <option key={t} value={t} />)}</datalist>
-						</>
 					) : null}
 				</div>
 			</div>
@@ -764,11 +777,10 @@ function Check_tab({ data, scope }: { data: Notification_center_data; scope: Vie
 	const [picked, set_picked] = useState<Picked_realm | null>(() => as_pick(scope.kind === 'realm' ? scope.realm.id : search.get('realm')) ?? as_pick(candidates[0]?.id ?? null));
 	const focus_event = search.get('event');
 	const realm_id = picked?.id ?? '';
-	const [team, set_team] = useState('');
 	const [gaps, set_gaps] = useState(true);
 	const check = use_bff_read<Notification_check_data>(
 		'/v1/notification_center/check',
-		realm_id ? { realm_id, ...(team ? { team_slug: team } : {}) } : null,
+		realm_id ? { realm_id } : null,
 		{ fallback_error: 'Could not check this realm.' },
 	);
 	const d = check.data;
@@ -779,15 +791,11 @@ function Check_tab({ data, scope }: { data: Notification_center_data; scope: Vie
 
 	return (
 		<div className="flex flex-col gap-4">
-			<p className="text-[13px] text-[var(--g-ink-3)]">Pick a realm (and optionally a team) to see exactly who gets told for each event, after org, realm and team rules are applied.</p>
+			<p className="text-[13px] text-[var(--g-ink-3)]">Pick a realm to see exactly who gets told for each event, after org and realm rules are applied.</p>
 			<div className="flex flex-wrap items-center gap-2">
 				<div className="w-[300px] max-w-full">
-					<Realm_picker label="Realm to check" org_id={view_org_id} value={shown_pick} on_change={(r) => { set_picked(r); set_team(''); }} show_org={!view_org_id} />
+					<Realm_picker label="Realm to check" org_id={view_org_id} value={shown_pick} on_change={(r) => set_picked(r)} show_org={!view_org_id} />
 				</div>
-				<select aria-label="Team" value={team} onChange={(e) => set_team(e.target.value)} className={`${INPUT} w-[240px] max-w-full`}>
-					<option value="">Any team (realm level)</option>
-					{(d?.teams ?? []).map((t) => <option key={t} value={t}>{t}</option>)}
-				</select>
 				<label className="ml-auto flex items-center gap-2 text-[12.5px] text-[var(--g-ink-2)]">
 					<input type="checkbox" checked={gaps} onChange={(e) => set_gaps(e.target.checked)} /> Show events nobody is told about
 				</label>
@@ -813,7 +821,7 @@ function Check_tab({ data, scope }: { data: Notification_center_data; scope: Vie
 									<td className="px-4 py-2.5">
 										{r.winners.length ? r.winners.map((w) => (
 											<span key={w.rule_id} className="mr-1.5 inline-block">
-												<Scope_tag kind={w.tier} text={`${w.tier === 'org' ? d.realm.org_slug : w.tier === 'team' ? `${d.team_slug} · ${d.realm.slug}` : d.realm.slug}${w.selector !== r.event ? ` (${w.selector})` : ''}`} />
+												<Scope_tag kind={w.tier} text={`${w.tier === 'org' ? d.realm.org_slug : d.realm.slug}${w.selector !== r.event ? ` (${w.selector})` : ''}`} />
 											</span>
 										)) : <span className="text-[var(--g-ink-3)]">no rule</span>}
 									</td>
@@ -846,7 +854,7 @@ function Notifications_inner({ data, reload, tab, scope, on_tab, realm_filter }:
 		<div className="flex flex-col gap-[18px]">
 			<div>
 				<h1 className="text-[24px] font-semibold tracking-[-0.02em]">Events</h1>
-				<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Who gets told what — every org, realm and team you can see, in one place. Each rule says <b className="text-[var(--g-ink)]">when</b>, <b className="text-[var(--g-ink)]">where it applies</b> and <b className="text-[var(--g-ink)]">where it goes</b>.</p>
+				<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Who gets told what — every org and realm you can see, in one place. Each rule says <b className="text-[var(--g-ink)]">when</b>, <b className="text-[var(--g-ink)]">where it applies</b> and <b className="text-[var(--g-ink)]">where it goes</b>.</p>
 			</div>
 			{data.partial ? (
 				<p role="status" className="flex items-center gap-2 text-[12.5px] text-[var(--g-warn-text)]">

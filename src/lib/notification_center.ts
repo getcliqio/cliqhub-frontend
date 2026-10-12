@@ -2,7 +2,8 @@
  * Notification center — types for `POST /v1/notification_center/get|check`
  * (BFF composition) plus pure helpers shared by the page and its tests.
  */
-export type Notif_scope_kind = 'org' | 'realm' | 'team';
+/** Where a rule applies: org-wide, or one realm (a realm's rules replace the org's there). */
+export type Notif_scope_kind = 'org' | 'realm';
 
 export interface Notif_scope {
 	kind: Notif_scope_kind;
@@ -10,7 +11,6 @@ export interface Notif_scope {
 	org_slug: string;
 	realm_id: string | null;
 	realm_slug: string | null;
-	team_slug: string | null;
 }
 
 export interface Notif_channel {
@@ -37,8 +37,6 @@ export interface Notif_rule {
 	channel_name: string | null;
 	priority: number;
 	replaces: string[];
-	/** Who it reaches besides the channel's own destinations: `invitee`, `org_owners`, `inviter` or user ids. */
-	recipients: string[];
 	/** Seeded default rule (e.g. `invite.sent.invitee`); null for rules people created. */
 	system_key: string | null;
 	/** Built in: it always fires and can't be changed or removed. */
@@ -49,7 +47,7 @@ export interface Notif_rule {
 export interface Notification_center_data {
 	/** `can_edit`: org-wide rules (owners and site admins); `can_edit_channels`: org channels. */
 	orgs: Array<{ id: string; slug: string; display_name: string; role: string; status: 'ok' | 'error'; error: string | null; can_edit: boolean; can_edit_channels: boolean }>;
-	/** `can_edit`: realm + team rules and realm channels. */
+	/** `can_edit`: realm rules and realm channels. */
 	realms: Array<{ id: string; slug: string; name: string; org_id: string; org_slug: string; status: 'ok' | 'error'; error: string | null; can_edit: boolean }>;
 	channels: Notif_channel[];
 	rules: Notif_rule[];
@@ -69,8 +67,6 @@ export interface Notif_check_hit {
 
 export interface Notification_check_data {
 	realm: { id: string; slug: string; name: string; org_id: string; org_slug: string };
-	team_slug: string | null;
-	teams: string[];
 	rows: Array<{ event: string; winners: Notif_check_hit[]; replaced: Notif_check_hit[] }>;
 	partial: boolean;
 }
@@ -147,13 +143,12 @@ export function selectors_overlap(a: string, b: string): boolean {
 	return false;
 }
 
-const RANK: Record<Notif_scope_kind, number> = { org: 1, realm: 2, team: 3 };
+const RANK: Record<Notif_scope_kind, number> = { org: 1, realm: 2 };
 
 /** What a new rule would replace, and what would still take precedence over it. */
 export function rule_effect(draft: { event: string; scope: Notif_scope }, rules: Notif_rule[]) {
 	const same_ctx = (r: Notif_rule) => r.scope.org_id === draft.scope.org_id
-		&& (r.scope.kind === 'org' || draft.scope.kind === 'org' || r.scope.realm_id === draft.scope.realm_id)
-		&& (r.scope.kind !== 'team' || draft.scope.kind !== 'team' || r.scope.team_slug === draft.scope.team_slug);
+		&& (r.scope.kind === 'org' || draft.scope.kind === 'org' || r.scope.realm_id === draft.scope.realm_id);
 	const overlapping = rules.filter((r) => same_ctx(r) && selectors_overlap(r.event, draft.event));
 	return {
 		replaces: overlapping.filter((r) => RANK[r.scope.kind] < RANK[draft.scope.kind]),
@@ -162,17 +157,8 @@ export function rule_effect(draft: { event: string; scope: Notif_scope }, rules:
 	};
 }
 
-const RECIPIENT_LABELS: Record<string, string> = { invitee: 'Invited person', org_owners: 'Owners', inviter: 'Inviter' };
-
-/** Chip text for one rule recipient; anything else is a user id. */
-export function recipient_label(r: string): string {
-	return RECIPIENT_LABELS[r] ?? `User ${r.slice(0, 8)}`;
-}
-
 export function scope_text(s: Notif_scope): string {
-	if (s.kind === 'org') return s.org_slug;
-	if (s.kind === 'realm') return s.realm_slug ?? '';
-	return `${s.team_slug} · ${s.realm_slug}`;
+	return s.kind === 'org' ? s.org_slug : s.realm_slug ?? '';
 }
 
 /** Can the viewer add or change org-wide rules? */
@@ -186,8 +172,7 @@ export function can_edit_org_channels(data: Notification_center_data, org_id: st
 }
 
 /**
- * Can the viewer add or change this realm's rules, its teams' rules and its
- * channels? A realm outside the current realm page (picked by search) is
+ * Can the viewer add or change this realm's rules and its channels? A realm outside the current realm page (picked by search) is
  * left to Core to decide.
  */
 export function can_edit_realm(data: Notification_center_data, realm_id: string | null): boolean {

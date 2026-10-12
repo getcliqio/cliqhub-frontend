@@ -514,11 +514,12 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
+	// Everyone: members see what reaches them there; admins also change rules and channels.
+	const events_item: Nav_item = { to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
 	const org_admin: Nav_item[] = view_org ? [
 		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
-		{ to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap },
 		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings },
 	] : [];
 
@@ -570,6 +571,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							<div className="space-y-1">
 								{nav.map((item) => <Side_link key={item.label} item={item} compact />)}
 								<Side_link item={teams_item} compact />
+								{view_org ? <Side_link item={events_item} compact /> : null}
 							</div>
 							{is_org_admin ? (
 								<div data-testid="nav-org-admin">
@@ -610,7 +612,10 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 								<p key={o.id} className="px-2 py-1 text-[11.5px] text-[var(--g-bad)]">Couldn’t load {o.display_name || o.slug}</p>
 							))}
 						</div>
-						<div className="space-y-0.5"><Side_link item={teams_item} /></div>
+						<div className="space-y-0.5">
+							<Side_link item={teams_item} />
+							{view_org ? <Side_link item={events_item} /> : null}
+						</div>
 
 						{is_org_admin ? (
 							<div data-testid="nav-org-admin">
