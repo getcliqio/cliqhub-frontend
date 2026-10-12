@@ -382,6 +382,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 	);
 }
 
+/** The team page's YAML tab at the version this run used (team_label is `@scope/name`). */
+export function team_yaml_href(run: { team_label?: string | null; team_version?: string | null }): string | null {
+	const m = /^@([^/]+)\/(.+)$/.exec(run.team_label ?? '');
+	if (!m) return null;
+	const q = new URLSearchParams({ tab: 'files', file: 'team.yml' });
+	if (run.team_version) q.set('v', run.team_version);
+	return `/teams/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}?${q.toString()}`;
+}
+
 function Details({ run, base, parent, children, run_link }: {
 	run: Run_row;
 	base: string;
@@ -407,7 +416,13 @@ function Details({ run, base, parent, children, run_link }: {
 						</Field>
 					) : null}
 					<Field label="Run ID"><Copy_value value={run.run_id} label="run id" /></Field>
-					{run.team_label || run.team_id ? <Field label="Team"><span className="g-mono">{run.team_label || run.team_id}</span></Field> : null}
+					{run.team_label || run.team_id ? (
+						<Field label="Team">
+							<span className="g-mono">{run.team_label || run.team_id}</span>
+							{run.team_version ? <span className="g-mono text-[var(--g-ink-3)]"> v{run.team_version}</span> : null}
+							{team_yaml_href(run) ? <Link to={team_yaml_href(run)!} className="ml-2 text-[12px] text-[var(--g-acc)] hover:underline" data-testid="run-team-yaml">View YAML</Link> : null}
+						</Field>
+					) : null}
 					<Field label="Workspace">
 						{run.workspace_id ? (
 							<Link to={`${base}/workspaces/${encodeURIComponent(run.workspace_id)}`} className="hover:underline">{run.workspace_name || run.workspace_id}</Link>

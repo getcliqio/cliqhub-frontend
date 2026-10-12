@@ -273,6 +273,33 @@ describe('Team page', () => {
 		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ view: 'versions', compare_to: '1.3.0' }));
 	});
 
+	it('YAML: the header opens team.yml; the outline and Show in YAML highlight a phase; phases fold', async () => {
+		const yml = 'name: hello-world\ninputs:\n  - name: name\n  - name: reviewers\nphases:\n  - name: greet\n    agent: exec\n  - name: human-review\n    type: gate\n    agent: hug\n  - name: done\n    agent: exec';
+		route_fetch((v) => (v === 'files' ? { files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: yml }, { path: 'README.md', kind: 'md' as const, content: '# hi' }] } } : {}));
+		render_at('/teams/measureone/feature-dev-js?tab=workflow&run=none');
+		fireEvent.click(await screen.findByTestId('view-yaml'));
+		await waitFor(() => expect(new URLSearchParams(screen.getByTestId('loc').textContent!.split('?')[1])).toEqual(new URLSearchParams('tab=files&file=team.yml')));
+		expect(await screen.findByTestId('file-view')).toHaveTextContent('name: hello-world');
+		expect(screen.getByRole('button', { name: /^YAML/ })).toHaveAttribute('aria-current', 'page');
+		const outline = screen.getByTestId('yaml-outline');
+		expect(within(outline).getAllByRole('button').map((b) => b.textContent)).toEqual(['name', 'inputs', 'name', 'reviewers', 'phases', 'greet', 'human-review', 'done']);
+		fireEvent.click(within(outline).getByRole('button', { name: 'human-review' }));
+		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('at=human-review'));
+		const hl = [...screen.getByTestId('file-view').querySelectorAll('[data-line]')].filter((el) => el.className.includes('g-acc-soft')).map((el) => el.getAttribute('data-line'));
+		expect(hl).toEqual(['7', '8', '9']);
+		fireEvent.click(screen.getByRole('button', { name: 'Fold greet' }));
+		expect(screen.getByTestId('file-view')).toHaveTextContent('… 1 more line');
+		expect(screen.getByTestId('file-view')).not.toHaveTextContent('agent: execname: human-review');
+	});
+
+	it('Workflow: a phase has Show in YAML, which opens team.yml at that phase', async () => {
+		route_fetch((v) => (v === 'files' ? { files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: 'name: x\nphases:\n  - name: architect\n    agent: cursor' }] } } : {}));
+		render_at('/teams/measureone/feature-dev-js?tab=workflow&run=none');
+		fireEvent.click(await screen.findByRole('button', { name: /^architect/ }));
+		fireEvent.click(within(await screen.findByTestId('phase-inspector')).getByTestId('show-in-yaml'));
+		await waitFor(() => expect(new URLSearchParams(screen.getByTestId('loc').textContent!.split('?')[1])).toEqual(new URLSearchParams('tab=files&file=team.yml&at=architect')));
+	});
+
 	it('files tab renders the file; settings rename is one write and moves the URL', async () => {
 		const calls = route_fetch();
 		render_at('/teams/measureone/feature-dev-js?tab=files');

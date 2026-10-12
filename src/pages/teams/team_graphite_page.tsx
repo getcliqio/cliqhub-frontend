@@ -19,6 +19,7 @@ import {
 	REVIEW_COLOR, phase_kind, team_href, type Team_install, type Team_page_data, type Team_phase, type Team_view,
 } from '@/lib/team_page';
 import { builder_href } from '@/lib/team_builder';
+import { Yaml_view } from '@/components/graphite/g_yaml_view';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { State_pill } from '@/components/graphite/g_status';
@@ -38,7 +39,7 @@ const H3 = 'flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3 
 const H5 = 'mb-2.5 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]';
 
 const VIEWS: Team_view[] = ['overview', 'workflow', 'files', 'runs', 'installs', 'versions', 'settings'];
-const TAB_LABEL: Record<Team_view, string> = { overview: 'Overview', workflow: 'Workflow', files: 'Files', runs: 'Runs', installs: 'Installs', versions: 'Versions', settings: 'Settings' };
+const TAB_LABEL: Record<Team_view, string> = { overview: 'Overview', workflow: 'Workflow', files: 'YAML', runs: 'Runs', installs: 'Installs', versions: 'Versions', settings: 'Settings' };
 const GROUPS: Team_view[][] = [['overview', 'workflow', 'files'], ['runs', 'installs'], ['versions', 'settings']];
 
 function use_post() {
@@ -71,7 +72,7 @@ const mono = (s: string) => <span className="g-mono">{s}</span>;
 
 // ── Workflow inspector (per phase type; role only when the version has one) ──
 
-export function Phase_inspector({ phase, phases, statuses, run_name, on_open_file }: { phase: Team_phase; phases: Team_phase[]; statuses: Record<string, string> | null; run_name: string | null; on_open_file: (path: string) => void }) {
+export function Phase_inspector({ phase, phases, statuses, run_name, on_open_file, on_show_yaml }: { phase: Team_phase; phases: Team_phase[]; statuses: Record<string, string> | null; run_name: string | null; on_open_file: (path: string) => void; /** Open team.yml at this phase. */ on_show_yaml?: (phase: string) => void }) {
 	const k = phase_kind(phase);
 	const kind = k.id;
 	const feeds = phases.filter((p) => p.depends_on.includes(phase.name)).map((p) => p.name);
@@ -153,7 +154,7 @@ export function Phase_inspector({ phase, phases, statuses, run_name, on_open_fil
 		<div className={`grid ${third ? 'grid-cols-[1.25fr_1fr_1fr]' : 'grid-cols-[1.25fr_1fr]'} overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]`} data-testid="phase-inspector">
 			<div className="min-w-0 border-r border-[var(--g-line)] px-4 py-3.5">{primary}</div>
 			<div className={`min-w-0 px-4 py-3.5 ${third ? 'border-r border-[var(--g-line)]' : ''}`}>
-				<h5 className={H5}>Configuration</h5>
+				<h5 className={H5}>Configuration{on_show_yaml ? <button type="button" onClick={() => on_show_yaml(phase.name)} className="ml-auto text-[12px] normal-case tracking-normal text-[var(--g-acc)] hover:underline" data-testid="show-in-yaml">Show in YAML →</button> : null}</h5>
 				<Kv rows={config} />
 				{run_name ? <p className="mt-3 text-[12px] text-[var(--g-ink-3)]">In {run_name}: {status ? <State_pill state={status} /> : 'not started'}</p> : null}
 			</div>
@@ -174,15 +175,6 @@ function Coverage({ i }: { i: Team_install }) {
 	);
 }
 
-function highlight_yaml(line: string): ReactNode {
-	const c = /^(\s*)(#.*)$/.exec(line);
-	if (c) return <>{c[1]}<span className="text-[var(--g-ink-4)]">{c[2]}</span></>;
-	const m = /^(\s*-?\s*)([A-Za-z0-9_.-]+)(:)(.*)$/.exec(line);
-	if (!m) return line;
-	const val = m[4];
-	const cls = /^\s*(true|false|\d+(\.\d+)?)\s*$/.test(val) ? 'text-[var(--g-warn)]' : 'text-[var(--g-lime)]';
-	return <>{m[1]}<span className="text-[var(--g-run-text)]">{m[2]}</span>{m[3]}<span className={cls}>{val}</span></>;
-}
 
 // ── page ─────────────────────────────────────────────────────────────────
 
@@ -308,6 +300,7 @@ export function Component() {
 				{full && team?.author ? <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">by {team.author}{team.tags.length ? ` · ${team.tags.join(' · ')}` : ''}</p> : null}
 			</div>
 			<div className="relative flex shrink-0 items-center gap-1.5">
+				{team && tab !== 'files' ? <button type="button" onClick={() => go_tab('files', { file: 'team.yml', at: null, run: null, phase: null })} className={ROW_ACTION_CLS} data-testid="view-yaml">View YAML</button> : null}
 				{team?.status === 'published' && team.scope ? <button type="button" aria-expanded={install_open === 'header'} onClick={() => set_install_open(install_open === 'header' ? null : 'header')} className={ROW_ACTION_CLS}>Install ▾</button> : null}
 				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>{busy === 'builder' ? 'Opening…' : 'Open in Builder'}</button> : null}
 				{team ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(true)} className={ROW_ACTION_CLS}>{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
@@ -429,44 +422,21 @@ export function Component() {
 						{w.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support phases (callable by any phase): {w.support.map((s) => <button key={s.name} type="button" aria-pressed={sel?.name === s.name} onClick={() => set_params({ phase: s.name }, true)} className={`g-mono rounded border px-1.5 text-[11px] ${sel?.name === s.name ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line-2)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{s.name}</button>)}</span> : null}
 					</div>
 				</div>
-				{sel ? <Phase_inspector phase={sel} phases={graph_phases} statuses={ov?.statuses ?? null} run_name={ov ? (ov.run.run_name || ov.run.run_id.slice(0, 8)) : null} on_open_file={(f) => go_tab('files', { file: f })} /> : null}
+				{sel ? <Phase_inspector phase={sel} phases={graph_phases} statuses={ov?.statuses ?? null} run_name={ov ? (ov.run.run_name || ov.run.run_id.slice(0, 8)) : null} on_open_file={(f) => go_tab('files', { file: f })} on_show_yaml={(ph) => go_tab('files', { file: 'team.yml', at: ph, run: null, phase: null })} /> : null}
 			</>
 		);
 	} else if (data?.files) {
-		const files = data.files.files;
-		const cur = files.find((f) => f.path === file_sel) ?? files[0] ?? null;
-		const roles = files.filter((f) => f.path.startsWith('roles/'));
-		const top = files.filter((f) => !f.path.startsWith('roles/'));
-		const item = (f: { path: string }) => (
-			<button key={f.path} type="button" aria-current={cur?.path === f.path ? 'true' : undefined} onClick={() => set_params({ file: f.path }, true)} className={`flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12.5px] ${cur?.path === f.path ? 'bg-[var(--g-soft)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)]'}`}>▤ <span className="truncate">{f.path.replace(/^roles\//, '')}</span></button>
-		);
-		const lines = cur?.content.split('\n') ?? [];
 		content = (
-			<div className="grid min-h-0 grid-cols-[240px_minmax(0,1fr)] gap-3.5">
-				<div className={`${CARD} p-2`}>
-					<p className="px-2.5 pb-1 pt-2 text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">v{team?.version ?? '—'} · package</p>
-					{top.map(item)}
-					{roles.length ? <p className="px-2.5 pb-1 pt-3 text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">roles</p> : null}
-					{roles.map(item)}
-					{!files.length ? <p className="px-2.5 py-3 text-[12px] text-[var(--g-ink-3)]">No files for this version.</p> : null}
-					<div className="mt-3 grid gap-1.5 border-t border-[var(--g-line)] px-1 pt-3">
-						{team?.can_edit && is_latest ? <button type="button" onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>Edit in Builder</button> : null}
-					</div>
-				</div>
-				<div className={`${CARD} min-w-0 overflow-hidden`}>
-					{cur ? (
-						<>
-							<div className={H3}><span className="g-mono text-[13px]">{cur.path}</span><span className="text-[12px] font-normal text-[var(--g-ink-3)]">{lines.length} lines · v{team?.version}</span>
-								<button type="button" onClick={() => { void navigator.clipboard?.writeText(cur.content); set_msg({ tone: 'ok', text: `Copied ${cur.path}.` }); }} className={`${ROW_ACTION_CLS} ml-auto inline-flex items-center gap-1.5`}><Copy aria-hidden className="h-3 w-3" />Copy</button>
-								<a download={cur.path.split('/').pop()} href={`data:text/plain;charset=utf-8,${encodeURIComponent(cur.content)}`} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Download aria-hidden className="h-3 w-3" />Save</a>
-							</div>
-							<pre className="g-mono max-h-[560px] overflow-auto py-3 text-[12px] leading-[1.7] text-[var(--g-ink-2)]" data-testid="file-view">
-								{lines.map((l, i) => <div key={i}><span className="mr-4 inline-block w-[38px] select-none text-right text-[var(--g-ink-4)]">{i + 1}</span>{cur.kind === 'yaml' ? highlight_yaml(l) : l}</div>)}
-							</pre>
-						</>
-					) : <p className="px-4 py-6 text-[12.5px] text-[var(--g-ink-3)]">Nothing to show.</p>}
-				</div>
-			</div>
+			<Yaml_view
+				files={data.files.files}
+				selected={file_sel}
+				on_select={(f) => set_params({ file: f, at: null }, true)}
+				focus={search.get('at')}
+				on_focus={(n) => set_params({ at: n }, true)}
+				version={team?.version ?? null}
+				on_copied={(path) => set_msg({ tone: 'ok', text: `Copied ${path}.` })}
+				actions={team?.can_edit && is_latest ? <button type="button" onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>Edit in Builder</button> : null}
+			/>
 		);
 	} else if (data?.runs) {
 		const r = data.runs;
