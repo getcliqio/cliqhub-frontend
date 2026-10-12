@@ -18,8 +18,8 @@ function runs(over: Partial<Realm_runs_data> = {}): Realm_runs_data {
 	return {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
-			{ run_id: 'run-1', run_name: 'PROJ-491 · Webhook signing', team: '@cliq/feature-dev-js', state: 'running', current_phase: 'implement', daemon_id: 'mbp-1', started_at: now - 14 * 60_000, completed_at: null, updated_at: now, error: null },
-			{ run_id: 'run-2', run_name: 'Nightly reconcile', team: '@measureone/recon', state: 'crashed', current_phase: 'match', daemon_id: 'ci-2', started_at: now - 3_600_000, completed_at: now - 1_800_000, updated_at: now - 1_800_000, error: 'LedgerTimeout' },
+			{ run_id: 'run-1', run_name: 'PROJ-491 · Webhook signing', team: '@cliq/feature-dev-js', state: 'running', current_phase: 'implement', daemon_id: 'mbp-1', started_at: now - 14 * 60_000, completed_at: null, updated_at: now, error: null, version: '3.2.1', origin: 'hub' },
+			{ run_id: 'run-2', run_name: 'Nightly reconcile', team: '@measureone/recon', state: 'crashed', current_phase: 'match', daemon_id: 'ci-2', started_at: now - 3_600_000, completed_at: now - 1_800_000, updated_at: now - 1_800_000, error: 'LedgerTimeout', version: null, origin: 'cli' },
 		],
 		total: 60, offset: 0, limit: 25,
 		counts: { all: 1284, running: 3, awaiting_input: 2, failed_7d: 4 },

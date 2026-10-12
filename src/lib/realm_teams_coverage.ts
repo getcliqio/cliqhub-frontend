@@ -12,7 +12,7 @@ export interface Realm_team_row_raw {
 	id?: string;
 }
 
-export type Team_origin = 'published' | 'local';
+export type Team_origin = 'hub' | 'cli';
 
 export interface Realm_team_coverage {
 	scope: string;
@@ -100,7 +100,7 @@ export function aggregate_realm_teams(
 				coverage_label,
 				version: row.version,
 				sample_team_id: row.sample_team_id,
-				origin: published_set.has(key) ? 'published' as const : 'local' as const,
+				origin: published_set.has(key) ? 'hub' as const : 'cli' as const,
 			};
 		})
 		.sort((a, b) => a.label.localeCompare(b.label));

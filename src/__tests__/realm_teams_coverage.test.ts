@@ -35,7 +35,7 @@ describe('aggregate_realm_teams', () => {
 		expect(rows).toHaveLength(0);
 	});
 
-	it('tags origin as published when in published_set', () => {
+	it('tags origin as hub when in published_set', () => {
 		const published = new Set(['acme/claims']);
 		const rows = aggregate_realm_teams(daemons, [
 			{ scope: 'acme', slug: 'claims', daemon_id: 'd1', id: 't1' },
@@ -43,15 +43,15 @@ describe('aggregate_realm_teams', () => {
 		], published);
 		const claims = rows.find((r) => r.slug === 'claims');
 		const hello = rows.find((r) => r.slug === 'hello-world');
-		expect(claims?.origin).toBe('published');
-		expect(hello?.origin).toBe('local');
+		expect(claims?.origin).toBe('hub');
+		expect(hello?.origin).toBe('cli');
 	});
 
 	it('defaults to local when no published_set provided', () => {
 		const rows = aggregate_realm_teams(daemons, [
 			{ scope: 'acme', slug: 'claims', daemon_id: 'd1', id: 't1' },
 		]);
-		expect(rows[0]?.origin).toBe('local');
+		expect(rows[0]?.origin).toBe('cli');
 	});
 });
 

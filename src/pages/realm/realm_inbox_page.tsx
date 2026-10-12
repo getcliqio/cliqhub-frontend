@@ -14,6 +14,7 @@ import { inbox_item_href, run_href, type Inbox_item, type Realm_inbox_data } fro
 import { Count_badge, Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
+import { Origin_badge } from '@/components/graphite/g_origin_badge';
 import { KIND_STYLE, KIND_STRIPE, Kind_icon, ROW_ACTION_CLS, type G_kind } from '@/components/graphite/g_kinds';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
@@ -51,6 +52,7 @@ function Row({ item, org_slug, slug }: { item: Inbox_item; org_slug: string; slu
 				</p>
 				<div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]">
 					{item.kind === 'failed' ? <State_pill state={item.state} /> : null}
+					<Origin_badge origin={item.origin} />
 					{[item.team, item.phase ? `phase ${item.phase}` : null, item.artifact_count ? `${item.artifact_count} artifact${item.artifact_count === 1 ? '' : 's'}` : null, relative_time(item.at)]
 						.filter(Boolean)
 						.join(' · ')}

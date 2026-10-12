@@ -10,12 +10,12 @@ export function inbox(over: Partial<Realm_inbox_data> = {}): Realm_inbox_data {
 	return {
 		realm: REALM,
 		items: [
-			{ kind: 'input', id: 'run-88', run_id: 'run-88', title: 'income-verify #88', team: 'income-verify', phase: 'intake', state: 'awaiting_input', at: now - 60_000, error: null, message: null, artifact_count: null },
-			{ kind: 'failed', id: 'run-77', run_id: 'run-77', title: 'Nightly reconcile', team: 'recon', phase: 'match', state: 'crashed', at: now - 120_000, error: 'Timeout talking to ledger', message: null, artifact_count: null },
-			{ kind: 'review', id: 'rev-1', run_id: 'run-1841', title: 'Approve architecture', team: '@cliq/feature-dev-js', phase: 'design-review', state: 'pending', at: now - 600_000, error: null, message: 'Please check the retry budget', artifact_count: 2 },
+			{ kind: 'input', id: 'run-88', run_id: 'run-88', title: 'income-verify #88', team: 'income-verify', phase: 'intake', state: 'awaiting_input', at: now - 60_000, error: null, message: null, artifact_count: null, origin: 'hub' },
+			{ kind: 'failed', id: 'run-77', run_id: 'run-77', title: 'Nightly reconcile', team: 'recon', phase: 'match', state: 'crashed', at: now - 120_000, error: 'Timeout talking to ledger', message: null, artifact_count: null, origin: 'cli' },
+			{ kind: 'review', id: 'rev-1', run_id: 'run-1841', title: 'Approve architecture', team: '@cliq/feature-dev-js', phase: 'design-review', state: 'pending', at: now - 600_000, error: null, message: 'Please check the retry budget', artifact_count: 2, origin: null },
 		],
 		live: [
-			{ kind: 'run', id: 'run-1843', run_id: 'run-1843', title: 'PROJ-491 · Webhook signing', team: 'feature-dev-js', phase: 'implement', state: 'running', at: now - 30_000, error: null, message: null, artifact_count: null },
+			{ kind: 'run', id: 'run-1843', run_id: 'run-1843', title: 'PROJ-491 · Webhook signing', team: 'feature-dev-js', phase: 'implement', state: 'running', at: now - 30_000, error: null, message: null, artifact_count: null, origin: 'hub' },
 		],
 		counts: { reviews: 1, awaiting_input: 1, failed_24h: 1, running: 1 },
 		sections: { reviews: ok, awaiting_input: ok, failed: ok, running: ok },

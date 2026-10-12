@@ -21,7 +21,7 @@ const now = Date.now();
 const t0 = now - 600_000;
 function telemetry(over: Partial<Run_telemetry_data> = {}): Run_telemetry_data {
 	return {
-		run: { run_id: 'run-77', state: 'failed', started_at: t0, completed_at: t0 + 10 * M },
+		run: { run_id: 'run-77', state: 'failed', started_at: t0, completed_at: t0 + 10 * M, origin: 'hub' },
 		window: { start_ms: t0, end_ms: t0 + 10 * M },
 		totals: { duration_ms: 10 * M, cost_usd: 1.25, tokens_in: 120_000, tokens_out: 8_000, cached_in: 60_000, model_calls: 14, agent_runs: 3, reworks: 1, time: { working_ms: 5 * M, people_ms: 0, gates_ms: 3 * M, other_ms: 1 * M, queued_ms: 1 * M } },
 		phases: [

@@ -10,11 +10,12 @@ import { RefreshCw } from 'lucide-react';
 import { use_overview, relative_time } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { run_href } from '@/lib/realm_inbox';
-import { duration, nest_runs, RANGE_MS, type Realm_run_row, type Realm_runs_data, type Run_range, type Run_state_filter } from '@/lib/realm_runs';
+import { duration, nest_runs, RANGE_MS, type Realm_run_row, type Realm_runs_data, type Run_range, type Run_state_filter, type Origin_filter } from '@/lib/realm_runs';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
+import { Origin_badge } from '@/components/graphite/g_origin_badge';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
@@ -30,6 +31,13 @@ const STATES: Array<{ id: Run_state_filter | null; label: string; count?: keyof 
 	{ id: 'cancelled', label: 'Cancelled' },
 ];
 
+/** Origin filter chips: All (no filter), Hub, Local (cli). */
+const ORIGINS: Array<{ id: Origin_filter | null; label: string }> = [
+	{ id: null, label: 'All' },
+	{ id: 'hub', label: 'Hub' },
+	{ id: 'cli', label: 'Local' },
+];
+
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 
@@ -38,6 +46,10 @@ function parse_state(v: string | null): Run_state_filter | null {
 }
 function parse_range(v: string | null): Run_range | null {
 	return v === '24h' || v === '7d' || v === '30d' ? v : null;
+}
+/** Parse ?origin= into a valid Origin_filter or null (= show all). */
+function parse_origin(v: string | null): Origin_filter | null {
+	return v === 'cli' || v === 'hub' ? v : null;
 }
 
 export function Component() {
@@ -56,6 +68,7 @@ export function Component() {
 	const state = parse_state(search.get('state'));
 	// "Failed" means the last 7 days unless a range is picked (matches the chip count).
 	const range = parse_range(search.get('range')) ?? (state === 'failed' ? '7d' : null);
+	const origin = parse_origin(search.get('origin'));
 	// `?team=` comes from team pages; Core's run search also matches the team label.
 	const q = search.get('q') ?? search.get('team') ?? '';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
@@ -77,7 +90,7 @@ export function Component() {
 	const sort = use_table_sort({ keys: ['run_name', 'state', 'team', 'started_at', 'last_updated_at'], default_sort: { by: 'last_updated_at', dir: 'desc' }, first_dir: { started_at: 'desc', last_updated_at: 'desc' } });
 	const body: Record<string, unknown> | null = org && slug ? {
 		org_slug: org, slug, limit: RUNS_PAGE_SIZE, offset: page * RUNS_PAGE_SIZE,
-		...(state ? { state } : {}), ...(q ? { q } : {}), ...sort.body, ...(range ? { since_ms: since_base - RANGE_MS[range] } : {}),
+		...(state ? { state } : {}), ...(q ? { q } : {}), ...(origin ? { origin } : {}), ...sort.body, ...(range ? { since_ms: since_base - RANGE_MS[range] } : {}),
 	} : null;
 	const read = use_bff_read<Realm_runs_data>('/v1/realm_runs/get', body, { refresh_ms: RUNS_REFRESH_MS, fallback_error: 'Could not load runs.' });
 	const data = read.data;
@@ -115,6 +128,14 @@ export function Component() {
 									);
 								})}
 							</div>
+							{/* Origin filter: All / Hub / Local */}
+							<div role="group" aria-label="Origin" className="flex gap-2">
+								{ORIGINS.map((o) => (
+									<button key={o.label} type="button" aria-pressed={origin === o.id} onClick={() => set_param('origin', o.id)} className={PILL(origin === o.id)}>
+										{o.label}
+									</button>
+								))}
+							</div>
 							<select aria-label="Time range" value={range ?? ''} onChange={(e) => set_param('range', e.target.value || null)} className={`${INPUT} ml-2 w-[150px]`}>
 								<option value="">Any time</option>
 								<option value="24h">Last 24 hours</option>
@@ -128,7 +149,7 @@ export function Component() {
 						<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[420px] animate-pulse" aria-busy="true" aria-label="Loading runs" /> : null}
 							{data && data.items.length === 0 ? (
-								<p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{q || state || range ? 'No runs match these filters.' : 'No runs in this realm yet.'}</p>
+								<p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{q || state || range || origin ? 'No runs match these filters.' : 'No runs in this realm yet.'}</p>
 							) : null}
 							{data && data.items.length ? (
 								<table className="w-full text-left text-[12.5px]">
@@ -137,6 +158,8 @@ export function Component() {
 											<Sort_th sort={cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th>
 											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<Sort_th sort={cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th>
+											<th className="px-4 py-2.5 font-semibold">Origin</th>
+											<th className="px-4 py-2.5 font-semibold">Version</th>
 											<th className="px-4 py-2.5 font-semibold">Phase</th>
 											<Sort_th sort={cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Took</th>
@@ -168,6 +191,8 @@ export function Component() {
 													</td>
 													<td className="g-mono max-w-[200px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{r.team ?? '—'}</td>
 													<td className="px-4 py-2.5"><State_pill state={r.state} /></td>
+													<td className="px-4 py-2.5"><Origin_badge origin={r.origin} /></td>
+													<td className="g-mono max-w-[120px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{r.version ?? '—'}</td>
 													<td className="max-w-[160px] truncate px-4 py-2.5 text-[var(--g-ink-2)]">{r.current_phase ?? '—'}</td>
 													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]" title={r.started_at ? new Date(r.started_at).toLocaleString() : undefined}>{relative_time(r.started_at)}</td>
 													<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[12px]">{duration(r.started_at, r.state === 'running' || r.state === 'awaiting_input' ? null : r.completed_at ?? r.updated_at)}</td>

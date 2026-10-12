@@ -272,7 +272,7 @@ export function Component() {
 													<td className="max-w-[360px] px-4 py-2.5">
 														{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} className="block truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="block truncate text-[13px] font-semibold">{r.label}</span>}
 														<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
-															{r.origin === 'local' ? <span>local install (not published)</span> : null}
+															{r.origin === 'cli' ? <span>local install (not on Hub)</span> : null}
 															{!r.in_team_list ? <span>on a daemon, not on the realm’s team list</span> : null}
 															{r.missing_agents.length ? <span className="inline-flex items-center gap-1 text-[var(--g-warn-text)]"><AlertTriangle aria-hidden className="h-3 w-3" />needs agents: {r.missing_agents.join(', ')}</span> : null}
 														</span>

@@ -28,6 +28,8 @@ export interface Inbox_item {
 	error: string | null;
 	message: string | null;
 	artifact_count: number | null;
+	/** Who initiated the run: `'hub'` or `'cli'`, null for reviews / older runs. */
+	origin: string | null;
 }
 
 export interface Realm_inbox_data {
@@ -144,6 +146,10 @@ export interface Run_row {
 	pending_control?: Pending_control | null;
 	force_terminate?: Force_terminate_status | null;
 	state_lost_at?: number | null;
+	/** Who initiated this run: `'cli'` or `'hub'`, or null for pre-refactor runs. */
+	origin?: string | null;
+	/** Team version at the time of the run. */
+	team_version?: string | null;
 }
 
 /**

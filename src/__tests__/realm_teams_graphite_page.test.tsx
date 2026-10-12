@@ -18,9 +18,9 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 	return {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
-			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'published', in_team_list: true, installed_count: 3, online_daemon_count: 3, last_run_at: Date.now() - 60_000, missing_agents: [] },
-			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'published', in_team_list: true, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: ['matcher'] },
-			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'local', in_team_list: false, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: [] },
+			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, last_run_at: Date.now() - 60_000, missing_agents: [] },
+			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: ['matcher'] },
+			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: [] },
 		],
 		total: 3, offset: 0, limit: 25,
 		counts: { all: 3, full: 1, partial: 2, none: 0 },
