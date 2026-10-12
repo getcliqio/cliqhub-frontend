@@ -56,16 +56,18 @@ describe('theme', () => {
 		vi.unstubAllGlobals();
 	});
 
-	it('account menu: picking Light switches now and saves it on the profile', async () => {
+	it('top-bar theme icon: one click goes Dark → Light now and saves it on the profile', async () => {
 		const calls = route_fetch();
 		render_page();
-		fireEvent.click(await screen.findByTestId('account-button'));
-		const group = screen.getByRole('radiogroup', { name: 'Theme' });
-		expect(within(group).getByRole('radio', { name: 'Dark' })).toHaveAttribute('aria-checked', 'true');
-		fireEvent.click(within(group).getByRole('radio', { name: 'Light' }));
+		const toggle = await screen.findByTestId('theme-toggle');
+		expect(toggle).toHaveAttribute('data-theme', 'dark');
+		fireEvent.click(toggle);
 		expect(document.documentElement.dataset.gTheme).toBe('light');
-		expect(within(group).getByRole('radio', { name: 'Light' })).toHaveAttribute('aria-checked', 'true');
+		expect(screen.getByTestId('theme-toggle')).toHaveAttribute('data-theme', 'light');
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_profile')?.body).toEqual({ preferences: { theme: 'light' } }));
+		// Then Light → System → Dark.
+		fireEvent.click(screen.getByTestId('theme-toggle'));
+		expect(screen.getByTestId('theme-toggle')).toHaveAttribute('data-theme', 'system');
 	});
 
 	it('picking Light sticks across pages even though the loaded profile still says dark (HUGs bug)', async () => {

@@ -8,7 +8,7 @@
  *   - an email destination with your address → your email;
  *   - the built-in in-app destination with no recipients → the inbox
  *     everyone in that realm (or org) sees;
- *   - a personal channel (only its owner can see it) → you, directly;
+ *   - your personal channel → you, directly (someone else's reaches them, not you);
  *   - anything else (Slack, webhooks, Jira, someone else's email) is posted
  *     somewhere shared, not addressed to you.
  */
@@ -41,6 +41,11 @@ export const REACH_LABEL: Record<Reach, string> = {
 	none: 'Not to you',
 };
 
+/** True for the viewer's own personal channel. */
+export function is_my_channel(channel: Notif_channel | undefined, me_id: string): boolean {
+	return channel?.owner.kind === 'personal' && channel.owner.user_id === me_id;
+}
+
 function best(a: Reach, b: Reach): Reach {
 	return ORDER.indexOf(a) <= ORDER.indexOf(b) ? a : b;
 }
@@ -50,7 +55,9 @@ export function rule_reach(rule: Notif_rule, channel: Notif_channel | undefined,
 	const shared: string[] = [];
 	if (rule.recipients.includes(me.id) || (me.is_owner && rule.recipients.includes('org_owners'))) reach = 'direct';
 	else if (rule.recipients.some((r) => ABOUT_YOU.has(r))) reach = 'about_you';
-	if (channel?.owner.kind === 'personal') reach = 'direct';
+	if (is_my_channel(channel, me.id)) reach = 'direct';
+	// Someone else's personal channel reaches them: its in-app and email aren't yours.
+	if (channel?.owner.kind === 'personal' && !is_my_channel(channel, me.id)) return { rule, reach, shared };
 	const my_email = me.email?.trim().toLowerCase() ?? null;
 	for (const d of channel?.destinations ?? []) {
 		if (d.type === 'email' && my_email && d.label.trim().toLowerCase() === my_email) reach = best(reach, 'email');

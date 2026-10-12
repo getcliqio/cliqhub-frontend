@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { AlertTriangle, Bell, ChevronDown, Lock, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { useAuthFetch } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { realm_label, use_overview, type Overview_data, type Overview_realm } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { realms_in_view, sort_realms, use_view_scope, type View_scope } from '@/lib/view_scope';
@@ -41,6 +41,8 @@ import {
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Realm_picker, type Picked_realm } from '@/components/graphite/g_realm_picker';
+import { Channel_picker } from '@/components/graphite/g_channel_picker';
+import { REACH_LABEL, rule_reach, type Reach } from '@/lib/my_notifications';
 import { Event_picker } from '@/components/graphite/g_event_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
@@ -64,7 +66,7 @@ const TAG_STYLE: Record<Notif_scope_kind | 'personal', { fg: string; bg: string;
 	org: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'org' },
 	realm: { fg: 'var(--g-run-text)', bg: 'rgba(91,157,255,.12)', word: 'realm' },
 	team: { fg: 'var(--g-acc-text)', bg: 'rgba(182,156,255,.13)', word: 'team in realm' },
-	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'only you' },
+	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'person' },
 };
 
 export function Scope_tag({ kind, text }: { kind: Notif_scope_kind | 'personal'; text: string; org?: { slug: string; display_name: string } | null }) {
@@ -140,8 +142,30 @@ export function in_view_channel(c: Notif_channel, scope: View_scope): boolean {
 /* ------------------------------------------------------------------ */
 /* Rules                                                               */
 
+const REACH_TONE: Record<Reach, string> = {
+	direct: 'var(--g-ok)',
+	email: 'var(--g-ok)',
+	inbox: 'var(--g-run)',
+	about_you: 'var(--g-ink-2)',
+	none: 'var(--g-ink-3)',
+};
+
+/** How a rule reaches the viewer ("You, directly", "Your inbox", …). */
+function Reach_badge({ reach }: { reach: Reach }) {
+	const c = REACH_TONE[reach];
+	return (
+		<span className="mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11.5px] font-medium" style={{ color: c, borderColor: c }} data-reach={reach}>
+			{REACH_LABEL[reach]}
+		</span>
+	);
+}
+
+const PILL = (on: boolean) => `h-8 rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
+
 function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
 	const post = use_post();
+	const { user } = useAuth();
+	const [search, set_search] = useSearchParams();
 	const [q, set_q] = useState('');
 	const [kind, set_kind] = useState<'all' | Notif_scope_kind>('all');
 	const [mine, set_mine] = useState(false);
@@ -152,8 +176,29 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 	const by_id = new Map(data.rules.map((r) => [r.id, r]));
 	const channel_by_id = new Map(data.channels.map((c) => [c.id, c]));
 
+	const any_editable = data.orgs.some((o) => o.status === 'ok' && can_edit_org(data, o.id)) || data.realms.some((r) => can_edit_realm(data, r.id));
+	// "Reaches you" (what you get) is where people who can't change rules start; admins start on every rule.
+	const show = search.get('show') === 'reaches' || search.get('show') === 'all' ? search.get('show') : (any_editable ? 'all' : 'reaches');
+	const reaches_only = show === 'reaches';
+	function set_show(next: 'all' | 'reaches') {
+		const p = new URLSearchParams(search);
+		p.set('show', next);
+		set_search(p, { replace: true });
+	}
+	const reach_of = useMemo(() => {
+		const role_by_org = new Map(data.orgs.map((o) => [o.id, o.role]));
+		const m = new Map<string, Reach>();
+		if (!user) return m;
+		for (const r of data.rules) {
+			const me = { id: String(user.id), email: user.email ?? null, is_owner: role_by_org.get(r.scope.org_id) === 'owner' };
+			m.set(r.id, rule_reach(r, channel_by_id.get(r.channel_id), me).reach);
+		}
+		return m;
+	}, [data, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
 	const rules = data.rules
 		.filter((r) => in_view_rule(r, scope))
+		.filter((r) => !reaches_only || (reach_of.get(r.id) ?? 'none') !== 'none')
 		.filter((r) => kind === 'all' || r.scope.kind === kind)
 		.filter((r) => !mine || can_edit_rule(data, r))
 		.filter((r) => {
@@ -161,7 +206,6 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 			return !s || r.event.includes(s) || event_label(r.event).toLowerCase().includes(s) || (r.channel_name ?? '').toLowerCase().includes(s);
 		});
 
-	const any_editable = data.orgs.some((o) => o.status === 'ok' && can_edit_org(data, o.id)) || data.realms.some((r) => can_edit_realm(data, r.id));
 	const read_only = view_only_orgs(data).filter((o) => scope.kind === 'all' || o.id === (scope.kind === 'org' ? scope.org.id : scope.realm.org_id));
 
 	async function remove(r: Notif_rule) {
@@ -178,6 +222,10 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 			<div className="flex flex-wrap items-center gap-2">
 				<input value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search event or channel…" aria-label="Search rules" className={`${INPUT} max-w-[260px]`} />
 				{realm_filter}
+				<div role="group" aria-label="Show" className="flex gap-1">
+					<button type="button" aria-pressed={!reaches_only} onClick={() => set_show('all')} className={PILL(!reaches_only)}>All rules</button>
+					<button type="button" aria-pressed={reaches_only} onClick={() => set_show('reaches')} className={PILL(reaches_only)} data-testid="reaches-you">Reaches you</button>
+				</div>
 				<div role="group" aria-label="Applies to" className="flex gap-1">
 					{(['all', 'org', 'realm', 'team'] as const).map((k) => (
 						<button
@@ -208,8 +256,8 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 				{rules.length === 0 ? (
 					<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
 						<Bell aria-hidden className="h-6 w-6 text-[var(--g-ink-3)]" />
-						<p className="text-[14px] font-semibold">No rules here yet</p>
-						<p className="text-[12.5px] text-[var(--g-ink-3)]">Rules say when to notify, where it applies and where to send it.</p>
+						<p className="text-[14px] font-semibold">{reaches_only ? 'Nothing is set to reach you' : 'No rules here yet'}</p>
+						<p className="text-[12.5px] text-[var(--g-ink-3)]">{reaches_only ? 'HUGs still show up in HUGs, and events in the inbox.' : 'Rules say when to notify, where it applies and where to send it.'}</p>
 					</div>
 				) : (
 					<table className="w-full text-left text-[12.5px]">
@@ -240,6 +288,7 @@ function Rules_tab({ data, scope, reload, realm_filter }: { data: Notification_c
 												{ch && !ch.enabled ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span> : null}
 											</span>
 											<Recipient_chips recipients={r.recipients} />
+											{reaches_only ? <div><Reach_badge reach={reach_of.get(r.id) ?? 'none'} /></div> : null}
 										</td>
 										<td className="px-4 py-2.5">
 											{replaced.length ? (
@@ -326,6 +375,8 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 	const [making_channel, set_making_channel] = useState(false);
 	const [team, set_team] = useState('');
 	const [channel_id, set_channel_id] = useState('');
+	const { user } = useAuth();
+	const me_id = user ? String(user.id) : null;
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
 
@@ -420,10 +471,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 
 			<div>
 				<label className={LABEL} htmlFor="nr-channel">3 · Send to</label>
-				<select id="nr-channel" value={channel_id} onChange={(e) => set_channel_id(e.target.value)} className={INPUT}>
-					<option value="">Choose a channel…</option>
-					{channels.map((c) => <option key={c.id} value={c.id}>{c.name}{c.owner.kind === 'realm' ? ` (realm ${c.owner.realm_slug})` : c.owner.kind === 'personal' ? ' (only you)' : ''}{c.enabled ? '' : ' — disabled'}</option>)}
-				</select>
+				<Channel_picker id="nr-channel" label="Send to" channels={channels} value={channel_id} on_change={set_channel_id} me_id={me_id} />
 				<p className="mt-1.5 text-[12px] text-[var(--g-ink-3)]">
 					A channel is a named set of destinations. Or{' '}
 					<button type="button" onClick={() => set_making_channel(true)} disabled={!allowed} className="font-semibold text-[var(--g-acc)] hover:underline disabled:opacity-50">+ create a channel</button>{' '}
@@ -475,6 +523,8 @@ export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 }
 
 function Channels_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
+	const { user } = useAuth();
+	const me_id = user ? String(user.id) : null;
 	const row = use_row_open();
 	const post = use_post();
 	const [search] = useSearchParams();
@@ -539,7 +589,7 @@ function Channels_tab({ data, scope, reload, realm_filter }: { data: Notificatio
 											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span>}
 										</td>
 										<td className="px-4 py-2.5">
-											<Scope_tag kind={c.owner.kind} text={c.owner.kind === 'realm' ? c.owner.realm_slug ?? '' : c.owner.kind === 'org' ? org_by_id.get(c.owner.org_id)?.display_name ?? c.owner.org_slug : ''} org={c.owner.kind === 'personal' ? null : org_by_id.get(c.owner.org_id)} />
+											<Scope_tag kind={c.owner.kind} text={c.owner.kind === 'realm' ? c.owner.realm_slug ?? '' : c.owner.kind === 'org' ? org_by_id.get(c.owner.org_id)?.display_name ?? c.owner.org_slug : c.owner.user_id && c.owner.user_id === me_id ? 'you' : ''} org={c.owner.kind === 'personal' ? null : org_by_id.get(c.owner.org_id)} />
 										</td>
 										<td className="px-4 py-2.5"><Dest_icons destinations={c.destinations} /></td>
 										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} rule{c.rule_count === 1 ? '' : 's'}</td>

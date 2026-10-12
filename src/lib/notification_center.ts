@@ -16,7 +16,8 @@ export interface Notif_scope {
 export interface Notif_channel {
 	id: string;
 	name: string;
-	owner: { kind: 'org' | 'realm' | 'personal'; org_id: string; org_slug: string; realm_id: string | null; realm_slug: string | null };
+	/** `user_id`: whose personal channel it is (`kind: 'personal'`), else null. */
+	owner: { kind: 'org' | 'realm' | 'personal'; org_id: string; org_slug: string; realm_id: string | null; realm_slug: string | null; user_id?: string | null };
 	destinations: Array<{ type: string; label: string }>;
 	enabled: boolean;
 	rule_count: number;

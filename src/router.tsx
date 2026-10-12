@@ -23,6 +23,14 @@ function Legacy_browse_scope_redirect() {
   return <Navigate to={`/browse/s/${slug}`} replace />;
 }
 
+/** `/my-notifications` → Events › Rules filtered to what reaches you (keeps the org/realm view). */
+export function My_notifications_redirect() {
+  const [search] = useSearchParams();
+  const next = new URLSearchParams(search);
+  next.set('show', 'reaches');
+  return <Navigate to={{ pathname: '/notifications', search: `?${next.toString()}` }} replace />;
+}
+
 /**
  * `/o/:org/realms/:realm/runs/:run_id/live` → `…/runs/:run_id?tab=dag`
  *
@@ -147,9 +155,9 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/hugs_page')),
           },
           {
-            // What reaches you in the org (read-only report over its rules and channels).
+            // Old "My notifications" page: now the "Reaches you" filter on Events.
             path: 'my-notifications',
-            lazy: lazy_route(() => import('@/pages/my_notifications_page')),
+            element: <My_notifications_redirect />,
           },
           {
             // System events for the org (HUGs excluded).

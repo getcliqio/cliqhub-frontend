@@ -58,6 +58,22 @@ function render_page(path = '/inbox') {
 describe('Shell nav', () => {
 	afterEach(() => vi.restoreAllMocks());
 
+	it('you are at the bottom left: your menu opens there (settings, tokens, help, sign out); the top bar has only theme, bell and Marketplace', async () => {
+		route_fetch();
+		render_page();
+		await screen.findByTestId('inbox-item-a');
+		const footer = screen.getByTestId('sidebar-account');
+		expect(within(screen.getByTestId('sidebar')).getByTestId('account-button')).toBe(within(footer).getByTestId('account-button'));
+		expect(within(screen.getByRole('banner')).queryByTestId('account-button')).toBeNull();
+		expect(within(screen.getByRole('banner')).getByTestId('theme-toggle')).toBeInTheDocument();
+		fireEvent.click(within(footer).getByTestId('account-button'));
+		const menu = within(footer).getByRole('menu', { name: 'Account' });
+		const items = within(menu).getAllByRole('menuitem').map((m) => m.textContent ?? '');
+		expect(items).toEqual(expect.arrayContaining(['Profile & security', 'API tokens', 'All settings', 'Sign out']));
+		expect(items.some((t) => /My notifications/.test(t))).toBe(false);
+		expect(within(menu).queryByRole('radiogroup', { name: 'Theme' })).toBeNull();
+	});
+
 	it('one flat list of resources (no Inbox — that is the bell); realm shortcuts under Realms; Org admin group for owners; Marketplace top right', async () => {
 		route_fetch();
 		render_page();
@@ -74,7 +90,7 @@ describe('Shell nav', () => {
 		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
 		// measureone: you're the owner → Org admin.
 		const admin = within(nav).getByTestId('nav-org-admin');
-		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Events', 'Settings']);
+		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Events', 'Org settings']);
 		expect(within(admin).getByRole('link', { name: 'Events' })).toHaveAttribute('href', '/notifications?org=measureone');
 		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
 		expect(screen.getByTestId('marketplace-link')).toHaveAttribute('href', '/browse');

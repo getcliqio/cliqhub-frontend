@@ -30,13 +30,14 @@ import {
 	type LucideIcon,
 	Bot,
 	Building2,
-	BellRing,
 	Hand,
 	Layers,
 	LayoutDashboard,
 	UserCog,
 	Zap,
-	Palette,
+	Moon,
+	Sun,
+	Monitor,
 	PanelLeftClose,
 	PanelLeftOpen,
 } from 'lucide-react';
@@ -518,7 +519,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
 		{ to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap },
-		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Settings', icon: Settings },
+		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings },
 	] : [];
 
 	function enter_admin() {
@@ -619,6 +620,42 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 						) : null}
 					</nav>
 					)}
+					{/* You: your settings, help, site admin and sign out (opens upward). */}
+					<div className={`relative mt-2 border-t border-[var(--g-line)] pt-2 ${collapsed ? 'flex justify-center' : ''}`} data-testid="sidebar-account">
+						<button
+							type="button"
+							onClick={() => set_menu_open((v) => !v)}
+							aria-haspopup="menu"
+							aria-expanded={menu_open}
+							aria-label={`Account (${user?.display_name || user?.username || ''})`}
+							title={collapsed ? (user?.display_name || user?.username || 'Account') : undefined}
+							className={`flex items-center rounded-lg text-left hover:bg-[var(--g-soft)] ${collapsed ? 'h-9 w-9 justify-center' : 'w-full gap-2.5 px-2 py-1.5'} ${menu_open ? 'bg-[var(--g-soft)]' : ''}`}
+							data-testid="account-button"
+						>
+							<span className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold" style={avatar_outline(user?.display_name || user?.username || '?', 28)}>
+								{initials(user?.display_name || user?.username || '')}
+							</span>
+							{collapsed ? null : (
+								<>
+									<span className="min-w-0 flex-1 leading-tight">
+										<b className="block truncate text-[13px] font-medium text-[var(--g-ink)]">{user?.display_name || user?.username}</b>
+										<span className="block truncate text-[11.5px] text-[var(--g-ink-3)]">@{user?.username}</span>
+									</span>
+									<ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 text-[var(--g-ink-3)]" />
+								</>
+							)}
+						</button>
+						{menu_open ? (
+							<Account_menu
+								on_close={() => set_menu_open(false)}
+								user={user}
+								is_site_admin={is_site_admin}
+								progress={gs ? { done: gs.done_count, total: gs.total } : null}
+								on_admin={enter_admin}
+								on_sign_out={() => void logout()}
+							/>
+						) : null}
+					</div>
 					<button
 						type="button"
 						onClick={toggle_sidebar}
@@ -641,32 +678,8 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 								{/* Icon only on narrower screens, where page actions need the room. */}
 								<Store aria-hidden className="h-3.5 w-3.5" /><span className="hidden xl:inline">Marketplace</span>
 							</Link>
+							<Theme_toggle />
 							<Bell_menu data={data} scope={scope} multi_org={multi_org} />
-							<div className="relative">
-								<button
-									type="button"
-									onClick={() => set_menu_open((v) => !v)}
-									aria-haspopup="menu"
-									aria-expanded={menu_open}
-									aria-label={`Account (${user?.display_name || user?.username || ''})`}
-									className="grid h-8 w-8 place-items-center rounded-full text-[11px] font-semibold"
-									style={avatar_outline(user?.display_name || user?.username || '?', 32)}
-									data-testid="account-button"
-								>
-									{initials(user?.display_name || user?.username || '')}
-								</button>
-								{menu_open ? (
-									<Account_menu
-										on_close={() => set_menu_open(false)}
-										user={user}
-										is_site_admin={is_site_admin}
-										progress={gs ? { done: gs.done_count, total: gs.total } : null}
-										on_admin={enter_admin}
-										on_sign_out={() => void logout()}
-										my_notifications_href={view_href('/my-notifications', scope, multi_org)}
-									/>
-								) : null}
-							</div>
 						</div>
 					</header>
 					<main className="min-h-0 flex-1 overflow-y-auto">{needs_org ? <Org_picker data={data} /> : children}</main>
@@ -678,10 +691,9 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 
 export const ADMIN_RETURN_KEY = 'cliq.admin_return';
 
-/** Account menu (top right): you, your settings, help, site admin, sign out. */
-function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_sign_out, my_notifications_href }: {
+/** Account menu (sidebar footer, opens upward): you, your settings, help, site admin, sign out. */
+function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_sign_out }: {
 	on_close: () => void;
-	my_notifications_href: string;
 	user: { username: string; display_name: string } | null;
 	is_site_admin: boolean;
 	progress: { done: number; total: number } | null;
@@ -698,7 +710,7 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 	}, [on_close]);
 	const item = 'flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-[var(--g-ink-2)] hover:bg-[var(--g-hover)] hover:text-[var(--g-ink)]';
 	return (
-		<div ref={ref} role="menu" aria-label="Account" className="absolute right-0 top-[calc(100%+6px)] z-50 w-[250px] rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-1.5 shadow-[var(--g-pop-shadow)]">
+		<div ref={ref} role="menu" aria-label="Account" className="absolute bottom-[calc(100%+6px)] left-0 z-50 w-[250px] rounded-xl border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-1.5 shadow-[var(--g-pop-shadow)]">
 			<div className="px-2.5 pb-2 pt-1.5">
 				<b className="block truncate text-[13px] font-semibold">{user?.display_name || user?.username}</b>
 				<span className="block truncate text-[11.5px] text-[var(--g-ink-3)]">@{user?.username}{is_site_admin ? ' · site admin' : ''}</span>
@@ -706,9 +718,7 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 			<div className="mb-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/settings?tab=profile" onClick={on_close} className={item}><UserRound aria-hidden className="h-4 w-4 opacity-70" />Profile &amp; security</Link>
 			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />API tokens</Link>
-			<Link role="menuitem" to={my_notifications_href} onClick={on_close} className={item}><BellRing aria-hidden className="h-4 w-4 opacity-70" />My notifications</Link>
 			<Link role="menuitem" to="/settings" onClick={on_close} className={item}><Settings aria-hidden className="h-4 w-4 opacity-70" />All settings</Link>
-			<Theme_picker />
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/getting-started" onClick={on_close} className={item}>
 				<Rocket aria-hidden className="h-4 w-4 opacity-70" />Getting started
@@ -727,28 +737,32 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 	);
 }
 
-const THEMES: Array<{ id: Theme; label: string }> = [{ id: 'dark', label: 'Dark' }, { id: 'light', label: 'Light' }, { id: 'system', label: 'System' }];
+const THEME_NEXT: Record<Theme, Theme> = { dark: 'light', light: 'system', system: 'dark' };
+const THEME_LABEL: Record<Theme, string> = { dark: 'Dark', light: 'Light', system: 'System' };
+const THEME_ICON: Record<Theme, LucideIcon> = { dark: Moon, light: Sun, system: Monitor };
 
-/** Dark / Light / System — applied now, saved on your profile (best effort). */
-function Theme_picker() {
+/** Top-bar theme switch: one click cycles Dark → Light → System; applied now, saved on your profile (best effort). */
+function Theme_toggle() {
 	const theme = use_theme();
 	const auth_fetch = useAuthFetch();
-	const pick = (t: Theme) => {
-		apply_theme(t);
-		void auth_fetch('/v1/users/update_profile', { method: 'POST', body: JSON.stringify({ preferences: { theme: t } }) }).catch(() => { /* kept in this browser */ });
+	const next = THEME_NEXT[theme];
+	const Icon = THEME_ICON[theme];
+	const pick = () => {
+		apply_theme(next);
+		void auth_fetch('/v1/users/update_profile', { method: 'POST', body: JSON.stringify({ preferences: { theme: next } }) }).catch(() => { /* kept in this browser */ });
 	};
 	return (
-		<div className="flex items-center gap-2 px-2.5 py-1.5 text-[13px] text-[var(--g-ink-2)]">
-			<Palette aria-hidden className="h-4 w-4 opacity-70" />Theme
-			<div role="radiogroup" aria-label="Theme" className="ml-auto flex rounded-md border border-[var(--g-line)] p-0.5">
-				{THEMES.map((t) => (
-					<button key={t.id} type="button" role="radio" aria-checked={theme === t.id} onClick={() => pick(t.id)}
-						className={`rounded px-1.5 py-0.5 text-[11.5px] ${theme === t.id ? 'bg-[var(--g-acc-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
-						{t.label}
-					</button>
-				))}
-			</div>
-		</div>
+		<button
+			type="button"
+			onClick={pick}
+			aria-label={`Theme: ${THEME_LABEL[theme]} (switch to ${THEME_LABEL[next]})`}
+			title={`Theme: ${THEME_LABEL[theme]} — click for ${THEME_LABEL[next]}`}
+			className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]"
+			data-testid="theme-toggle"
+			data-theme={theme}
+		>
+			<Icon aria-hidden className="h-4 w-4" />
+		</button>
 	);
 }
 

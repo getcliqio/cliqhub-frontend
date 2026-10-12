@@ -163,7 +163,7 @@ export function Component() {
 						<h1 className="text-[24px] font-semibold tracking-[-0.02em]">Inbox</h1>
 						<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">What happened in this org. Reviews and input requests are in <Link to="/hugs" className="text-[var(--g-acc)] hover:underline">HUGs</Link>.</p>
 					</div>
-					<Link to={view_href('/my-notifications', scope, multi_org)} className="mb-1 ml-auto text-[12.5px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">My notifications →</Link>
+					<Link to={`/my-notifications${view_href('', scope, multi_org)}`} className="mb-1 ml-auto text-[12.5px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">What reaches you →</Link>
 				</div>
 				{/* Wait for the org to resolve so the first request is already scoped. */}
 				{overview.status === 'loading' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />

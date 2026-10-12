@@ -92,6 +92,12 @@ function render_page(path = '/notifications') {
 
 const rule_ids = () => screen.queryAllByTestId(/^rule-/).map((r) => r.dataset.testid);
 
+/** Opens the "Send to" channel picker and picks the channel whose label starts with `name`. */
+function pick_channel(scope: HTMLElement, name: string) {
+	fireEvent.click(within(scope).getByTestId('channel-picker'));
+	fireEvent.mouseDown(within(scope).getByRole('option', { name: (n) => n.startsWith(name) }));
+}
+
 describe('Notifications page', () => {
 	afterEach(() => vi.restoreAllMocks());
 
@@ -177,7 +183,7 @@ describe('Notifications page', () => {
 		await screen.findByTestId('rule-rl-org');
 		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
 		const dlg = screen.getByRole('dialog', { name: 'New rule' });
-		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-oncall' } });
+		pick_channel(dlg, 'oncall');
 		// run.failed at org level sits under the realm rule for prod-us.
 		expect(within(dlg).getByTestId('rule-effect')).toHaveTextContent('that rule still wins');
 		// Several events in one go → one BFF request, one rule per event.
@@ -196,7 +202,7 @@ describe('Notifications page', () => {
 		await screen.findByTestId('rule-rl-org');
 		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
 		const dlg = screen.getByRole('dialog', { name: 'New rule' });
-		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-oncall' } });
+		pick_channel(dlg, 'oncall');
 		fireEvent.click(within(dlg).getByRole('button', { name: /^Save/ }));
 		expect(await within(dlg).findByText('Recipients must be members of the organization')).toBeInTheDocument();
 	});
@@ -212,7 +218,7 @@ describe('Notifications page', () => {
 		expect(within(dlg).getByRole('button', { name: 'Realm' })).toHaveTextContent('prod-us');
 		fireEvent.change(within(dlg).getByLabelText('Team'), { target: { value: 'feature-dev-js' } });
 		// Realm-owned channels are offered for realm/team rules.
-		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-prod' } });
+		pick_channel(dlg, 'prod-alerts');
 		expect(within(dlg).getByTestId('rule-effect')).toHaveTextContent(/instead of prod-alerts \(realm rule\)\./);
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Save rule' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_center/set_rules', body: { realm_id: 'r-prod', events: ['run.failed'], channel_id: 'ch-prod', team_slug: 'feature-dev-js' } }));
@@ -226,7 +232,7 @@ describe('Notifications page', () => {
 		const dlg = screen.getByRole('dialog', { name: 'New rule' });
 		expect(within(dlg).getByRole('button', { name: 'Save rule' })).toBeDisabled();
 		fireEvent.click(within(dlg).getByRole('radio', { name: 'A team in a realm' }));
-		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-oncall' } });
+		pick_channel(dlg, 'oncall');
 		expect(within(dlg).getByRole('button', { name: 'Save rule' })).toBeDisabled();
 	});
 });
@@ -416,6 +422,9 @@ describe('Notifications — edit only where you can', () => {
 	it('no New rule / New channel when you can’t change anything', async () => {
 		route_fetch({ center: () => { const d = limited(); d.orgs = d.orgs.map((o) => ({ ...o, can_edit: false, can_edit_channels: false })); d.realms = d.realms.map((r) => ({ ...r, can_edit: false })); return d; } });
 		render_page();
+		// Someone who can't change rules starts on what reaches them; "All rules" shows the rest.
+		expect(await screen.findByTestId('reaches-you')).toHaveAttribute('aria-pressed', 'true');
+		fireEvent.click(screen.getByRole('button', { name: 'All rules' }));
 		await screen.findByTestId('rule-rl-org');
 		expect(screen.queryByRole('button', { name: 'New rule' })).toBeNull();
 	});
@@ -457,7 +466,7 @@ describe('Notifications — create a channel from the rule panel', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/create', body: { name: 'eng-new', org_id: ORG_A, destinations: [{ type: 'cliqhub' }] } }));
 		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New channel' })).toBeNull());
 		const rule = screen.getByRole('dialog', { name: 'New rule' });
-		await waitFor(() => expect((within(rule).getByLabelText('3 · Send to') as HTMLSelectElement).value).toBe('ch-new'));
+		await waitFor(() => expect(within(rule).getByTestId('channel-picker')).toHaveTextContent('eng-new'));
 	});
 });
 
@@ -477,7 +486,7 @@ describe('Notifications — pickers', () => {
 		expect((within(dlg).getByRole('checkbox', { name: 'Run failed' }) as HTMLInputElement).disabled).toBe(true);
 		expect(within(dlg).getByLabelText('Chosen events')).not.toHaveTextContent('Run failed');
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: 'Review requested' }));
-		fireEvent.change(within(dlg).getByLabelText('3 · Send to'), { target: { value: 'ch-oncall' } });
+		pick_channel(dlg, 'oncall');
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Save 2 rules' }));
 		expect(await within(dlg).findByRole('alert')).toHaveTextContent('Saved 1. Couldn’t save: Review requested (Nope)');
 		expect(calls.filter((c) => c.url === '/v1/notification_center/set_rules')[0].body).toMatchObject({ events: ['run.*', 'hug.review_requested'] });
@@ -597,5 +606,63 @@ describe('Notifications — built-in rules and editable defaults', () => {
 		expect(screen.getByTestId('channel-locked')).toHaveTextContent('Every org sends account and invite emails through this channel.');
 		expect(screen.queryByRole('button', { name: 'Disable' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Delete…' })).toBeNull();
+	});
+});
+
+describe('Notifications — people’s channels, Send to picker, Reaches you', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	/** A person's own channel in measureone (in-app + account email). */
+	const person = (id: string, name: string, user_id: string) => ({
+		id, name, owner: { kind: 'personal' as const, org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null, user_id },
+		destinations: [{ type: 'cliqhub', label: 'In-app (CliqHub)' }, { type: 'email', label: 'Account email' }],
+		enabled: true, rule_count: 0, system_key: null, locked: false, lock_reason: null,
+	});
+	function with_people(): Notification_center_data {
+		const d = center();
+		d.channels.push(person('ch-sapan', 'sapan', 'u1'), person('ch-elan', 'elan', 'u7'));
+		const org_scope = d.rules[0].scope;
+		d.rules.push(
+			{ id: 'rl-mine', event: 'hug.review_requested', scope: org_scope, channel_id: 'ch-sapan', channel_name: 'sapan', priority: 0, replaces: [], recipients: [], system_key: null, locked: false, lock_reason: null },
+			{ id: 'rl-elan', event: 'hug.review_requested', scope: org_scope, channel_id: 'ch-elan', channel_name: 'elan', priority: 0, replaces: [], recipients: [], system_key: null, locked: false, lock_reason: null },
+		);
+		return d;
+	}
+
+	it('Send to is searchable and grouped; your channel reads "you", someone else’s reads "person"', async () => {
+		route_fetch({ center: with_people });
+		render_page('/notifications?org=measureone&show=all');
+		await screen.findByTestId('rule-rl-org');
+		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
+		const dlg = screen.getByRole('dialog', { name: 'New rule' });
+		fireEvent.click(within(dlg).getByTestId('channel-picker'));
+		const list = within(dlg).getByRole('listbox', { name: 'Send to' });
+		expect(within(list).getByText('Org channels')).toBeInTheDocument();
+		expect(within(list).getByText('People')).toBeInTheDocument();
+		expect(within(list).getByRole('option', { name: (n) => n.startsWith('sapan · you') })).toBeInTheDocument();
+		expect(within(list).getByRole('option', { name: (n) => n.startsWith('elan · person') })).toBeInTheDocument();
+		expect(within(list).queryByText(/only you/)).toBeNull();
+		fireEvent.change(within(dlg).getByLabelText('Search channels'), { target: { value: 'elan' } });
+		expect(within(list).getAllByRole('option').map((o) => o.textContent)).toEqual([expect.stringMatching(/^elan · person/)]);
+		fireEvent.mouseDown(within(list).getByRole('option'));
+		expect(within(dlg).getByTestId('channel-picker')).toHaveTextContent('elan · person');
+	});
+
+	it('Reaches you keeps only the rules that reach you, and says how; a rule to Elan’s channel is his, not yours', async () => {
+		route_fetch({ center: with_people });
+		render_page('/notifications?org=measureone&show=reaches');
+		expect(await screen.findByTestId('rule-rl-mine')).toHaveTextContent('You, directly');
+		expect(screen.queryByTestId('rule-rl-elan')).toBeNull();
+		expect(screen.queryByTestId('rule-rl-org')).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'All rules' }));
+		expect(await screen.findByTestId('rule-rl-elan')).toBeInTheDocument();
+	});
+
+	it('Channels tab labels a person’s channel "person", and yours "person · you"', async () => {
+		route_fetch({ center: with_people });
+		render_page('/notifications?tab=channels&org=measureone');
+		expect(await screen.findByTestId('channel-ch-elan')).toHaveTextContent(/person/);
+		expect(screen.getByTestId('channel-ch-elan')).not.toHaveTextContent(/you/);
+		expect(screen.getByTestId('channel-ch-sapan')).toHaveTextContent(/person\s*you/);
 	});
 });
