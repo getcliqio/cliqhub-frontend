@@ -6,7 +6,7 @@ export interface Realm_team_row {
 	version: string | null;
 	latest_version: string | null;
 	update_available: boolean;
-	origin: 'published' | 'local';
+	origin: 'hub' | 'cli';
 	in_team_list: boolean;
 	installed_count: number;
 	online_daemon_count: number;

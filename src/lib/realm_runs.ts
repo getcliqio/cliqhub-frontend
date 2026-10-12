@@ -6,6 +6,10 @@ export interface Realm_run_row {
 	state: string;
 	current_phase: string | null;
 	daemon_id: string | null;
+	/** Team version snapshot when the run was created. */
+	version: string | null;
+	/** Who initiated this run: `'cli'` or `'hub'`, or null for pre-refactor runs. */
+	origin: string | null;
 	started_at: number | null;
 	completed_at: number | null;
 	updated_at: number | null;
@@ -26,6 +30,8 @@ export interface Realm_runs_data {
 
 export type Run_state_filter = 'running' | 'awaiting_input' | 'failed' | 'completed' | 'cancelled';
 export type Run_range = '24h' | '7d' | '30d';
+/** Origin filter values: `'cli'` for local runs, `'hub'` for hub-dispatched runs. */
+export type Origin_filter = 'cli' | 'hub';
 
 export const RANGE_MS: Record<Run_range, number> = { '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 };
 

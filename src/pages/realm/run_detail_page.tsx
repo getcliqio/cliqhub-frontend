@@ -43,6 +43,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { use_access, type Gate } from '@/lib/access';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
+import { Origin_badge } from '@/components/graphite/g_origin_badge';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
 import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_phase_output';
@@ -649,9 +650,10 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					<div className="flex flex-wrap items-center gap-2.5">
 						<h1 className="min-w-0 truncate text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
 						<State_pill state={run.state} />
+						<Origin_badge origin={run.origin} />
 					</div>
 					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">
-						{[run.team_label || run.team_id, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null].filter(Boolean).join(' · ')}
+						{[run.team_label || run.team_id, run.team_version ? `v${run.team_version}` : null, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null].filter(Boolean).join(' · ')}
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-2" role="group" aria-label="Run actions">

@@ -37,7 +37,7 @@ function org_data(my_role = 'owner', over: Record<string, unknown> = {}) {
 			owner_only_permissions: ['org.manage'],
 			...over,
 		},
-		invites: [{ invite_id: 'i1', email: 'new@x.com', role: 'member', kind: 'org', status: 'pending', inviter: { id: 'u1', display_name: 'Sapan' }, send_count: 1, last_sent_at: new Date().toISOString(), expires_at: '2026-10-15T00:00:00Z', created_at: new Date().toISOString() }],
+		invites: [{ invite_id: 'i1', email: 'new@x.com', role: 'member', kind: 'org', status: 'pending', inviter: { id: 'u1', display_name: 'Sapan' }, send_count: 1, last_sent_at: new Date().toISOString(), expires_at: '2026-10-15T12:00:00Z', created_at: new Date().toISOString() }],
 		permissions: { all: ['org.manage', 'realms.create', 'teams.run'], owner_only: ['org.manage'] },
 		partial: false,
 	};
@@ -158,7 +158,7 @@ describe('Organization page', () => {
 	});
 
 	it('Waiting for owner: the header banner names who was invited and when the invite expires', async () => {
-		const data = org_data('site_admin', { status: 'waiting_for_owner', owner: { user_id: 'u9', username: null, status: 'invited' }, pending_owner_invite: { invite_id: 'i-own', email: 'owner@x.com', expires_at: '2026-10-15T00:00:00Z' } });
+		const data = org_data('site_admin', { status: 'waiting_for_owner', owner: { user_id: 'u9', username: null, status: 'invited' }, pending_owner_invite: { invite_id: 'i-own', email: 'owner@x.com', expires_at: '2026-10-15T12:00:00Z' } });
 		route_fetch({ '/v1/org_page/get': () => ({ ok: true, data }) });
 		open_org();
 		expect(await screen.findByTestId('waiting-owner')).toHaveTextContent('owner@x.com was invited to own this org and hasn’t accepted yet. The invite expires 15 Oct.');
