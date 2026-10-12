@@ -508,12 +508,13 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const hugs_waiting = view_org ? view_org.counts.needs_you : 0;
 	// One flat list of resources, the same for everyone; org admins get one extra group.
 	// The inbox lives behind the bell (top right); problems also surface on the Dashboard.
+	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs, Events.
 	const nav: Nav_item[] = [
 		{ to: view_href('/home', scope, multi_org), label: 'Dashboard', icon: LayoutDashboard, end: true },
-		{ to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting },
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
+	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting };
 	// Everyone: members see what reaches them there; admins also change rules and channels.
 	const events_item: Nav_item = { to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
@@ -571,6 +572,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							<div className="space-y-1">
 								{nav.map((item) => <Side_link key={item.label} item={item} compact />)}
 								<Side_link item={teams_item} compact />
+								<Side_link item={hugs_item} compact />
 								{view_org ? <Side_link item={events_item} compact /> : null}
 							</div>
 							{is_org_admin ? (
@@ -614,6 +616,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 						</div>
 						<div className="space-y-0.5">
 							<Side_link item={teams_item} />
+							<Side_link item={hugs_item} />
 							{view_org ? <Side_link item={events_item} /> : null}
 						</div>
 

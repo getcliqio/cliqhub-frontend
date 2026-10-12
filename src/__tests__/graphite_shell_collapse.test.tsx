@@ -56,6 +56,20 @@ describe('Graphite shell — collapsible sidebar', () => {
 		expect(auto_collapse('/teams')).toBe(false);
 	});
 
+	it('main nav order: Dashboard, Realms, Teams, HUGs, Events (open and collapsed)', () => {
+		const order = () => {
+			const main = screen.getByRole('navigation', { name: 'Main' });
+			const wanted = ['Dashboard', 'Realms', 'Teams', 'HUGs', 'Events'];
+			return Array.from(main.querySelectorAll('a'))
+				.map((a) => (a.getAttribute('aria-label') ?? a.textContent ?? '').replace(/\s*\(?\d+\)?$/, '').trim())
+				.filter((l) => wanted.includes(l));
+		};
+		render_at(`/home?org=${org_slug()}`);
+		expect(order()).toEqual(['Dashboard', 'Realms', 'Teams', 'HUGs', 'Events']);
+		fireEvent.click(screen.getByRole('button', { name: 'Collapse sidebar' }));
+		expect(order()).toEqual(['Dashboard', 'Realms', 'Teams', 'HUGs', 'Events']);
+	});
+
 	it('collapses to an icon rail with tooltips and badges, and remembers the choice', () => {
 		const { unmount } = render_at(`/home?org=${org_slug()}`);
 		expect(collapsed()).toBe(false);
