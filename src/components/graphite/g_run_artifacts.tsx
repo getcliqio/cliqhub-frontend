@@ -1,5 +1,5 @@
 /**
- * Run detail › Files — what the run's phases published, grouped by phase:
+ * Run detail › Artifacts — what the run's phases published, grouped by phase:
  * stored files (Download asks `artifacts/get_by_id` for a fresh link — stored
  * links expire) and documents kept as run records (transcript, design or
  * review doc — a preview, Read loads the whole text from `artifacts/get_by_id`).
@@ -49,7 +49,10 @@ export function group_by_phase(artifacts: Run_artifact[]): Array<{ phase: string
 	return [...groups].map(([phase, items]) => ({ phase, items }));
 }
 
-export function G_run_artifacts({ artifacts: all, status }: { artifacts: Run_artifact[]; status: Section_status | undefined }) {
+/**
+ * @param embedded - Inside the selected phase's panel: one phase's artifacts, no card or phase headings.
+ */
+export function G_run_artifacts({ artifacts: all, status, embedded = false }: { artifacts: Run_artifact[]; status: Section_status | undefined; embedded?: boolean }) {
 	const row = use_row_open();
 	const artifacts = useMemo(() => file_rows(all), [all]);
 	const auth_fetch = useAuthFetch();
@@ -95,26 +98,30 @@ export function G_run_artifacts({ artifacts: all, status }: { artifacts: Run_art
 
 	const failed = status?.status === 'error';
 	return (
-		<section aria-label="Files" className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="run-artifacts">
-			<div className="flex items-center gap-2 border-b border-[var(--g-line-2)] px-4 py-2.5">
-				<h2 className="text-[13px] font-semibold">Files</h2>
-				{artifacts.length ? <span className="text-[12px] text-[var(--g-ink-3)]">{artifacts.length}</span> : null}
-			</div>
+		<section aria-label="Artifacts" className={embedded ? '' : 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]'} data-testid="run-artifacts">
+			{embedded ? null : (
+				<div className="flex items-center gap-2 border-b border-[var(--g-line-2)] px-4 py-2.5">
+					<h2 className="text-[13px] font-semibold">Artifacts</h2>
+					{artifacts.length ? <span className="text-[12px] text-[var(--g-ink-3)]">{artifacts.length}</span> : null}
+				</div>
+			)}
 			{failed && !artifacts.length ? (
-				<p role="status" className="px-4 py-4 text-[12.5px] text-[var(--g-warn-text)]">Couldn’t load files{status?.error ? `: ${status.error}` : ''}.</p>
+				<p role="status" className="px-4 py-4 text-[12.5px] text-[var(--g-warn-text)]">Couldn’t load artifacts{status?.error ? `: ${status.error}` : ''}.</p>
 			) : !artifacts.length ? (
-				<p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">No files in this run. Agents publish files with <code className="g-mono">cliq-artifact submit</code>; each phase’s output is on the Phases tab.</p>
+				embedded
+					? <p className="text-[12.5px] text-[var(--g-ink-3)]">None from this phase.</p>
+					: <p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">No artifacts in this run. Agents publish files with <code className="g-mono">cliq-artifact submit</code>.</p>
 			) : (
-				<div className="divide-y divide-[var(--g-line-2)]">
+				<div className={embedded ? '' : 'divide-y divide-[var(--g-line-2)]'}>
 					{groups.map((g) => (
 						<div key={g.phase} role="group" aria-label={`Phase ${g.phase}`} data-testid={`artifact-phase-${g.phase}`}>
-							<p className="g-mono px-4 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--g-ink-3)]">{g.phase}</p>
+							{embedded ? null : <p className="g-mono px-4 pt-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[var(--g-ink-3)]">{g.phase}</p>}
 							<ul>
 								{g.items.map((a) => {
 									const is_file = (a.source ?? 'file') === 'file';
 									const text = open[a.artifact_id];
 									return (
-										<li key={a.artifact_id} className="px-4 py-2" data-testid="artifact-row">
+										<li key={a.artifact_id} className={embedded ? 'py-1.5' : 'px-4 py-2'} data-testid="artifact-row">
 											<div {...row({ on_open: is_file || busy === a.artifact_id ? null : () => void read(a) })} className={`-mx-2 flex items-center gap-3 rounded px-2 ${is_file ? '' : ROW_OPENS}`}>
 												<div className="min-w-0 flex-1">
 													<p className="g-mono truncate text-[12.5px] font-semibold" title={a.name}>{a.name}</p>

@@ -43,10 +43,10 @@ export function Run_failure_card({ failure: f, run_href, on_resume, on_logs, can
 	failure: Run_failure;
 	/** Page path of a run in this realm. */
 	run_href: (run_id: string) => string;
-	/** Resume this run from a phase (opens the resume panel set to it). */
-	on_resume: (phase: string) => void;
-	/** Open this run's logs. */
-	on_logs: () => void;
+	/** Resume this run from a phase (opens the resume panel set to it). Absent: the page's own Resume covers it. */
+	on_resume?: (phase: string) => void;
+	/** Open this run's logs. Absent: the page's Logs view covers it. */
+	on_logs?: () => void;
 	/** Whether the viewer may resume runs. */
 	can_run: boolean;
 }) {
@@ -117,14 +117,14 @@ export function Run_failure_card({ failure: f, run_href, on_resume, on_logs, can
 				{resume_phase && can_run ? (
 					in_sub_team ? (
 						<Link to={`${run_href(leaf.run_id)}?resume=${encodeURIComponent(resume_phase)}`} className={BTN} data-testid="failure-resume">Resume sub-team from {resume_phase}</Link>
-					) : (
+					) : on_resume ? (
 						<button type="button" className={BTN} onClick={() => on_resume(resume_phase)} data-testid="failure-resume">Resume from {resume_phase}</button>
-					)
+					) : null
 				) : null}
 				{f.review ? <Link to={`/reviews/${f.review.review_id}`} className={BTN}>Open review</Link> : null}
 				{in_sub_team
 					? <Link to={`${run_href(leaf.run_id)}?tab=logs`} className={BTN}>Sub-team logs</Link>
-					: <button type="button" className={BTN} onClick={on_logs}>Logs</button>}
+					: on_logs ? <button type="button" className={BTN} onClick={on_logs}>Logs</button> : null}
 				{in_sub_team && resume_phase && can_run && f.chain[0].phase ? (
 					<span className="text-[11.5px] text-[var(--g-ink-3)]" data-testid="failure-two-step">Then, once it succeeds, resume this run from <span className="g-mono">{f.chain[0].phase}</span>.</span>
 				) : null}

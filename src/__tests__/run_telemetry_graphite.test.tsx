@@ -1,6 +1,6 @@
-/** Run page telemetry: summary strip, phases clock, Timeline, Usage, DAG, span details. */
+/** Run page telemetry: the run line's cost and tokens, the phase list's clock (rounds, folded waits), Workflow, Usage; the Timeline component. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { run_detail, overview_for_realm, REALM } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
@@ -59,6 +59,11 @@ function route_fetch(tel: Run_telemetry_data | null = telemetry()) {
 function open(path = '/o/measureone/realms/prod-us/runs/run-77') {
 	return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/o/:org/realms/:slug/runs/:run_id" element={<RunPage />} /></Routes></MemoryRouter>);
 }
+/** Unmount what's rendered and open the run again with `search`. */
+function cleanup_and_open(search: string) {
+	cleanup();
+	return open(`/o/measureone/realms/prod-us/runs/run-77${search}`);
+}
 afterEach(() => vi.restoreAllMocks());
 
 describe('run telemetry helpers', () => {
@@ -112,56 +117,16 @@ describe('Timeline history', () => {
 });
 
 describe('Run page telemetry', () => {
-	it('summary strip and phases clock with cost; no classic link', async () => {
+	it('the run line carries cost and tokens; each phase its cost; views are List, Workflow, Usage, Logs', async () => {
 		const calls = route_fetch();
 		open();
-		const strip = await screen.findByTestId('run-summary');
-		await waitFor(() => expect(within(strip).getByText('$1.25')).toBeInTheDocument());
-		expect(strip).toHaveTextContent('120k in');
-		expect(strip).toHaveTextContent('50% of input from cache');
-		expect(strip).toHaveTextContent('3 agent runs · 1 rework');
+		const meta = await screen.findByTestId('run-meta');
+		await waitFor(() => expect(meta).toHaveTextContent('$1.25'));
+		expect(meta).toHaveTextContent('120k in · 8k out');
+		expect(screen.queryByTestId('run-summary')).toBeNull();
 		expect(calls.find((c) => c.url === '/v1/run_telemetry/get')?.body).toEqual({ run_id: 'run-77' });
-		const costs = screen.getAllByTestId('phase-cost').map((e) => e.textContent);
-		expect(costs).toContain('$1.25');
-		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases 2', 'Timeline', 'Usage', 'DAG', 'Logs']);
-	});
-
-	it('timeline: a sub-team nests inside the phase that started it, with its steps and why it failed', async () => {
-		const base = telemetry();
-		const bar = (id: string, phase: string, agent: string, kind: 'llm' | 'human', s0: number, e0: number) => ({ ...base.bars[0], id, phase, agent, kind, start_ms: t0 + s0 * M, end_ms: t0 + e0 * M });
-		const step = (name: string, status: string, s0: number, e0: number, kind: 'llm' | 'human') => ({ ...base.phases[0], name, kind, status, start_ms: t0 + s0 * M, end_ms: t0 + e0 * M });
-		const design = {
-			...step('design', 'failed', 1, 9, 'llm'),
-			sub_runs: [{
-				run_id: 'child-1', run_name: 'solar-lilac-fox', team: '@measureone/design-lld', state: 'failed',
-				error: "Gate 'hug-lld' escalated: Review timed out after 30m", start_ms: t0 + 1 * M, end_ms: t0 + 9 * M,
-				phases: [step('draft-lld', 'done', 1, 3, 'llm'), step('hug-lld', 'failed', 3, 9, 'human')],
-				bars: [bar('c1', 'draft-lld', 'cursor', 'llm', 1, 3), bar('c2', 'hug-lld', 'hug', 'human', 3, 9)],
-				usage: { cost_usd: 0.748, tokens_in: 155_533, tokens_out: 18_788, cached_in: null, model_calls: 2 },
-			}],
-		};
-		route_fetch(telemetry({ phases: [base.phases[0], design], bars: [base.bars[0]] }));
-		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
-		const lane = await screen.findByTestId('lane-design');
-		// The sub-team is inside the design lane, not a sibling of it.
-		const sub = within(lane).getByTestId('sub-run-child-1');
-		expect(sub).toHaveTextContent('design-lld');
-		expect(sub).toHaveTextContent('design-lldsolar-lilac-fox ↗failed at hug-lld$0.75');
-		expect(within(sub).getByTestId('sub-run-link-child-1')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/child-1');
-		expect(within(sub).getByTestId('sub-run-cost-child-1')).toHaveTextContent('$0.75');
-		// One line: where it failed; the full error is on hover (and in "Why it failed").
-		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveTextContent('failed at hug-lld');
-		expect(within(sub).getByTestId('sub-run-error-child-1')).toHaveAttribute('title', "Gate 'hug-lld' escalated: Review timed out after 30m");
-		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toBeInTheDocument();
-		expect(within(sub).getByTestId('lane-design/child-1/hug-lld')).toBeInTheDocument();
-		expect(within(sub).getByTestId('bar-c2')).toBeInTheDocument();
-		expect(screen.queryByTestId('lane-draft-lld')).toBeNull();
-		// One agent per step: one row each (the step name and its agent), not a header plus a row.
-		expect(within(sub).getByTestId('lane-design/child-1/draft-lld')).toHaveTextContent('draft-lld');
-		expect(within(sub).getByTestId('lane-design/child-1/draft-lld').querySelectorAll('[aria-expanded]')).toHaveLength(0);
-		// Collapsing the parent phase hides the sub-team with it.
-		fireEvent.click(within(lane).getAllByRole('button', { name: /design/ })[0]);
-		expect(screen.queryByTestId('sub-run-child-1')).toBeNull();
+		expect(screen.getAllByTestId('phase-cost').map((e) => e.textContent)).toContain('$1.25');
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['List', 'Workflow', 'Usage', 'Logs']);
 	});
 
 	it('phases: a team phase opens into its sub-team\'s steps, at any depth; a step opens its details beside', async () => {
@@ -193,42 +158,44 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('tree-step-grand-1-lint')).toBeInTheDocument();
 	});
 
-	it('timeline: re-runs share their phase\'s row; a long wait on people is folded and labelled', async () => {
+	it('list clock: each round is its own segment on the phase\'s row; a long wait on people is folded', async () => {
 		const base = telemetry();
-		const wait = { ...base.bars[0], id: 'w1', phase: 'review', agent: 'hug', kind: 'human' as const, start_ms: t0 + 10 * M, end_ms: t0 + 55 * M };
-		route_fetch(telemetry({ phases: [...base.phases, { ...base.phases[0], name: 'review', kind: 'human', status: 'completed', runs: 1, start_ms: t0 + 10 * M, end_ms: t0 + 55 * M }], bars: [...base.bars, wait], window: { start_ms: t0, end_ms: t0 + 55 * M } }));
-		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
-		const match = await screen.findByTestId('lane-match');
-		expect(within(match).getByTestId('bar-b2')).toBeInTheDocument();
-		expect(within(match).getByTestId('bar-b3')).toBeInTheDocument();
-		expect(match).toHaveTextContent('match2 rounds');
-		expect(screen.getAllByTestId('folded-gap').map((g) => g.textContent)).toEqual(['⫽ 4m 0s', '⫽ 45m 0s']);
-		fireEvent.click(screen.getByRole('checkbox', { name: /Fold waiting/ }));
-		expect(screen.queryByTestId('folded-gap')).toBeNull();
+		// ~9m of agents working in a 40m run: the 26m wait on people folds.
+		const bars = base.bars.map((b) => (b.id === 'b3' ? { ...b, end_ms: t0 + 14 * M } : b));
+		const wait = { ...base.bars[0], id: 'w1', phase: 'review', agent: 'hug', kind: 'human' as const, start_ms: t0 + 14 * M, end_ms: t0 + 40 * M };
+		route_fetch(telemetry({ phases: [...base.phases, { ...base.phases[0], name: 'review', kind: 'human', status: 'completed', runs: 1, start_ms: t0 + 14 * M, end_ms: t0 + 40 * M }], bars: [...bars, wait], window: { start_ms: t0, end_ms: t0 + 40 * M } }));
+		open();
+		const match = await screen.findByTestId('clock-match');
+		expect(within(match).getAllByTestId('clock-seg')).toHaveLength(2);
+		expect(within(screen.getByTestId('clock-fetch')).getAllByTestId('clock-seg')).toHaveLength(1);
+		expect(within(match).getAllByTestId('clock-gap').length).toBeGreaterThan(0);
+		expect(screen.getByTestId('clock-legend')).toHaveTextContent('long wait folded');
+		// Old ?tab=timeline links land on the list.
+		cleanup_and_open('?tab=timeline');
+		expect(await screen.findByTestId('clock-match')).toBeInTheDocument();
+		expect(screen.getByRole('tab', { name: 'List' })).toHaveAttribute('aria-selected', 'true');
+	});
+	it('list clock: a run that is mostly waiting isn\'t folded (a 0s script doesn\'t fill the bar)', async () => {
+		const base = telemetry();
+		const quick = { ...base.bars[0], start_ms: t0, end_ms: t0 + 5_000 };
+		const wait = { ...base.bars[0], id: 'w1', phase: 'match', agent: 'hug', kind: 'human' as const, start_ms: t0 + 10_000, end_ms: t0 + 30 * M };
+		route_fetch(telemetry({ phases: [{ ...base.phases[0], end_ms: t0 + 5_000 }, { ...base.phases[1], kind: 'human', runs: 1, start_ms: t0 + 10_000, end_ms: t0 + 30 * M }], bars: [quick, wait], window: { start_ms: t0, end_ms: t0 + 30 * M } }));
+		open();
+		const fetch_seg = within(await screen.findByTestId('clock-fetch')).getByTestId('clock-seg');
+		expect(parseFloat(fetch_seg.style.width)).toBeLessThan(2);
+		expect(screen.queryAllByTestId('clock-gap')).toHaveLength(0);
 	});
 
-	it('timeline: lanes, filters, select a bar → details replace the side column → logs for that agent', async () => {
-		const calls = route_fetch();
-		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
-		expect(await screen.findByTestId('timeline')).toBeInTheDocument();
-		expect(screen.getByTestId('lane-fetch')).toBeInTheDocument();
-		fireEvent.change(screen.getByRole('combobox', { name: 'Show' }), { target: { value: 'gate' } });
-		expect(screen.queryByTestId('lane-fetch')).toBeNull();
-		fireEvent.change(screen.getByRole('combobox', { name: 'Show' }), { target: { value: 'all' } });
-		expect(screen.getByRole('complementary', { name: 'Run details' })).toBeInTheDocument();
-		fireEvent.click(screen.getByTestId('bar-b3'));
-		const d = await screen.findByTestId('span-details');
-		expect(d).toHaveTextContent('claude-sonnet-4.5 · anthropic');
-		expect(d).toHaveTextContent('100k / 7k tokens · 60% cached');
-		expect(d).toHaveTextContent('$1.00 (80% of run) · est.');
-		expect(await within(d).findByText('[matcher] 12 rows matched')).toBeInTheDocument();
-		expect(calls.find((c) => c.url === '/v1/runs/get_logs')?.body).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], q: '[matcher]', limit: 4 });
-		expect(screen.queryByRole('complementary', { name: 'Run details' })).toBeNull();
-		fireEvent.click(within(d).getByRole('button', { name: /Logs for this agent/ }));
-		expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
-		expect(screen.getByDisplayValue('[matcher]')).toBeInTheDocument();
+	it('Workflow: the run\'s phases on the team\'s graph; clicking a phase shows its output on the right', async () => {
+		route_fetch();
+		open('/o/measureone/realms/prod-us/runs/run-77?tab=workflow');
+		const graph = await screen.findByTestId('run-workflow');
+		expect(graph).toHaveTextContent('fetch');
+		expect(graph).toHaveTextContent('match');
+		expect(screen.getByTestId('phase-panel')).toHaveTextContent('match'); // the failed phase is picked first
+		fireEvent.click(within(graph).getAllByText('fetch')[0]);
+		await waitFor(() => expect(screen.getByTestId('phase-panel')).toHaveTextContent('fetch'));
 	});
-
 	it('usage: cost by phase, time, models and agents', async () => {
 		route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=usage');
@@ -239,21 +206,18 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('agent-matcher')).toHaveTextContent('1 failed → success');
 	});
 
-	it('DAG: nodes by dependency; clicking a node opens the timeline', async () => {
+	it('old ?tab=dag links open the Workflow view', async () => {
 		route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=dag');
-		expect(await screen.findByTestId('node-match')).toHaveTextContent('↻2');
-		expect(screen.getByText('rework ×1')).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: 'cost' }));
-		fireEvent.click(screen.getByTestId('node-match'));
-		expect(await screen.findByTestId('timeline')).toBeInTheDocument();
+		expect(await screen.findByTestId('run-workflow')).toBeInTheDocument();
+		expect(screen.getByRole('tab', { name: 'Workflow' })).toHaveAttribute('aria-selected', 'true');
 	});
-
 	it('no telemetry yet / read fails: page still works', async () => {
 		route_fetch(telemetry({ bars: [], by_model: [], by_agent: [], totals: { ...telemetry().totals, cost_usd: null, tokens_in: null, tokens_out: null, cached_in: null, model_calls: null, agent_runs: 0, reworks: 0 }, sections: { usage: 'empty', spans: 'empty', phases: 'ok', workflow: 'ok' } }));
-		const { unmount } = open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
-		expect(await screen.findByText(/No timeline yet/)).toBeInTheDocument();
-		expect(screen.getByTestId('run-summary')).toHaveTextContent('No telemetry reported for this run yet');
+		const { unmount } = open();
+		expect(await screen.findAllByTestId('phase-row')).toHaveLength(2);
+		expect(screen.getByTestId('run-meta')).not.toHaveTextContent('$');
+		expect(screen.queryByTestId('clock-legend')).toBeNull();
 		unmount(); vi.restoreAllMocks();
 		route_fetch(null);
 		open();

@@ -1,17 +1,19 @@
 /**
- * Run detail (Graphite).
+ * Run detail (Graphite) — under the realm header:
+ *   run line  — name, state, team · version · started · took · cost · tokens, View workflow; one set of actions
+ *   failure   — why it failed (no second Resume / Logs: the header and the Logs view have them)
+ *   left      — the phases, as a List (each row: what happened, its time on the run's clock — rounds as
+ *               segments, waits on people hatched, long waits folded — and cost; sub-teams nest inside
+ *               their phase) or as the team's Workflow graph; Usage and Logs are the other views
+ *   right     — the selected phase (failed / running one first): its output and its artifacts;
+ *               Run details (inputs, workspace, daemon, IDs) folded below
  *
- * Data: one `POST /v1/run_detail/get { run_id }` per poll (BFF composes the
- * run row, phases, labels, realm, this run's pending reviews and its stored
- * artifacts). Polls every
- * 4s while the run is live, 20s otherwise.
- *
- * Control actions stay on the existing Core routes:
- *   /v1/runs/supply_inputs · /v1/runs/cancel · /v1/runs/resume
- * "Run again" reuses Run_in_realm_dialog (prefilled from this run).
- * Telemetry (summary strip, Timeline, Usage, DAG): one `POST /v1/run_telemetry/get`.
- * Run history (attempts across resumes, the parent run of a sub-team run, the
- * sub-team runs each team phase spawned) comes with `run_detail/get`.
+ * Data: one `POST /v1/run_detail/get { run_id }` per poll (BFF composes the run row, phases, labels,
+ * realm, this run's pending reviews and its stored artifacts). Polls every 4s while the run is live,
+ * 20s otherwise. Telemetry (cost, tokens, the clock, Usage, Workflow): one `POST /v1/run_telemetry/get`.
+ * Control actions stay on the existing Core routes: /v1/runs/supply_inputs · /v1/runs/cancel ·
+ * /v1/runs/resume. "Run again" reuses Run_in_realm_dialog (prefilled from this run). Old links:
+ * ?tab=timeline opens the List, ?tab=dag the Workflow.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router';
@@ -33,6 +35,7 @@ import {
 	type Run_detail_phase,
 	type Run_phase_output,
 	type Run_row,
+	type Section_status,
 } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
 import { format_datetime } from '@/lib/format_time';
@@ -48,11 +51,13 @@ import { G_run_logs } from '@/components/graphite/g_run_logs';
 import { Run_failure_card } from '@/components/graphite/g_run_failure';
 import { Step_details, Sub_team_tree, all_sub_runs, initially_open, type Tree_step } from '@/components/graphite/g_sub_team_tree';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
-import { G_phase_output, download_raw_outputs } from '@/components/graphite/g_phase_output';
-import { Dag, Phase_clock, Span_details, Summary_strip, Timeline, Usage } from '@/components/graphite/g_telemetry';
-import { fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_bar, type Telemetry_phase } from '@/lib/run_telemetry';
+import { G_phase_output } from '@/components/graphite/g_phase_output';
+import { Phase_clock, Usage, run_scale } from '@/components/graphite/g_telemetry';
+import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
+import type { Team_phase } from '@/lib/team_page';
+import { KIND_COLOR, fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_phase } from '@/lib/run_telemetry';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
-import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 export const LIVE_POLL_MS = 4_000;
 export const IDLE_POLL_MS = 20_000;
@@ -60,9 +65,12 @@ export const IDLE_POLL_MS = 20_000;
 /** Codes for which the only path forward is "Run again". */
 const STRANDED_CODES = new Set(['run/stranded', 'run/daemon_stranded']);
 
-type Tab = 'phases' | 'timeline' | 'usage' | 'dag' | 'logs';
-const TABS: Tab[] = ['phases', 'timeline', 'usage', 'dag', 'logs'];
-const TAB_LABEL: Record<Tab, string> = { phases: 'Phases', timeline: 'Timeline', usage: 'Usage', dag: 'DAG', logs: 'Logs' };
+/** Views of the run: the phases as a list (with their time bars) or as the team's graph, usage, logs. */
+type Tab = 'phases' | 'workflow' | 'usage' | 'logs';
+const TABS: Tab[] = ['phases', 'workflow', 'usage', 'logs'];
+const TAB_LABEL: Record<Tab, string> = { phases: 'List', workflow: 'Workflow', usage: 'Usage', logs: 'Logs' };
+/** Old view links: the timeline is the list's bars now, the DAG is the Workflow view. */
+const OLD_TAB: Record<string, Tab> = { timeline: 'phases', dag: 'workflow' };
 type Panel = null | 'supply' | 'cancel' | 'resume';
 
 /** `scope/slug` team id → parts for "Run again"; null hides the action. */
@@ -226,11 +234,13 @@ function phase_duration(p: Run_detail_phase, now: number): string {
 	return format_duration((p.completed_at ?? now) - p.started_at);
 }
 
-function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, run_link, children, child_link, resumed, on_resume_from, tree }: {
+function Phase_list({ phases, run_state, telemetry, on_open, selected = null, outputs, run_link: _run_link, children, child_link, resumed, on_resume_from, tree }: {
 	phases: Run_detail_phase[];
 	run_state: string;
 	telemetry?: Run_telemetry_data | null;
+	/** Select a phase (its output and artifacts show on the right). */
 	on_open?: (phase: string) => void;
+	selected?: string | null;
 	/** Each phase's recorded outputs, oldest first. */
 	outputs?: Map<string, Run_phase_output[]>;
 	handoffs?: Map<string, Run_artifact[]>;
@@ -247,8 +257,9 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 }) {
 	const row = use_row_open();
 	const tel = new Map<string, Telemetry_phase>((telemetry?.phases ?? []).map((x) => [x.name, x]));
-	const [shown, set_shown] = useState<Set<string>>(() => new Set());
 	const now = Date.now();
+	// One clock for every row: rounds and folded waits line up across phases.
+	const scale = useMemo(() => run_scale(telemetry ?? null), [telemetry]);
 	if (phases.length === 0) {
 		return <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">No phases recorded yet{is_live_state(run_state) ? ' — the daemon hasn’t reported any progress.' : '.'}</p>;
 	}
@@ -262,9 +273,9 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 				const earlier = p.previous_attempts ?? [];
 				const mine = outputs?.get(p.phase) ?? [];
 				const latest = mine[mine.length - 1];
-				const open = Boolean(latest) && shown.has(p.phase);
+				const is_sel = selected === p.phase;
 				return (
-					<li key={`${p.phase}-${i}`} {...row({ on_open: on_open && tel.get(p.phase)?.start_ms != null ? () => on_open(p.phase) : null })} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open && tel.get(p.phase)?.start_ms != null ? ROW_OPENS : ''}`} data-testid="phase-row">
+					<li key={`${p.phase}-${i}`} {...row({ on_open: on_open ? () => on_open(p.phase) : null })} aria-current={is_sel ? 'true' : undefined} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open ? ROW_OPENS : ''} ${is_sel ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid="phase-row">
 						{i < phases.length - 1 ? <span aria-hidden className="absolute left-[29px] top-[26px] h-[calc(100%-12px)] w-px bg-[var(--g-line)]" /> : null}
 						<span className="relative z-[1] mt-1 grid h-4 w-4 place-items-center justify-self-center rounded-full bg-[var(--g-panel)]">
 							<State_dot state={p.status} pulse={live} />
@@ -273,7 +284,6 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 							<p className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold">
 								<span className="g-mono">{p.phase}</span>
 								<State_pill state={p.status} />
-								{on_open && tel.get(p.phase)?.start_ms != null ? <span className="ml-auto font-normal"><Row_open on_open={() => on_open(p.phase)} label={`Open ${p.phase} in the timeline`}>Timeline</Row_open></span> : null}
 							</p>
 							<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">
 								{[p.agent ? `agent ${p.agent}` : null, p.started_at ? `started ${relative_time(p.started_at)}` : 'not started', tel.get(p.phase)?.tokens_in != null ? `${fmt_count(tel.get(p.phase)!.tokens_in)} / ${fmt_count(tel.get(p.phase)!.tokens_out)} tokens` : null, ran > 1 ? `ran ${ran}×` : null, resumed && p.status === 'skipped' && p.started_at ? 'kept from an earlier attempt' : null].filter(Boolean).join(' · ')}
@@ -317,37 +327,71 @@ function Phase_list({ phases, run_state, telemetry, on_open, outputs, handoffs, 
 								</div>
 							) : null}
 							{latest ? (
-								<p className="mt-1 flex min-w-0 items-center gap-2 text-[12.5px] text-[var(--g-ink-2)]">
-									<span className="min-w-0 truncate" data-testid="phase-output-summary">{latest.view.summary}</span>
-									<button
-										type="button"
-										aria-expanded={open}
-										aria-label={`${open ? 'Hide' : 'Show'} output of ${p.phase}`}
-										onClick={(e) => { e.stopPropagation(); set_shown((cur) => { const next = new Set(cur); if (next.has(p.phase)) next.delete(p.phase); else next.add(p.phase); return next; }); }}
-										className="shrink-0 rounded border border-[var(--g-line)] px-1.5 py-px text-[11.5px] font-semibold text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"
-									>
-										{open ? 'Hide output' : 'Output'}
-									</button>
-								</p>
+								<p className="mt-1 min-w-0 truncate text-[12.5px] text-[var(--g-ink-2)]" data-testid="phase-output-summary">{latest.view.summary}</p>
 							) : null}
 						</div>
-						<span className="hidden sm:block"><Phase_clock p={tel.get(p.phase)} t={telemetry ?? null} /></span>
+						<span className="hidden sm:block"><Phase_clock p={tel.get(p.phase)} t={telemetry ?? null} scale={scale} now={now} /></span>
 						<span className="g-mono mt-0.5 text-right text-[12px] text-[var(--g-ink-3)]">{phase_duration(p, now)}</span>
 						<span className="g-mono mt-0.5 hidden sm:block w-[52px] text-right text-[12px] text-[var(--g-ink-2)]" data-testid="phase-cost">{telemetry ? fmt_usd(tel.get(p.phase)?.cost_usd ?? null) : ''}</span>
-						{open ? (
-							<div className="col-span-full cursor-default sm:pl-[40px]" onClick={(e) => e.stopPropagation()}>
-								<G_phase_output outputs={mine} handoffs={handoffs?.get(p.phase)} run_link={run_link ?? ((id) => id)} />
-							</div>
-						) : null}
 					</li>
 				);
 			})}
+			{telemetry?.bars.length ? (
+				<li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2 text-[11.5px] text-[var(--g-ink-3)]" aria-hidden data-testid="clock-legend">
+					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.llm }} />AI agent</span>
+					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.connector }} />script / tool</span>
+					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.human }} />waiting on people</span>
+					{scale?.gaps.length ? <span className="inline-flex items-center gap-1.5"><i className="h-2 w-[3px] border-x border-dashed border-[var(--g-ink-3)]" />long wait folded</span> : null}
+				</li>
+			) : null}
 		</ol>
 	);
 }
 
 /* ------------------------------------------------------------------ */
 /* Details sidebar                                                     */
+
+/** The selected phase: how it went, its output, its artifacts. */
+function Phase_panel({ phase, name, tel, outputs, handoffs, artifacts, artifacts_status, run_link, on_logs }: {
+	phase: Run_detail_phase | null;
+	name: string;
+	tel: Telemetry_phase | undefined;
+	outputs: Run_phase_output[];
+	handoffs: Run_artifact[];
+	artifacts: Run_artifact[];
+	artifacts_status: Section_status | undefined;
+	run_link: (run_id: string) => string;
+	on_logs: () => void;
+}) {
+	const now = Date.now();
+	const ran = Math.max(tel?.runs ?? 1, phase?.attempts ?? 1);
+	const meta = [
+		phase?.agent ? `agent ${phase.agent}` : null,
+		phase?.started_at ? `${phase.status === 'running' ? 'running for' : 'took'} ${phase_duration(phase, now)}` : 'not started',
+		ran > 1 ? `${ran} rounds` : null,
+		tel?.cost_usd != null ? fmt_usd(tel.cost_usd) : null,
+		tel?.tokens_in != null ? `${fmt_count(tel.tokens_in)} / ${fmt_count(tel.tokens_out)} tokens` : null,
+	].filter(Boolean).join(' · ');
+	const lbl = 'mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]';
+	return (
+		<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label={`Phase ${name}`} data-testid="phase-panel">
+			<div className="border-b border-[var(--g-line-2)] px-4 py-3">
+				<p className="flex items-center gap-2"><b className="g-mono text-[13.5px]">{name}</b>{phase ? <State_pill state={phase.status} /> : null}
+					<button type="button" onClick={on_logs} className="ml-auto text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Logs</button></p>
+				<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">{meta}</p>
+				{phase?.error ? <p className="g-mono mt-1.5 whitespace-pre-wrap break-words text-[11.5px] text-[var(--g-bad)]">{phase.error}</p> : null}
+			</div>
+			<div className="border-b border-[var(--g-line-2)] px-4 py-3">
+				<p className={lbl}>Output</p>
+				{outputs.length ? <G_phase_output outputs={outputs} handoffs={handoffs} run_link={run_link} /> : <p className="text-[12.5px] text-[var(--g-ink-3)]">{phase?.status === 'running' ? 'Not finished yet.' : 'No output recorded.'}</p>}
+			</div>
+			<div className="px-4 py-3">
+				<p className={lbl}>Artifacts</p>
+				<G_run_artifacts artifacts={artifacts} status={artifacts_status} embedded />
+			</div>
+		</section>
+	);
+}
 
 function Copy_value({ value, label }: { value: string; label: string }) {
 	const [done, set_done] = useState(false);
@@ -383,6 +427,13 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 /** The team page's YAML tab at the version this run used (team_label is `@scope/name`). */
+/** The team page's workflow at the version this run used (team_label is `@scope/name`). */
+export function workflow_href(run: { team_label?: string | null; team_version?: string | null }): string | null {
+	const m = /^@([^/]+)\/(.+)$/.exec(run.team_label ?? '');
+	if (!m) return null;
+	return `/teams/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}${run.team_version ? `?v=${encodeURIComponent(run.team_version)}` : ''}`;
+}
+
 export function team_yaml_href(run: { team_label?: string | null; team_version?: string | null }): string | null {
 	const m = /^@([^/]+)\/(.+)$/.exec(run.team_label ?? '');
 	if (!m) return null;
@@ -391,20 +442,18 @@ export function team_yaml_href(run: { team_label?: string | null; team_version?:
 	return `/teams/${encodeURIComponent(m[1])}/${encodeURIComponent(m[2])}?${q.toString()}`;
 }
 
-function Details({ run, base, parent, children, run_link }: {
+/** Run details (folded under the phase panel): what the run line above doesn't already say. */
+function Details({ run, base, parent, run_link }: {
 	run: Run_row;
 	base: string;
 	parent?: Run_parent | null;
-	children?: Run_child[];
 	run_link: (r: { run_id: string; org_slug: string | null; realm_slug: string | null }) => string;
 }) {
-	const row = use_row_open();
 	const inputs = parse_inputs(run.inputs);
 	const labels = Object.entries(run.context_labels ?? {}).filter(([k]) => k !== 'external_url');
-	const kids = children ?? [];
 	return (
 		<aside className="flex flex-col gap-3.5" aria-label="Run details">
-			<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
+			<section className="px-1">
 				<dl className="grid gap-3.5">
 					{parent ? (
 						<Field label="Spawned by">
@@ -416,13 +465,6 @@ function Details({ run, base, parent, children, run_link }: {
 						</Field>
 					) : null}
 					<Field label="Run ID"><Copy_value value={run.run_id} label="run id" /></Field>
-					{run.team_label || run.team_id ? (
-						<Field label="Team">
-							<span className="g-mono">{run.team_label || run.team_id}</span>
-							{run.team_version ? <span className="g-mono text-[var(--g-ink-3)]"> v{run.team_version}</span> : null}
-							{team_yaml_href(run) ? <Link to={team_yaml_href(run)!} className="ml-2 text-[12px] text-[var(--g-acc)] hover:underline" data-testid="run-team-yaml">View YAML</Link> : null}
-						</Field>
-					) : null}
 					<Field label="Workspace">
 						{run.workspace_id ? (
 							<Link to={`${base}/workspaces/${encodeURIComponent(run.workspace_id)}`} className="hover:underline">{run.workspace_name || run.workspace_id}</Link>
@@ -438,13 +480,6 @@ function Details({ run, base, parent, children, run_link }: {
 							<span className="text-[var(--g-ink-3)]" title="This run did run on a daemon, but that daemon is no longer registered with CliqHub, so its name isn't known.">daemon no longer registered</span>
 						) : <span className="text-[var(--g-warn-text)]">no daemon assigned</span>}
 					</Field>
-					<div className="grid grid-cols-2 gap-3">
-						<Field label="Started"><span title={run.started_at ? format_datetime(run.started_at) : undefined}>{run.started_at ? relative_time(run.started_at) : '—'}</span></Field>
-						<Field label="Duration">
-							<span className="g-mono">{run.started_at ? format_duration((run.completed_at ?? Date.now()) - run.started_at) : '—'}</span>
-						</Field>
-					</div>
-					{run.completed_at ? <Field label="Finished"><span title={format_datetime(run.completed_at)}>{relative_time(run.completed_at)}</span></Field> : null}
 					{run.external_id ? (
 						<Field label="External">
 							{run.context_labels?.external_url ? (
@@ -454,25 +489,6 @@ function Details({ run, base, parent, children, run_link }: {
 					) : null}
 				</dl>
 			</section>
-			{kids.length ? (
-				<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4" aria-label="Sub-team runs">
-					<h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Sub-team runs</h3>
-					<ul className="mt-2 grid gap-2">
-						{kids.map((c) => (
-							<li key={c.run_id} {...row({ to: run_link(c) })} className={`-mx-1 min-w-0 rounded px-1 py-0.5 ${ROW_OPENS}`} data-testid="child-run">
-								<span className="flex min-w-0 items-center gap-1.5 text-[12.5px]">
-									<State_dot state={c.state} pulse={is_live_state(c.state)} />
-									<Link to={run_link(c)} className="min-w-0 truncate font-semibold hover:underline">{c.run_name || c.run_id}</Link>
-									<span className="ml-auto shrink-0"><State_pill state={c.state} /></span>
-								</span>
-								<span className="mt-0.5 block truncate pl-[18px] text-[11.5px] text-[var(--g-ink-3)]">
-									{[c.parent_phase ? `phase ${c.parent_phase}` : null, c.team_label, c.started_at ? relative_time(c.started_at) : null].filter(Boolean).join(' · ')}
-								</span>
-							</li>
-						))}
-					</ul>
-				</section>
-			) : null}
 			{inputs || labels.length ? (
 				<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
 					<h3 className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{inputs ? 'Inputs & labels' : 'Labels'}</h3>
@@ -580,7 +596,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const { run } = data;
 	const base = realm_path(org_slug, slug);
 	const [search, set_search] = useSearchParams();
-	const tab: Tab = ((v) => (TABS.includes(v as Tab) ? v as Tab : 'phases'))(search.get('tab'));
+	const tab: Tab = ((v) => (TABS.includes(v as Tab) ? v as Tab : OLD_TAB[v ?? ''] ?? 'phases'))(search.get('tab'));
 	const set_tab = useCallback((t: Tab) => {
 		set_search((prev) => {
 			const p = new URLSearchParams(prev);
@@ -598,8 +614,8 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const [run_again, set_run_again] = useState(false);
 	const telemetry_read = use_bff_read<Run_telemetry_data>('/v1/run_telemetry/get', { run_id: run.run_id }, { refresh_ms: is_live_state(run.state) ? 8_000 : 0, fallback_error: 'Could not load telemetry.' });
 	const telemetry = telemetry_read.data;
-	const [selected, set_selected] = useState<Telemetry_bar | null>(null);
-	const [focus, set_focus] = useState<string | null>(null);
+	// The phase whose output and artifacts show on the right (null: follow the run — running, waiting or failed phase).
+	const [phase_pick, set_phase_pick] = useState<string | null>(null);
 	const [log_q, set_log_q] = useState<string | null>(null);
 	// Phases tab: the sub-team tree (open runs, selected step). Failed / live sub-teams start open.
 	const [step, set_step] = useState<Tree_step | null>(null);
@@ -616,7 +632,6 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 		set_panel('resume');
 		set_search((prev) => { const p = new URLSearchParams(prev); p.delete('resume'); return p; }, { replace: true });
 	}, []); // eslint-disable-line react-hooks/exhaustive-deps
-	const open_in_timeline = (phase: string) => { set_focus(null); setTimeout(() => set_focus(phase), 0); set_tab('timeline'); };
 
 	const phases = useMemo(() => sort_phases_workflow(data.phases.map((p) => ({ ...p, agent_name: p.agent })) as unknown as Parameters<typeof sort_phases_workflow>[0]) as unknown as Run_detail_phase[], [data.phases]);
 	const phase_outputs = useMemo(() => data.phase_outputs ?? [], [data.phase_outputs]);
@@ -638,6 +653,14 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	}, [children]);
 	const other_run_link = useCallback((r: { run_id: string; org_slug: string | null; realm_slug: string | null }) => other_run_href(r, org_slug, slug), [org_slug, slug]);
 	const live = is_live_state(run.state);
+	const tel_by_phase = useMemo(() => new Map((telemetry?.phases ?? []).map((x) => [x.name, x])), [telemetry]);
+	const phase_sel = phase_pick ?? (phases.find((p) => p.status === 'running') ?? phases.find((p) => p.status === 'awaiting_input') ?? phases.find((p) => p.status === 'failed' || p.status === 'crashed') ?? null)?.phase ?? null;
+	const pick_phase = (name: string) => { set_step(null); set_phase_pick(name); };
+	// Workflow view: the run's phases on the team's graph, coloured by how each went.
+	const graph_phases = useMemo<Team_phase[]>(() => (telemetry?.phases ?? []).map((x) => ({
+		name: x.name, type: x.type ?? (x.sub_runs?.length ? 'team' : 'standard'), agent: null, depends_on: x.depends_on, review: x.kind === 'human' || x.kind === 'gate',
+		reviewers: null, max_iterations: null, commands: [], sources: [], targets: [], team: null, role: null, support: false,
+	})), [telemetry]);
 	const awaiting = run.state === 'awaiting_input';
 	const failed = run.state === 'failed' || run.state === 'crashed';
 	const completed = run.state === 'completed';
@@ -708,21 +731,11 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 						{sub_team_name && run.run_name ? <span className="g-mono text-[13px] text-[var(--g-ink-3)]">{run.run_name}</span> : null}
 						<State_pill state={run.state} />
 						<Origin_badge origin={run.origin} />
-						{children.length ? (
-							<span className="flex flex-wrap items-center gap-1.5" data-testid="sub-team-chips">
-								<span className="text-[11.5px] text-[var(--g-ink-3)]">Sub-team runs</span>
-								{children.map((c) => (
-									<Link key={c.run_id} to={other_run_link(c)} title={c.run_name ?? undefined} className="inline-flex items-center gap-1.5 rounded-md border border-[var(--g-line)] px-2 py-0.5 text-[12px] hover:bg-[var(--g-soft)]">
-										<State_dot state={c.state} pulse={is_live_state(c.state)} />
-										<span className="g-mono font-semibold">{(c.team_label ?? c.run_name ?? c.run_id).replace(/^@[^/]+\//, '')}</span>
-										<span className="text-[var(--g-ink-3)]">{c.state}</span>
-									</Link>
-								))}
-							</span>
-						) : null}
 					</div>
-					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">
-						{[run.team_label || run.team_id, run.team_version ? `v${run.team_version}` : null, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null].filter(Boolean).join(' · ')}
+					{/* Everything about the run, once: team and version, when, how long, what it cost. */}
+					<p className="mt-1 flex flex-wrap items-center gap-x-1 text-[12.5px] text-[var(--g-ink-3)]" data-testid="run-meta">
+						<span>{[run.team_label || run.team_id, run.team_version ? `v${run.team_version}` : null, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null, run.started_at ? `${live ? 'running for' : 'took'} ${format_duration((run.completed_at ?? Date.now()) - run.started_at)}` : null, telemetry?.totals.cost_usd != null ? fmt_usd(telemetry.totals.cost_usd) : null, telemetry?.totals.tokens_in ? `${fmt_count(telemetry.totals.tokens_in)} in · ${fmt_count(telemetry.totals.tokens_out)} out` : null].filter(Boolean).join(' · ')}</span>
+						{workflow_href(run) ? <Link to={workflow_href(run)!} className="ml-1 text-[var(--g-acc)] hover:underline" data-testid="run-workflow-link">View workflow ↗</Link> : null}
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-2" role="group" aria-label="Run actions">
@@ -739,7 +752,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					{can_resume ? (
 						pending?.endpoint === '/v1/resume'
 							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('resume')}>Resume pending…</button>
-							: <button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.run.ok} title={gates.run.reason ?? undefined} onClick={() => { set_resume_initial(null); set_panel((p) => (p === 'resume' ? null : 'resume')); }}>Resume from…</button>
+							: <button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.run.ok} title={gates.run.reason ?? undefined} onClick={() => { set_resume_initial(data.failure?.resume_from ?? null); set_panel((p) => (p === 'resume' ? null : 'resume')); }}>Resume from…</button>
 					) : null}
 					{(failed || completed || state_lost) && again_target ? (
 						<button type="button" className={`${BTN} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.run.ok} onClick={() => { set_panel(null); set_run_again(true); }} title={gates.run.reason ?? 'Start a fresh run — inputs are copied from this run'}>Run again</button>
@@ -807,85 +820,82 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 				<Run_failure_card
 					failure={data.failure}
 					run_href={(id) => `${base}/runs/${id}`}
-					on_resume={(phase) => { set_resume_initial(phase); set_panel('resume'); }}
-					on_logs={() => { set_log_q(null); set_tab('logs'); }}
 					can_run={gates.run.ok}
 				/>
 			) : run.error ? (
 				<div className="g-mono whitespace-pre-wrap break-words rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-bad-soft)] px-4 py-3 text-[12px] text-[var(--g-ink)]" data-testid="run-error">{run.error}</div>
 			) : null}
 
-			<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-				<div className="flex min-w-0 flex-col gap-2">
-					{telemetry || telemetry_read.status !== 'error' ? <Summary_strip t={telemetry} /> : null}
-					{telemetry_read.status === 'error' && !telemetry ? <p role="status" className="-mt-1 text-[11.5px] text-[var(--g-ink-3)]">{telemetry_read.error}</p> : null}
-					<div role="tablist" aria-label="Run views" className="flex w-fit gap-1 rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] p-1">
-						{TABS.map((t) => (
-							<button
-								key={t}
-								type="button"
-								role="tab"
-								aria-selected={tab === t}
-								onClick={() => set_tab(t)}
-								className={`rounded-md px-3 py-1 text-[12.5px] font-semibold capitalize ${tab === t ? 'bg-[var(--g-soft)] text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}
-							>
-								{t === 'phases' ? `Phases ${phases.length}` : TAB_LABEL[t]}
-							</button>
-						))}
+			<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+				<section className="min-w-0 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Run">
+					<div className="flex flex-wrap items-center gap-2 border-b border-[var(--g-line)] px-4 py-2">
+						<h2 className="text-[14px] font-semibold">Phases <span className="font-normal text-[var(--g-ink-3)]">{phases.length}</span></h2>
+						{tab === 'phases' && sub_runs_all.length ? (
+							<span className="flex gap-3 text-[12px] text-[var(--g-ink-3)]">
+								<button type="button" onClick={() => set_tree_open(all_sub_runs(sub_runs_all))} className="hover:text-[var(--g-ink)]">Expand all</button>
+								<button type="button" onClick={() => set_tree_open(new Set())} className="hover:text-[var(--g-ink)]">Collapse all</button>
+							</span>
+						) : null}
+						<div role="tablist" aria-label="Run views" className="ml-auto flex gap-1 rounded-lg border border-[var(--g-line)] p-0.5">
+							{TABS.map((t) => (
+								<button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => set_tab(t)} className={`rounded-md px-2.5 py-0.5 text-[12px] font-semibold ${tab === t ? 'bg-[var(--g-soft)] text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
+									{TAB_LABEL[t]}
+								</button>
+							))}
+						</div>
 					</div>
+					{telemetry_read.status === 'error' && !telemetry ? <p role="status" className="px-4 pt-2 text-[11.5px] text-[var(--g-ink-3)]">{telemetry_read.error}</p> : null}
 					<div role="tabpanel">
 						{tab === 'phases' ? (
-							<section className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
-								{phase_outputs.length || sub_runs_all.length ? (
-									<div className="flex justify-end gap-3 border-b border-[var(--g-line-2)] px-4 py-1.5 text-[12px] text-[var(--g-ink-3)]">
-										{sub_runs_all.length ? (
-											<>
-												<button type="button" onClick={() => set_tree_open(all_sub_runs(sub_runs_all))} className="hover:text-[var(--g-ink)]">Expand all</button>
-												<button type="button" onClick={() => set_tree_open(new Set())} className="hover:text-[var(--g-ink)]">Collapse all</button>
-											</>
-										) : null}
-										{phase_outputs.length ? (
-											<button type="button" onClick={() => download_raw_outputs(run.run_id, phase_outputs)} className="hover:text-[var(--g-ink)]">
-												Download raw outputs
-											</button>
-										) : null}
-									</div>
-								) : null}
-								<Phase_list
-									phases={phases}
-									run_state={run.state}
-									telemetry={telemetry}
-									on_open={open_in_timeline}
-									outputs={outputs_by_phase}
-									handoffs={handoffs_by_phase}
-									run_link={(id) => `${base}/runs/${encodeURIComponent(id)}`}
-									children={children_by_phase}
-									child_link={other_run_link}
-									resumed={(data.attempts?.length ?? 0) > 1}
-									on_resume_from={can_resume && gates.run.ok && pending?.endpoint !== '/v1/resume'
-										? (phase) => { set_resume_initial(phase); set_panel('resume'); }
-										: null}
-									tree={{ open: tree_open_now, toggle: toggle_tree, selected: step ? { run_id: step.run.run_id, phase: step.phase.name } : null, on_select: set_step, run_href: (id) => `${base}/runs/${encodeURIComponent(id)}` }}
-								/>
-							</section>
-						) : tab === 'timeline' || tab === 'usage' || tab === 'dag' ? (
-							!telemetry ? <div className="h-[320px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading telemetry" />
-								: tab === 'timeline' ? <Timeline t={telemetry} selected={selected?.id ?? null} on_select={set_selected} focus_phase={focus} attempts={data.attempts} run_href={(id) => `${base}/runs/${encodeURIComponent(id)}`} />
-								: tab === 'usage' ? <Usage t={telemetry} />
-								: <Dag t={telemetry} on_open={open_in_timeline} />
+							<Phase_list
+								phases={phases}
+								run_state={run.state}
+								telemetry={telemetry}
+								on_open={pick_phase}
+								selected={step ? null : phase_sel}
+								outputs={outputs_by_phase}
+								run_link={(id) => `${base}/runs/${encodeURIComponent(id)}`}
+								children={children_by_phase}
+								child_link={other_run_link}
+								resumed={(data.attempts?.length ?? 0) > 1}
+								on_resume_from={can_resume && gates.run.ok && pending?.endpoint !== '/v1/resume'
+									? (phase) => { set_resume_initial(phase); set_panel('resume'); }
+									: null}
+								tree={{ open: tree_open_now, toggle: toggle_tree, selected: step ? { run_id: step.run.run_id, phase: step.phase.name } : null, on_select: set_step, run_href: (id) => `${base}/runs/${encodeURIComponent(id)}` }}
+							/>
+						) : tab === 'workflow' ? (
+							!telemetry ? <div className="h-[260px] animate-pulse" aria-busy="true" aria-label="Loading the workflow" />
+								: <div className="px-2 py-3" data-testid="run-workflow"><Workflow_graph phases={graph_phases} statuses={Object.fromEntries(phases.map((p) => [p.phase, p.status]))} selected={phase_sel} on_select={pick_phase} label="Run workflow" /></div>
+						) : tab === 'usage' ? (
+							!telemetry ? <div className="h-[320px] animate-pulse" aria-busy="true" aria-label="Loading usage" /> : <div className="p-3"><Usage t={telemetry} /></div>
 						) : data.realm ? (
 							<div className="h-[560px]"><G_run_logs key={log_q ?? ''} run_id={run.run_id} realm_id={data.realm.id} live={live} initial_query={log_q ?? undefined} sub_runs={(data.children ?? []).map((c) => ({ run_id: c.run_id, label: (c.team_label ?? c.run_name ?? c.run_id).replace(/^@[^/]+\//, '') }))} /></div>
 						) : (
-							<p className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Logs are unavailable because this run’s realm couldn’t be loaded.</p>
+							<p className="px-4 py-6 text-[13px] text-[var(--g-ink-3)]">Logs are unavailable because this run’s realm couldn’t be loaded.</p>
 						)}
 					</div>
-					<G_run_artifacts artifacts={data.artifacts ?? []} status={data.sections.artifacts} />
+				</section>
+				<div className="flex min-w-0 flex-col gap-3">
+					{step
+						? <Step_details step={step} top={run.run_name || run.run_id} failure={data.failure ?? null} run_href={(id) => `${base}/runs/${encodeURIComponent(id)}`} on_close={() => set_step(null)} />
+						: phase_sel ? (
+							<Phase_panel
+								phase={phases.find((p) => p.phase === phase_sel) ?? null}
+								name={phase_sel}
+								tel={tel_by_phase.get(phase_sel)}
+								outputs={outputs_by_phase.get(phase_sel) ?? []}
+								handoffs={handoffs_by_phase.get(phase_sel) ?? []}
+								artifacts={(data.artifacts ?? []).filter((a) => a.phase === phase_sel)}
+								artifacts_status={data.sections.artifacts}
+								run_link={(id) => `${base}/runs/${encodeURIComponent(id)}`}
+								on_logs={() => { set_log_q(phase_sel); set_tab('logs'); }}
+							/>
+						) : <p className="rounded-[10px] border border-dashed border-[var(--g-line)] px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">Pick a phase to see its output and artifacts.</p>}
+					<details className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="run-details">
+						<summary className="cursor-pointer list-none px-4 py-2.5 text-[13px] font-semibold">Run details <span className="font-normal text-[var(--g-ink-3)]">· inputs, workspace, IDs</span></summary>
+						<div className="border-t border-[var(--g-line-2)] p-3"><Details run={run} base={base} parent={data.parent ?? null} run_link={other_run_link} /></div>
+					</details>
 				</div>
-				{tab === 'phases' && step
-					? <Step_details step={step} top={run.run_name || run.run_id} failure={data.failure ?? null} run_href={(id) => `${base}/runs/${encodeURIComponent(id)}`} on_close={() => set_step(null)} />
-					: tab === 'timeline' && selected && telemetry
-					? <Span_details bar={selected} t={telemetry} realm_id={data.realm?.id ?? null} on_close={() => set_selected(null)} on_logs={(q) => { set_log_q(q); set_tab('logs'); }} />
-					: <Details run={run} base={base} parent={data.parent ?? null} children={children} run_link={other_run_link} />}
 			</div>
 
 			{run_again && again_target && data.realm ? (

@@ -26,6 +26,7 @@ import {
 	tick_label,
 	tick_step,
 	time_scale,
+	type Time_scale,
 	type Agent_kind,
 	type Run_telemetry_data,
 	type Telemetry_bar,
@@ -89,16 +90,49 @@ export function Summary_strip({ t }: { t: Run_telemetry_data | null }) {
 	);
 }
 
-/** Phases tab: a time bar on the run clock + cost for one phase row. */
-export function Phase_clock({ p, t }: { p: Telemetry_phase | undefined; t: Run_telemetry_data | null }) {
+/** Every agent bar of the run, sub-teams included (the folded scale is built from all of them). */
+export function all_run_bars(t: Run_telemetry_data): Telemetry_bar[] {
+	const out: Telemetry_bar[] = [...t.bars];
+	const walk = (ps: Telemetry_phase[]) => { for (const p of ps) for (const r of p.sub_runs ?? []) { out.push(...r.bars); walk(r.phases); } };
+	walk(t.phases);
+	return out;
+}
+
+/** Folding only helps when agents did a fair share of the run; otherwise the wait *is* the run. */
+const MIN_WORK_SHARE = 0.15;
+
+/** The run's clock for the phase list: long stretches with no agent working (waiting on people) folded. */
+export function run_scale(t: Run_telemetry_data | null, now = Date.now()): Time_scale | null {
 	const a = t?.window.start_ms; const b = t?.window.end_ms;
-	if (!p || a == null || b == null || b <= a || p.start_ms == null) return <span className="block w-[200px]" />;
-	const end = p.end_ms ?? b;
-	const left = ((p.start_ms - a) / (b - a)) * 100;
-	const width = Math.max(0.8, ((end - p.start_ms) / (b - a)) * 100);
+	if (!t || a == null || b == null || b <= a) return null;
+	const work = all_run_bars(t).filter((x) => x.kind !== 'human').map((x): [number, number] => [x.start_ms, x.end_ms ?? now]);
+	const folded = time_scale(a, b, work, true);
+	const hidden = folded.gaps.reduce((n, g) => n + (g.end_ms - g.start_ms), 0);
+	// A short script then a 30-minute review: fold that and the script fills the bar. Keep it linear.
+	return (b - a - hidden) / (b - a) >= MIN_WORK_SHARE ? folded : time_scale(a, b, work, false);
+}
+
+/**
+ * Phase list: this phase on the run's clock. One segment per agent run (rounds show as
+ * separate segments), coloured by kind, waiting on people hatched; folded waits marked.
+ */
+export function Phase_clock({ p, t, scale, now = Date.now() }: { p: Telemetry_phase | undefined; t: Run_telemetry_data | null; scale?: Time_scale | null; now?: number }) {
+	const sc = scale ?? run_scale(t, now);
+	if (!p || !t || !sc || p.start_ms == null) return <span className="block w-[200px]" />;
+	const pct = (ms: number) => Math.min(100, Math.max(0, sc.x(ms) * 100));
+	const own = t.bars.filter((x) => x.phase === p.name);
+	const sub = (p.sub_runs ?? []).flatMap((r) => [r.start_ms ?? null, r.end_ms ?? null]).filter((x): x is number => x != null);
+	const segs = own.length
+		? own.map((x) => ({ id: x.id, s: x.start_ms, e: x.end_ms ?? now, kind: x.kind }))
+		: [{ id: 'all', s: p.start_ms, e: p.end_ms ?? (sub.length ? Math.max(...sub) : now), kind: p.kind }];
 	return (
-		<span className="mt-1.5 block h-2.5 w-[200px] rounded-[3px] bg-[var(--g-soft)]" aria-hidden>
-			<i className="relative block h-full rounded-[3px]" style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%`, background: KIND_COLOR[p.kind], backgroundImage: p.kind === 'human' ? HATCH : undefined }} />
+		<span className="relative mt-1.5 block h-2.5 w-[200px] rounded-[3px] bg-[var(--g-soft)]" aria-hidden data-testid={`clock-${p.name}`}>
+			{segs.map((g) => {
+				const left = pct(g.s);
+				const width = Math.max(0.8, pct(g.e) - left);
+				return <i key={g.id} className="absolute top-0 block h-full rounded-[2px]" data-testid="clock-seg" style={{ left: `${left}%`, width: `${Math.min(width, 100 - left)}%`, background: KIND_COLOR[g.kind], backgroundImage: g.kind === 'human' ? HATCH : undefined, opacity: own.length ? 1 : 0.55 }} />;
+			})}
+			{sc.gaps.map((g) => <i key={g.start_ms} className="absolute -top-0.5 block h-[calc(100%+4px)] w-[3px] border-x border-dashed border-[var(--g-ink-3)] bg-[var(--g-panel)]" style={{ left: `${pct(g.start_ms)}%` }} title={`${fmt_ms(g.end_ms - g.start_ms)} with no agent working, folded`} data-testid="clock-gap" />)}
 		</span>
 	);
 }

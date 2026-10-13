@@ -88,53 +88,54 @@ describe('Graphite run detail', () => {
 		expect(other).toEqual([]);
 	});
 
-	it('always shows Files, with how agents publish them when the run has none', async () => {
+	it('the selected phase shows its artifacts; the failed phase is selected first; none → says so', async () => {
 		route_fetch(run_detail());
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No files in this run. Agents publish files with cliq-artifact submit');
+		const panel = screen.getByTestId('phase-panel');
+		expect(panel).toHaveTextContent('match');
+		expect(within(panel).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
+		// No separate Files section any more.
+		expect(screen.getAllByTestId('run-artifacts')).toHaveLength(1);
 	});
-
-	it('lists stored artifacts and downloads through artifacts/get_by_id', async () => {
+	it('a phase’s stored artifacts download through artifacts/get_by_id', async () => {
 		const open = vi.spyOn(window, 'open').mockReturnValue(null);
 		const spy = route_fetch(
-			run_detail({ artifacts: [{ artifact_id: 'a1', phase: 'report', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }),
+			run_detail({ artifacts: [{ artifact_id: 'a1', phase: 'fetch', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }),
 			{ '/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { download_url: 'https://r2.example/report.pdf?sig' } } }) },
 		);
 		render_page();
 		await ready();
-		const row = screen.getByTestId('artifact-row');
+		expect(screen.queryByTestId('artifact-row')).toBeNull(); // match is selected; the file is fetch's
+		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
+		const row = within(screen.getByTestId('phase-panel')).getByTestId('artifact-row');
 		expect(row).toHaveTextContent('report.pdf');
 		expect(row).toHaveTextContent('File · 2.0 KB · Weekly');
-		expect(screen.getByTestId('artifact-phase-report')).toContainElement(row);
 		fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }));
 		await waitFor(() => expect(open).toHaveBeenCalledWith('https://r2.example/report.pdf?sig', '_blank', 'noopener'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'a1' }]);
 	});
-
-	it('groups files and documents by phase (phase outputs stay on their phase): files download, documents read inline', async () => {
+	it('a phase’s artifacts: files download, documents read inline; its output record isn’t listed again', async () => {
 		const long = 'L'.repeat(2000);
 		const spy = route_fetch(
 			run_detail({ artifacts: [
-				{ artifact_id: 'rec:1', source: 'record', kind: 'output', content_preview: 'design done', phase: 'design', name: 'phase_output', description: null, mime_type: 'text/plain', size_bytes: 11, created_at: 1 },
-				{ artifact_id: 'rec:2', source: 'record', kind: 'chat_transcript', content_preview: long, phase: 'build', name: 'transcript', description: null, mime_type: 'text/plain', size_bytes: 9000, created_at: 2 },
-				{ artifact_id: 'a1', source: 'file', kind: 'file', content_preview: null, phase: 'build', name: 'app.zip', description: null, mime_type: 'application/zip', size_bytes: 4096, created_at: 3 },
+				{ artifact_id: 'rec:1', source: 'record', kind: 'output', content_preview: 'fetch done', phase: 'fetch', name: 'phase_output', description: null, mime_type: 'text/plain', size_bytes: 11, created_at: 1 },
+				{ artifact_id: 'rec:2', source: 'record', kind: 'chat_transcript', content_preview: long, phase: 'fetch', name: 'transcript', description: null, mime_type: 'text/plain', size_bytes: 9000, created_at: 2 },
+				{ artifact_id: 'a1', source: 'file', kind: 'file', content_preview: null, phase: 'fetch', name: 'app.zip', description: null, mime_type: 'application/zip', size_bytes: 4096, created_at: 3 },
 			] }),
 			{ '/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { content: 'the whole transcript' } } }) },
 		);
 		render_page();
 		await ready();
-		expect(screen.queryByTestId('artifact-phase-design')).toBeNull();
-		const build = screen.getByTestId('artifact-phase-build');
-		expect(within(build).getAllByTestId('artifact-row')).toHaveLength(2);
-		expect(within(build).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
-
-		fireEvent.click(within(build).getByRole('button', { name: 'Read transcript' }));
-		await waitFor(() => expect(within(build).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
+		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
+		const panel = screen.getByTestId('phase-panel');
+		expect(within(panel).getAllByTestId('artifact-row')).toHaveLength(2);
+		expect(within(panel).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
+		fireEvent.click(within(panel).getByRole('button', { name: 'Read transcript' }));
+		await waitFor(() => expect(within(panel).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
 	});
-
-	it('shows each phase output as a summary, opens it formatted, and keeps the raw output one click away', async () => {
+	it('a phase’s output: one line on its row; the formatted output (and raw) on the right when it’s selected', async () => {
 		const raw = JSON.stringify({ text: '## Exec Results\n\nFAIL fetch (exit 1)', data: { total: '1', failed: '1', results: [{ name: 'fetch', pass: 'false', exit_code: '1', duration_ms: '20' }] } });
 		route_fetch(run_detail({
 			phase_outputs: [{
@@ -149,20 +150,16 @@ describe('Graphite run detail', () => {
 		render_page();
 		await ready();
 		expect(screen.getByTestId('phase-output-summary')).toHaveTextContent('1 of 1 command failed');
-		expect(screen.queryByTestId('phase-output')).toBeNull();
-
-		fireEvent.click(screen.getByRole('button', { name: 'Show output of fetch' }));
+		expect(screen.queryByTestId('phase-output')).toBeNull(); // match is selected
+		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
 		const panel = screen.getByTestId('phase-output');
 		expect(within(panel).getByTestId('output-commands')).toHaveTextContent('exit 1');
 		expect(within(panel).getByTestId('output-handoffs')).toHaveTextContent('use the cached ledger');
-
 		fireEvent.click(within(panel).getByRole('button', { name: 'Raw' }));
 		expect(within(panel).getByTestId('output-raw')).toHaveTextContent('"exit_code": "1"');
-		expect(screen.getByRole('button', { name: 'Download raw outputs' })).toBeInTheDocument();
-		// Handoffs are on their phase, not in Files.
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('No files in this run.');
+		// The handoff is part of the output, not listed again as an artifact.
+		expect(within(screen.getByTestId('phase-panel')).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
 	});
-
 	it('links a sub-team phase to its sub-run', async () => {
 		route_fetch(run_detail({
 			phase_outputs: [{
@@ -175,26 +172,24 @@ describe('Graphite run detail', () => {
 		}));
 		render_page();
 		await ready();
-		fireEvent.click(screen.getByRole('button', { name: 'Show output of match' }));
 		expect(screen.getByRole('link', { name: 'open the sub-run' })).toHaveAttribute('href', expect.stringContaining('/runs/run-sub'));
 	});
-
-	it('says when files could not be loaded', async () => {
+	it('says when artifacts could not be loaded', async () => {
 		const d = run_detail({ partial: true });
 		d.sections.artifacts = { status: 'error', error: 'storage down' };
 		route_fetch(d);
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load files: storage down.');
+		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load artifacts: storage down.');
 	});
-
 	it('renders phases in workflow order with errors, the run error and details', async () => {
 		route_fetch(run_detail());
 		render_page();
 		await ready();
 		const rows = screen.getAllByTestId('phase-row');
 		expect(rows.map((r) => r.querySelector('.g-mono')?.textContent)).toEqual(['fetch', 'match']);
-		expect(screen.getByText('ledger timeout')).toBeInTheDocument();
+		expect(within(rows[1]).getByText('ledger timeout')).toBeInTheDocument();
+		expect(within(screen.getByTestId('phase-panel')).getByText('ledger timeout')).toBeInTheDocument(); // the failed phase is selected
 		expect(screen.getByTestId('run-error')).toHaveTextContent('Timeout talking to ledger');
 		expect(screen.getByRole('link', { name: 'ledger' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/workspaces/ws-1');
 		expect(screen.getByRole('link', { name: 'd-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d-1');
@@ -281,7 +276,7 @@ describe('Graphite run detail', () => {
 		expect(within(card).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/reviews/rv-1');
 	});
 
-	it('why it failed in this run: resume opens the panel at that phase; ?resume= does the same', async () => {
+	it('why it failed in this run: the header’s Resume opens at that phase (the card has no second Resume or Logs); ?resume= does the same', async () => {
 		route_fetch(run_detail({ failure: {
 			reason: 'permission', summary: 'Jira refused access', detail: 'jira: 401 Unauthorized', hint: 'Check the Jira connection or token this team uses has access, then resume.',
 			chain: [{ run_id: 'run-77', run_name: 'Nightly reconcile', team: '@measureone/recon', phase: 'fetch' }], resume_from: 'fetch', review: null,
@@ -289,7 +284,9 @@ describe('Graphite run detail', () => {
 		const { unmount } = render_page();
 		await ready();
 		expect(screen.getByTestId('failure-hint')).toHaveTextContent('Check the Jira connection');
-		fireEvent.click(screen.getByTestId('failure-resume'));
+		expect(screen.queryByTestId('failure-resume')).toBeNull();
+		expect(within(screen.getByTestId('run-failure')).queryByRole('button', { name: 'Logs' })).toBeNull();
+		fireEvent.click(screen.getByRole('button', { name: 'Resume from…' }));
 		expect(screen.getByTestId('resume-select')).toHaveValue('fetch');
 		unmount();
 		render_page('/o/measureone/realms/prod-us/runs/run-77?resume=fetch');
@@ -297,14 +294,12 @@ describe('Graphite run detail', () => {
 		expect(await screen.findByTestId('resume-select')).toHaveValue('fetch');
 		await waitFor(() => expect(screen.getByTestId('where')).not.toHaveTextContent('resume='));
 	});
-
-	it('a main run shows its sub-team runs by team in the header; a sub-team run leads with its team and a crumb back', async () => {
+	it('the header has no sub-team chips (the phases show them); a sub-team run leads with its team and a crumb back', async () => {
 		const child = { run_id: 'run-lld', run_name: 'solar-lilac-fox', team_label: '@measureone/design-lld', parent_phase: 'design', state: 'completed', started_at: Date.now(), completed_at: Date.now(), realm_slug: null, org_slug: null };
 		route_fetch(run_detail({ children: [child] }, { state: 'completed', error: null }));
 		const { unmount } = render_page();
 		await ready();
-		const chips = screen.getByTestId('sub-team-chips');
-		expect(within(chips).getByRole('link', { name: /design-lld\s*completed/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
+		expect(screen.queryByTestId('sub-team-chips')).toBeNull();
 		unmount();
 		vi.restoreAllMocks();
 		route_fetch(run_detail({ parent: { run_id: 'run-main', run_name: 'easy-carmine-spruce', phase: 'design', state: 'failed', realm_slug: null, org_slug: null } },
@@ -439,7 +434,7 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/runs/get_logs')[0]).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], offset: 0 });
 		fireEvent.click(screen.getByRole('button', { name: 'error' }));
 		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ levels: ['error'] }));
-		fireEvent.click(screen.getByRole('tab', { name: /Phases/ }));
+		fireEvent.click(screen.getByRole('tab', { name: 'List' }));
 		expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs');
 	});
 
@@ -571,7 +566,7 @@ describe('Graphite run detail — run history', () => {
 		expect(within(parent).getByRole('link', { name: 'kind-fern' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-kf');
 	});
 
-	it('lists the sub-team runs (failed ones too) in Details and on their phase, linked', async () => {
+	it('shows the sub-team runs (failed ones too) on the phase that started them, linked', async () => {
 		const now = Date.now();
 		route_fetch(run_detail({
 			phases: design_phases(),
@@ -579,16 +574,11 @@ describe('Graphite run detail — run history', () => {
 		}));
 		render_page();
 		await ready();
-		const kids = within(screen.getByRole('region', { name: 'Sub-team runs' })).getAllByTestId('child-run');
-		expect(kids).toHaveLength(1);
-		expect(kids[0]).toHaveTextContent('lld-1');
-		expect(kids[0]).toHaveTextContent('phase design · @measureone/design-lld');
-		expect(within(kids[0]).getByRole('link', { name: 'lld-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
+		expect(screen.queryByRole('region', { name: 'Sub-team runs' })).toBeNull();
 		const on_phase = screen.getByTestId('phase-child-run');
 		expect(within(on_phase).getByRole('link', { name: 'lld-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld');
 		expect(screen.queryByTestId('child-succeeded-later')).toBeNull();
 	});
-
 	it('flags a failed team phase whose sub-team run succeeded later, and offers resume from that phase', async () => {
 		const now = Date.now();
 		route_fetch(run_detail({
