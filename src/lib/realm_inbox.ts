@@ -39,7 +39,28 @@ export interface Realm_inbox_data {
 	counts: { reviews: number; awaiting_input: number; failed_24h: number; running: number };
 	sections: Record<'reviews' | 'awaiting_input' | 'failed' | 'running', Section_status>;
 	partial: boolean;
+	/** With `summary: true`: the realm page summary. */
+	summary?: Realm_summary;
 }
+
+/** `realm_inbox/get { summary: true }` — header details, teams, daemons and people of one realm. */
+export interface Realm_summary {
+	realm: { description: string | null; created_at: number | null; updated_at: number | null; created_by_username: string | null };
+	teams: { total: number; missing_agents: number; items: Array<{ scope: string | null; slug: string; label: string; version: string | null; missing_agents: string[] }> } | null;
+	daemons: { online: number; total: number; items: Array<{ id: string; name: string; status: string }>; truncated: boolean } | null;
+	people: { total: number; by_role: Record<string, number>; items: Array<{ member_id: string; username: string | null; role: string; is_you: boolean }>; pending_invites: number | null } | null;
+	you: { role: string | null; is_admin: boolean };
+}
+
+/** A realm's readiness: no daemon online beats missing agents. */
+export type Realm_health = 'ready' | 'missing_agents' | 'no_daemon';
+export function realm_health(online: number, teams_missing_agents: number): Realm_health {
+	if (online === 0) return 'no_daemon';
+	return teams_missing_agents > 0 ? 'missing_agents' : 'ready';
+}
+export const REALM_HEALTH_LABEL: Record<Realm_health, string> = {
+	ready: 'Ready', missing_agents: 'Missing agents', no_daemon: 'No daemon available',
+};
 
 export interface Run_detail_phase {
 	phase: string;

@@ -53,7 +53,14 @@ function subtitle(team: GeneratedTeam, name: string): string {
 	const p = team.phases.find((x) => x.name === name)!;
 	const k = kind_of(p);
 	if (k === 'gate') return `${p.commands?.length ?? 0} check${p.commands?.length === 1 ? '' : 's'}${p.max_iterations ? ` · ≤${p.max_iterations}` : ''}`;
-	if (k === 'human') return p.review?.reviewer ? `reviewer · ${p.review.reviewer}` : 'reviewer not set';
+	if (k === 'human') {
+		if (p.review?.reviewer) return `reviewer · ${p.review.reviewer}`;
+		// Hand-written team.yml: review.reviewers: [{ channels / users }].
+		const named = (p.review as { reviewers?: Array<{ channels?: unknown; users?: unknown }> } | undefined)?.reviewers
+			?.flatMap((r) => [r?.channels, r?.users].flatMap((v) => (Array.isArray(v) ? v : [])))
+			.filter((v): v is string => typeof v === 'string' && Boolean(v.trim())) ?? [];
+		return named.length ? `reviewer · ${named.join(', ')}` : 'reviewer not set';
+	}
 	if (k === 'script') return `${p.commands?.length ?? 0} command${p.commands?.length === 1 ? '' : 's'}`;
 	if (k === 'connector') return `${p.agent}${p.action ? ` · ${p.action}` : ''}`;
 	if (k === 'fetch') return `${(p.sources?.length ?? 0) + (p.target_entries?.length ?? 0)} URL${(p.sources?.length ?? 0) + (p.target_entries?.length ?? 0) === 1 ? '' : 's'}`;

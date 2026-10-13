@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
 import { layout_phases, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
 
-const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
+const auth = { scopes: [{ slug: 'sapan' }], user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
 vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: ({ scope, slug }: { scope: string; slug: string }) => <div role="dialog" aria-label="Run dialog">{scope}/{slug}</div> }));
@@ -16,7 +16,7 @@ import { Component as TeamPage } from '@/pages/teams/team_graphite_page';
 const ph = (name: string, type: string, over: Partial<Team_phase> = {}): Team_phase => ({ name, type, agent: type === 'standard' ? 'claude-code' : null, depends_on: [], review: false, reviewers: null, max_iterations: null, commands: [], sources: [], targets: [], team: null, role: null, support: false, ...over });
 const PHASES: Team_phase[] = [
 	ph('fetch-ticket', 'pull', { sources: ['jira://PROJ'] }),
-	ph('architect', 'standard', { depends_on: ['fetch-ticket'], review: true, reviewers: '$(inputs.reviewers)', role: 'You are the architect.\nNever write code.' }),
+	ph('architect', 'standard', { depends_on: ['fetch-ticket'], review: true, reviewers: '$(inputs.reviewers)', role: 'You are the architect.\nAsk {{inputs.reviewers}} before coding.' }),
 	ph('tests', 'standard', { depends_on: ['architect'], agent: 'cursor' }),
 	ph('security-scan', 'standard', { depends_on: ['architect'] }),
 	ph('implement', 'standard', { depends_on: ['tests'], agent: 'cursor', role: 'Make tests pass.' }),
@@ -46,12 +46,28 @@ const HEADER = {
 	author: 'sapan', listed: true, tags: [], can_edit: true, can_delete: true, can_toggle_listing: true,
 };
 const INSTALLS = list_data().items[0].installs;
+const INPUTS = [{ name: 'ticket', description: 'Jira key', required: true, default: null }, { name: 'reviewers', description: 'Who reviews the design', required: false, default: null }];
+/** fetch-ticket uses {{inputs.ticket}}; architect's role brief uses {{inputs.reviewers}} (see PHASES). */
+const TEAM_YML = [
+	'name: feature-dev-js',
+	'inputs:',
+	'  - name: ticket',
+	'  - name: reviewers',
+	'phases:',
+	'  - name: fetch-ticket',
+	'    type: pull',
+	'    sources: ["jira://{{inputs.ticket}}"]',
+	'  - name: architect',
+	'    type: standard',
+	'  - name: implement',
+	'    type: standard',
+].join('\n');
 const RUN = { run_id: 'run-1843', run_name: 'PROJ-491', team: '@measureone/feature-dev-js', state: 'running', current_phase: 'implement', daemon_id: 'd1', started_at: Date.now() - 60000, completed_at: null, updated_at: Date.now(), error: null, realm_id: 'r-prod', realm_slug: 'prod-us', org_slug: 'measureone' };
 
 function page_data(view: Team_view, over: Partial<Team_page_data> = {}): Team_page_data {
 	const base: Team_page_data = { team: HEADER, counts: { phases: 7, versions: 2, runs: 142 }, view, partial: false };
 	const by = ({
-		overview: { overview: { phases: PHASES, support: SUPPORT, inputs: [{ name: 'ticket', description: 'Jira key', required: true, default: null }], agents: ['claude-code', 'cursor'], latest: HEADER.versions[0], installs: INSTALLS } },
+		overview: { overview: { phases: PHASES, support: SUPPORT, inputs: INPUTS, agents: ['claude-code', 'cursor'], latest: HEADER.versions[0], installs: INSTALLS }, files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: TEAM_YML }, { path: 'roles/architect.md', kind: 'md' as const, content: 'You are the architect.' }] } },
 		workflow: { workflow: { phases: PHASES, support: SUPPORT, recent_runs: [RUN], overlay: { run: RUN, version: '1.4.2', phases: null, statuses: { 'fetch-ticket': 'completed', architect: 'completed', implement: 'running' } } } },
 		files: { files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: 'name: feature-dev-js\nphases:\n  - name: architect' }], } },
 		runs: { runs: { items: [RUN], total: 142, offset: 0, limit: 25, counts: { all: 142, running: 1, awaiting_input: 2, failed_7d: 3 }, realms: [{ id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' }] } },
@@ -184,23 +200,6 @@ describe('Build › Teams list', () => {
 describe('Team page', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('overview: one read, grouped tabs with counts, graph + inputs + where it runs', async () => {
-		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js');
-		await screen.findByRole('group', { name: 'Team workflow' });
-		const reads = calls.filter((c) => c.url === '/v1/team_page/get');
-		expect(reads).toHaveLength(1);
-		expect(reads[0]!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev-js', view: 'overview' });
-		const nav = screen.getByRole('navigation', { name: 'Team' });
-		expect(within(nav).getByRole('button', { name: /Workflow\s*7/ })).toBeInTheDocument();
-		expect(within(nav).getByRole('button', { name: /Runs\s*142/ })).toBeInTheDocument();
-		expect(within(nav).getByRole('button', { name: 'Settings' })).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /architect, agent, human review/ })).toBeInTheDocument();
-		expect(document.querySelector('[data-loop="check->implement"]')).not.toBeNull();
-		expect(screen.getByText('ticket')).toBeInTheDocument();
-		expect(screen.getByText('What’s new in 1.4.2')).toBeInTheDocument();
-	});
-
 	it('phase kinds follow the builder model (type + agent)', () => {
 		expect(phase_kind(ph('review', 'gate', { agent: 'hug' })).label).toBe('human review');
 		expect(phase_kind(ph('check', 'gate', { agent: 'claude-code' })).label).toBe('gate');
@@ -212,145 +211,260 @@ describe('Team page', () => {
 		expect(phase_subtitle(ph('run', 'standard', { agent: 'exec', commands: ['a', 'b'] }))).toBe('2 commands');
 	});
 
-	it('a human review phase is its own kind: pink node, reviewers and outcomes, no REVIEW badge', async () => {
-		const hug = ph('design-review', 'gate', { agent: 'hug', depends_on: ['architect'], reviewers: '$(inputs.reviewers)' });
-		const phases = [...PHASES.slice(0, 2), hug, ...PHASES.slice(2).map((p) => (p.name === 'tests' || p.name === 'security-scan' ? { ...p, depends_on: ['design-review'] } : p))].map((p) => (p.name === 'architect' ? { ...p, review: false, reviewers: null } : p));
-		route_fetch((v) => (v === 'workflow' ? { workflow: { phases, support: [], recent_runs: [], overlay: null } } : {}));
-		render_at('/teams/measureone/feature-dev-js?tab=workflow&run=none');
-		fireEvent.click(await screen.findByRole('button', { name: /^design-review, human review/ }));
-		const insp = await screen.findByTestId('phase-inspector');
-		expect(within(insp).getByText('$(inputs.reviewers)')).toBeInTheDocument();
-		expect(within(insp).getByText('Outcomes')).toBeInTheDocument();
-		expect(document.querySelector('[data-phase="design-review"]')!.textContent).not.toContain('REVIEW');
-	});
-
-	it('clicking a phase opens the workflow tab with it selected; inspector adapts to the phase type', async () => {
+	it('one page, one read: header actions, workflow, inputs, versions, danger zone — no tabs', async () => {
 		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js');
-		fireEvent.click(await screen.findByRole('button', { name: /architect, agent/ }));
-		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('tab=workflow'));
-		const insp = await screen.findByTestId('phase-inspector');
-		expect(calls.at(-1)!.body).toMatchObject({ view: 'workflow', run_id: 'latest' });
-		expect(within(insp).getByTestId('role-brief')).toHaveTextContent('You are the architect.');
-		expect(within(insp).getByText('Human review')).toBeInTheDocument();
-		expect(within(insp).getByText(/In PROJ-491/)).toBeInTheDocument();
-		// overlay dots
-		expect(document.querySelector('[data-phase="implement"] [data-status="running"]')).not.toBeNull();
-		// gate: no role, checks + verdicts
-		fireEvent.click(screen.getByRole('button', { name: /^check, gate/ }));
-		const gate = await screen.findByTestId('phase-inspector');
-		await waitFor(() => expect(within(gate).queryByTestId('role-brief')).toBeNull());
-		expect(within(gate).getByText(/\$ npm test/)).toBeInTheDocument();
-		expect(within(gate).getByText('Verdicts')).toBeInTheDocument();
-		// legacy pull type reads as a connector: sources, no role
-		fireEvent.click(screen.getByRole('button', { name: /^fetch-ticket, connector/ }));
-		await waitFor(() => expect(within(screen.getByTestId('phase-inspector')).getByText('jira://PROJ')).toBeInTheDocument());
-		// Plain = no overlay requested
-		fireEvent.change(screen.getByLabelText('Overlay a run'), { target: { value: 'none' } });
-		await waitFor(() => expect(calls.at(-1)!.body).not.toHaveProperty('run_id'));
-	});
-
-	it('runs tab: state chips + realm filter go to the BFF; rows link to the run', async () => {
-		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js?tab=runs');
-		const row = await screen.findByTestId('run-run-1843');
-		expect(calls.at(-1)!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev-js', view: 'runs', limit: 25, offset: 0 });
-		expect(within(row).getByRole('link', { name: 'PROJ-491' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1843');
-		fireEvent.click(screen.getByRole('button', { name: /Failed · 7d\s*3/ }));
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ view: 'runs', state: 'failed' }));
-		fireEvent.change(screen.getByLabelText('Realm'), { target: { value: 'r-prod' } });
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ realm_id: 'r-prod', state: 'failed' }));
-	});
-
-	it('installs tab: upgrade a realm that is behind, uninstall after confirm', async () => {
-		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js?tab=installs');
-		const stg = await screen.findByTestId('install-staging');
-		fireEvent.click(within(stg).getByRole('button', { name: 'Upgrade to 1.4.2' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ realm_id: 'r-stage', scope: 'measureone', slug: 'feature-dev-js' }));
-		const prod = screen.getByTestId('install-prod-us');
-		fireEvent.click(within(prod).getByRole('button', { name: 'Uninstall' }));
-		fireEvent.click(within(screen.getByTestId('install-prod-us')).getByRole('button', { name: 'Uninstall' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/remove_team')?.body).toEqual({ realm_id: 'r-prod', scope: 'measureone', slug: 'feature-dev-js' }));
-	});
-
-	it('versions tab: timeline + phase diff; compare pickers go to the BFF', async () => {
-		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js?tab=versions');
-		expect(await screen.findByTestId('version-change')).toHaveTextContent('security-scan');
-		expect(within(screen.getByTestId('version-1.4.2')).getByText('latest')).toBeInTheDocument();
-		fireEvent.change(screen.getByLabelText('Compare to'), { target: { value: '1.3.0' } });
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ view: 'versions', compare_to: '1.3.0' }));
-	});
-
-	it('YAML: the header opens team.yml; the outline and Show in YAML highlight a phase; phases fold', async () => {
-		const yml = 'name: hello-world\ninputs:\n  - name: name\n  - name: reviewers\nphases:\n  - name: greet\n    agent: exec\n  - name: human-review\n    type: gate\n    agent: hug\n  - name: done\n    agent: exec';
-		route_fetch((v) => (v === 'files' ? { files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: yml }, { path: 'README.md', kind: 'md' as const, content: '# hi' }] } } : {}));
-		render_at('/teams/measureone/feature-dev-js?tab=workflow&run=none');
-		fireEvent.click(await screen.findByTestId('view-yaml'));
-		await waitFor(() => expect(new URLSearchParams(screen.getByTestId('loc').textContent!.split('?')[1])).toEqual(new URLSearchParams('tab=files&file=team.yml')));
-		expect(await screen.findByTestId('file-view')).toHaveTextContent('name: hello-world');
-		expect(screen.getByRole('button', { name: /^YAML/ })).toHaveAttribute('aria-current', 'page');
-		const outline = screen.getByTestId('yaml-outline');
-		expect(within(outline).getAllByRole('button').map((b) => b.textContent)).toEqual(['name', 'inputs', 'name', 'reviewers', 'phases', 'greet', 'human-review', 'done']);
-		fireEvent.click(within(outline).getByRole('button', { name: 'human-review' }));
-		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('at=human-review'));
-		const hl = [...screen.getByTestId('file-view').querySelectorAll('[data-line]')].filter((el) => el.className.includes('g-acc-soft')).map((el) => el.getAttribute('data-line'));
-		expect(hl).toEqual(['7', '8', '9']);
-		fireEvent.click(screen.getByRole('button', { name: 'Fold greet' }));
-		expect(screen.getByTestId('file-view')).toHaveTextContent('… 1 more line');
-		expect(screen.getByTestId('file-view')).not.toHaveTextContent('agent: execname: human-review');
-	});
-
-	it('Workflow: a phase has Show in YAML, which opens team.yml at that phase', async () => {
-		route_fetch((v) => (v === 'files' ? { files: { files: [{ path: 'team.yml', kind: 'yaml' as const, content: 'name: x\nphases:\n  - name: architect\n    agent: cursor' }] } } : {}));
-		render_at('/teams/measureone/feature-dev-js?tab=workflow&run=none');
-		fireEvent.click(await screen.findByRole('button', { name: /^architect/ }));
-		fireEvent.click(within(await screen.findByTestId('phase-inspector')).getByTestId('show-in-yaml'));
-		await waitFor(() => expect(new URLSearchParams(screen.getByTestId('loc').textContent!.split('?')[1])).toEqual(new URLSearchParams('tab=files&file=team.yml&at=architect')));
-	});
-
-	it('files tab renders the file; settings rename is one write and moves the URL', async () => {
-		const calls = route_fetch();
-		render_at('/teams/measureone/feature-dev-js?tab=files');
-		expect(await screen.findByTestId('file-view')).toHaveTextContent('name: feature-dev-js');
-		fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
-		const input = await screen.findByLabelText('New name');
-		fireEvent.change(input, { target: { value: 'feature-dev' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/rename')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone', new_name: 'feature-dev' }));
-		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/teams/measureone/feature-dev?tab=settings'));
-	});
-
-	it('no settings tab without edit/delete rights; Open in Builder fetches the version then navigates', async () => {
-		route_fetch(() => ({ team: { ...HEADER, can_edit: false, can_delete: false } }));
 		render_at('/teams/measureone/feature-dev-js');
 		await screen.findByRole('group', { name: 'Team workflow' });
-		expect(within(screen.getByRole('navigation', { name: 'Team' })).queryByRole('button', { name: 'Settings' })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Open in Builder' })).toBeNull();
-		const calls = (globalThis.fetch as unknown as { mock: { calls: Array<[string, RequestInit]> } }).mock.calls;
-		fireEvent.click(screen.getByRole('button', { name: 'Fork' }));
-		// The version is read on click (an action, not a view read); the Builder hand-off uses sessionStorage.
-		await waitFor(() => expect(calls.some(([u, init]) => u === '/v1/teams/get_by_id' && JSON.parse(String(init.body)).name === 'feature-dev-js')).toBe(true));
+		const reads = calls.filter((c) => c.url === '/v1/team_page/get');
+		expect(reads).toHaveLength(1);
+		expect(reads[0]!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev-js', view: 'overview' });
+		expect(screen.queryByRole('navigation', { name: 'Team' })).toBeNull();
+		for (const name of [/Fork/, /^Edit$/, /Install ▾/]) expect(screen.getByRole('button', { name })).toBeInTheDocument();
+		for (const name of [/^Run/, /View YAML/, /Open in Builder/, /Compare/]) expect(screen.queryByRole('button', { name })).toBeNull();
+		expect(screen.getByTestId('inputs')).toHaveTextContent('ticket');
+		expect(within(screen.getByTestId('versions')).getByTestId('version-1.4.2')).toHaveTextContent('latest');
+		expect(within(screen.getByTestId('danger-zone')).getByRole('button', { name: 'Unpublish…' })).toBeInTheDocument();
+		expect(within(screen.getByTestId('danger-zone')).getByRole('button', { name: 'Delete team…' })).toBeInTheDocument();
+		// No runs, installs list or rename on this page.
+		expect(screen.queryByText(/Runs here|Manage installs|Rename/)).toBeNull();
 	});
 
-	it('Open in Builder opens the team itself (?draft=<id>) — no session hand-off, no extra read', async () => {
+	it('picking a phase shows a line about it and highlights the inputs it uses', async () => {
+		route_fetch();
+		render_at('/teams/measureone/feature-dev-js');
+		// The first phase is selected to begin with: fetch-ticket uses {{inputs.ticket}}.
+		const line = await screen.findByTestId('selected-phase');
+		expect(line).toHaveTextContent('fetch-ticket');
+		// The phase is described under the diagram; its inputs are highlighted in "What it needs".
+		expect(within(screen.getByTestId('workflow')).getByTestId('selected-phase')).toBe(line);
+		expect(within(screen.getByTestId('needs')).getByTestId('inputs')).toHaveTextContent('fetch-ticket uses 1');
+		expect(within(screen.getByTestId('inputs')).getAllByTestId(/^input-/).map((e) => e.dataset.testid)).toEqual(['input-ticket', 'input-reviewers']);
+		expect(screen.getByTestId('input-ticket')).toHaveAttribute('data-used', 'true');
+		expect(screen.getByTestId('input-reviewers')).not.toHaveAttribute('data-used');
+		// architect's role brief uses {{inputs.reviewers}}.
+		fireEvent.click(screen.getByRole('button', { name: /architect, agent/ }));
+		await waitFor(() => expect(screen.getByTestId('selected-phase')).toHaveTextContent('architect'));
+		expect(screen.getByTestId('selected-phase')).toHaveTextContent('You are the architect.');
+		expect(screen.getByTestId('input-reviewers')).toHaveAttribute('data-used', 'true');
+		expect(screen.getByTestId('input-ticket')).not.toHaveAttribute('data-used');
+		expect(screen.getByTestId('inputs')).toHaveTextContent('architect uses 1');
+		// Every input stays listed, in the team's order; only the highlight moves.
+		expect(within(screen.getByTestId('inputs')).getAllByTestId(/^input-/).map((e) => e.dataset.testid)).toEqual(['input-ticket', 'input-reviewers']);
+		expect(screen.getByTestId('loc').textContent).toContain('phase=architect');
+	});
+
+	it('Workflow has two modes: YAML shows team.yml at the selected phase; the choice is remembered', async () => {
+		localStorage.removeItem('cliqhub.team_workflow_mode');
+		route_fetch();
+		const first = render_at('/teams/measureone/feature-dev-js?phase=architect');
+		fireEvent.click(await screen.findByRole('tab', { name: 'YAML' }));
+		const yaml = await screen.findByTestId('yaml-view');
+		expect(within(yaml).getByText(/roles\/architect\.md/)).toBeInTheDocument();
+		const hl = [...yaml.querySelectorAll('[data-line]')].filter((el) => el.className.includes('g-acc-soft')).map((el) => el.textContent);
+		expect(hl.join('\n')).toContain('name: architect');
+		expect(screen.getByTestId('selected-phase')).toHaveTextContent('architect');
+		expect(localStorage.getItem('cliqhub.team_workflow_mode')).toBe('yaml');
+		first.unmount();
+		render_at('/teams/measureone/feature-dev-js');
+		expect(await screen.findByTestId('yaml-view')).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('tab', { name: 'Diagram' }));
+		expect(await screen.findByRole('group', { name: 'Team workflow' })).toBeInTheDocument();
+		localStorage.removeItem('cliqhub.team_workflow_mode');
+	});
+
+	it('old ?tab=files links open the YAML', async () => {
+		localStorage.removeItem('cliqhub.team_workflow_mode');
+		route_fetch();
+		render_at('/teams/measureone/feature-dev-js?tab=files');
+		expect(await screen.findByTestId('yaml-view')).toBeInTheDocument();
+		localStorage.removeItem('cliqhub.team_workflow_mode');
+	});
+
+	it('Fork copies this version into your scope (next free name) and opens the copy', async () => {
+		const calls = route_fetch();
+		let tries = 0;
+		const real = globalThis.fetch as unknown as { getMockImplementation: () => (u: unknown, i?: RequestInit) => Promise<Response> };
+		const base = real.getMockImplementation();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+			if (String(url) === '/v1/teams/create') {
+				calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+				tries += 1;
+				return tries === 1
+					? new Response(JSON.stringify({ ok: false, error: { code: 'conflict', message: 'exists' } }), { status: 409 })
+					: new Response(JSON.stringify({ ok: true, data: { id: 'new', name: 'feature-dev-js-fork-2', scope: 'sapan' } }));
+			}
+			return base(url, init);
+		});
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: /Fork/ }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/sapan/feature-dev-js-fork-2'));
+		expect(calls.filter((c) => c.url === '/v1/teams/create').map((c) => c.body)).toEqual([
+			{ name: 'feature-dev-js-fork', scope: 'sapan', forked_from: { team_id: 'tid', version: '1.4.2' } },
+			{ name: 'feature-dev-js-fork-2', scope: 'sapan', forked_from: { team_id: 'tid', version: '1.4.2' } },
+		]);
+	});
+
+	it('Edit opens the team in the Builder; with unpublished changes it offers Resume or Start again', async () => {
+		route_fetch();
+		const first = render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: /^Edit$/ }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/builder?draft=tid&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
+		first.unmount();
+		route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString() } }));
+		render_at('/teams/measureone/feature-dev-js');
+		expect(await screen.findByTestId('unpublished-pill')).toBeInTheDocument();
+		fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
+		const dlg = screen.getByRole('dialog', { name: 'Edit' });
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Start from v1.4.2' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/builder?draft=tid&fresh=1&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
+	});
+
+	it('unpublished changes can be thrown away from the Edit menu (confirmed first)', async () => {
+		const calls = route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString() } }));
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: /^Edit$/ }));
+		const dlg = screen.getByRole('dialog', { name: 'Edit' });
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Throw away my changes…' }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Throw them away' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/update')?.body).toEqual({ team_id: 'tid', save_as: 'discard' }));
+		expect(await screen.findByText('Unpublished changes thrown away.')).toBeInTheDocument();
+	});
+
+	it('Versions: picking an older version reads that version', async () => {
 		const calls = route_fetch();
 		render_at('/teams/measureone/feature-dev-js');
-		fireEvent.click(await screen.findByRole('button', { name: 'Open in Builder' }));
-		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/builder?draft=tid&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
-		expect(calls.some((c) => c.url === '/v1/teams/get_by_id')).toBe(false);
-		expect(screen.queryByTestId('unpublished-pill')).toBeNull();
+		fireEvent.click(within(await screen.findByTestId('version-1.3.0')).getByRole('button'));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/team_page/get').at(-1)!.body).toMatchObject({ version: '1.3.0', view: 'overview' }));
 	});
 
-	it('unpublished changes: a pill, and Open in Builder offers Resume or Start from the latest version', async () => {
-		route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 2 * 3600_000).toISOString() } }));
+	it('What it needs: every input and agent always listed; the selected phase’s highlighted; Versions under the workflow', async () => {
+		route_fetch();
+		render_at('/teams/measureone/feature-dev-js?phase=implement');
+		const needs = await screen.findByTestId('needs');
+		const agents = within(needs).getByTestId('agents');
+		// PHASES: claude-code on architect + security-scan (+ the support phase), cursor on tests + implement.
+		expect(within(agents).getByTestId('agent-claude-code')).toHaveTextContent('3 phases');
+		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('2 phases');
+		expect(within(agents).getByTestId('agent-cursor')).toHaveAttribute('data-selected', 'true');
+		expect(within(agents).getByTestId('agent-claude-code')).not.toHaveAttribute('data-selected');
+		expect(within(needs).getAllByTestId(/^input-/)).toHaveLength(2);
+		// Agents come first, as its own card with a full heading; then Inputs.
+		expect(within(agents).getByRole('heading', { name: /^Agents/ })).toBeTruthy();
+		expect(within(needs).getByTestId('inputs').querySelector('h3')!.textContent).toMatch(/^Inputs/);
+		expect(agents.compareDocumentPosition(within(needs).getByTestId('inputs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		const [wf, ver] = [screen.getByTestId('workflow'), screen.getByTestId('versions')];
+		expect(wf.compareDocumentPosition(ver) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		// The danger zone is folded until opened.
+		expect(screen.getByTestId('danger-zone')).not.toHaveAttribute('open');
+	});
+
+	it('agents the team defines (team.yml agents:) show their command and the env they need', async () => {
+		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, agent_defs: [{ name: 'cursor', entry: 'cursor-agent run', env: ['CURSOR_KEY'] }, { name: 'pdf-parser', entry: null, env: [] }] } } : {}));
 		render_at('/teams/measureone/feature-dev-js');
-		expect(await screen.findByTestId('unpublished-pill')).toHaveTextContent('Unpublished changes');
-		fireEvent.click(screen.getByRole('button', { name: 'Open in Builder' }));
-		const dlg = screen.getByRole('dialog', { name: 'Open in Builder' });
-		fireEvent.click(within(dlg).getByRole('button', { name: 'Start from v1.4.2' }));
-		await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/builder?draft=tid&fresh=1&from='));
+		const agents = await screen.findByTestId('agents');
+		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('this team’s');
+		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('cursor-agent run');
+		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('needs CURSOR_KEY');
+		expect(within(agents).getByTestId('agent-pdf-parser')).toHaveTextContent('no phase');
+	});
+
+	it('Versions: full release notes behind “more”', async () => {
+		const notes = 'Parallel security scan\nFaster checks\nNew reviewer step';
+		route_fetch(() => ({ team: { ...HEADER, versions: [{ ...HEADER.versions[0], changelog: notes }, HEADER.versions[1]] } }));
+		render_at('/teams/measureone/feature-dev-js');
+		const row = await screen.findByTestId('version-1.4.2');
+		expect(within(row).queryByTestId('notes-1.4.2')).toBeNull();
+		expect(row).toHaveTextContent('Parallel security scan');
+		fireEvent.click(within(row).getByRole('button', { name: 'more' }));
+		expect(within(row).getByTestId('notes-1.4.2').textContent).toBe(notes);
+		fireEvent.click(within(row).getByRole('button', { name: 'less' }));
+		expect(within(row).queryByTestId('notes-1.4.2')).toBeNull();
+		// No Compare anywhere.
+		expect(screen.queryByRole('button', { name: /Compare/ })).toBeNull();
+	});
+
+	it('Versions: at most 5 per page, newest first, with a pager', async () => {
+		const many = Array.from({ length: 12 }, (_, i) => ({ version: `1.${11 - i}.0`, changelog: null, published_at: Date.now() - i * 86400000, is_latest: i === 0 }));
+		route_fetch(() => ({ team: { ...HEADER, latest_version: '1.11.0', version: '1.11.0', versions: many } }));
+		render_at('/teams/measureone/feature-dev-js');
+		const card = await screen.findByTestId('versions');
+		const shown = () => within(card).getAllByTestId(/^version-/).map((e) => e.dataset.testid);
+		expect(shown()).toEqual(['version-1.11.0', 'version-1.10.0', 'version-1.9.0', 'version-1.8.0', 'version-1.7.0']);
+		expect(within(card).getByTestId('versions-pager')).toHaveTextContent('1–5 of 12');
+		fireEvent.click(within(card).getByRole('button', { name: 'Older versions' }));
+		fireEvent.click(within(card).getByRole('button', { name: 'Older versions' }));
+		expect(shown()).toEqual(['version-1.1.0', 'version-1.0.0']);
+		expect(within(card).getByRole('button', { name: 'Older versions' })).toBeDisabled();
+	});
+
+	it('Danger zone: Unpublish and Delete are separate, each confirmed first', async () => {
+		const calls = route_fetch();
+		render_at('/teams/measureone/feature-dev-js');
+		const dz = await screen.findByTestId('danger-zone');
+		expect(dz).toHaveTextContent('Removes it from every realm that has it');
+		fireEvent.click(within(dz).getByRole('button', { name: 'Unpublish…' }));
+		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall everywhere and unpublish' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/unpublish')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone' }));
+		fireEvent.click(within(screen.getByTestId('danger-zone')).getByRole('button', { name: 'Delete team…' }));
+		fireEvent.click(within(screen.getByTestId('danger-zone')).getByRole('button', { name: 'Delete feature-dev-js' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/delete')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
+	});
+
+	it('the ✎ opens the Team details panel: rename there (one write) moves the URL; description and tags point to the Builder', async () => {
+		const calls = route_fetch();
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: 'Edit team details' }));
+		const panel = screen.getByRole('dialog', { name: 'Team details' });
+		expect(within(panel).getByRole('button', { name: 'Change them in the Builder' })).toBeInTheDocument();
+		const box = screen.getByLabelText('Team name');
+		fireEvent.change(box, { target: { value: 'Bad Name' } });
+		expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
+		fireEvent.change(box, { target: { value: 'feature-dev' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/rename')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone', new_name: 'feature-dev' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
+	});
+
+	it('Unpublish refused by Core (a realm you can’t remove it from): the reason shows, nothing else happens', async () => {
+		route_fetch();
+		const base = (globalThis.fetch as unknown as { getMockImplementation: () => (u: unknown, i?: RequestInit) => Promise<Response> }).getMockImplementation();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => (String(url) === '/v1/teams/unpublish'
+			? new Response(JSON.stringify({ ok: false, error: { code: 'unpublish_blocked', message: 'Not unpublished: you can’t remove it from prod-us.' } }), { status: 403 })
+			: base(url, init)));
+		render_at('/teams/measureone/feature-dev-js');
+		const dz = await screen.findByTestId('danger-zone');
+		fireEvent.click(within(dz).getByRole('button', { name: 'Unpublish…' }));
+		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall everywhere and unpublish' }));
+		expect(await screen.findByRole('alert')).toHaveTextContent('Not unpublished: you can’t remove it from prod-us.');
+	});
+
+	it('Download fetches the viewed version’s package', async () => {
+		const calls = route_fetch();
+		const base = (globalThis.fetch as unknown as { getMockImplementation: () => (u: unknown, i?: RequestInit) => Promise<Response> }).getMockImplementation();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+			if (String(url) === '/v1/teams/download') {
+				calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+				return new Response(JSON.stringify({ ok: true, data: { filename: 'feature-dev-js-1.4.2.zip', data_base64: btoa('zip'), version: '1.4.2' } }));
+			}
+			return base(url, init);
+		});
+		const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:x');
+		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+		render_at('/teams/measureone/feature-dev-js');
+		fireEvent.click(await screen.findByRole('button', { name: /^Download$/ }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/download')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone', version: '1.4.2' }));
+		await waitFor(() => expect(create).toHaveBeenCalled());
+	});
+
+	it('without edit or delete rights: no Edit and no Danger zone', async () => {
+		route_fetch(() => ({ team: { ...HEADER, can_edit: false, can_delete: false } }));
+		render_at('/teams/measureone/feature-dev-js');
+		await screen.findByTestId('workflow');
+		expect(screen.queryByRole('button', { name: /^Edit$/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Edit team details' })).toBeNull();
+		expect(screen.queryByTestId('danger-zone')).toBeNull();
+		expect(screen.getByRole('button', { name: /Fork/ })).toBeInTheDocument();
 	});
 
 	/** The team with no installs yet, so both measureone realms can be picked. */

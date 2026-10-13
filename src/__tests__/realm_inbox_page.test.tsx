@@ -1,11 +1,12 @@
 /**
- * Graphite realm Inbox — one BFF composition call, filters, links,
- * partial data, access errors.
+ * Graphite realm page — one BFF composition call (`summary: true`), no tabs: header with status,
+ * the Runs / Teams / Daemons / Members buttons, setup list, cards, Realm details panel, access errors.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
-import { inbox, overview_for_realm } from './fixtures_realm';
+import { inbox as base_inbox, overview_for_realm } from './fixtures_realm';
+import type { Realm_inbox_data, Realm_summary } from '@/lib/realm_inbox';
 import { gs_response } from './fixtures_overview';
 
 const auth = {
@@ -27,11 +28,26 @@ function Where() {
 
 type Reply = { status?: number; body: unknown };
 
+const SUMMARY: Realm_summary = {
+	realm: { description: 'Production delivery for the US', created_at: Date.now() - 86_400_000, updated_at: Date.now() - 3_600_000, created_by_username: 'sapan' },
+	teams: { total: 2, missing_agents: 1, items: [
+		{ scope: 'cliq', slug: 'hello-world', label: '@cliq/hello-world', version: '1.0.0', missing_agents: [] },
+		{ scope: 'measureone', slug: 'income-verify', label: '@measureone/income-verify', version: '2.1.0', missing_agents: ['codex'] },
+	] },
+	daemons: { online: 2, total: 3, truncated: false, items: [{ id: 'd1', name: 'mac-1', status: 'online' }, { id: 'd2', name: 'mac-2', status: 'online' }, { id: 'd3', name: 'old', status: 'offline' }] },
+	people: { total: 3, by_role: { admin: 1, operator: 2 }, pending_invites: 1, items: [
+		{ member_id: 'u1', username: 'sapan', role: 'admin', is_you: true }, { member_id: 'u2', username: 'lena', role: 'operator', is_you: false }, { member_id: 'u3', username: 'bo', role: 'operator', is_you: false },
+	] },
+	you: { role: 'admin', is_admin: true },
+};
+const inbox = (over: Partial<Realm_inbox_data> = {}, summary: Partial<Realm_summary> = {}) => base_inbox({ summary: { ...SUMMARY, ...summary }, ...over });
+
 function route_fetch(inbox_reply: Reply | (() => Reply)) {
 	return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
 		const u = String(url);
 		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: overview_for_realm() }));
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
+		if (u === '/v1/realms/update') return new Response(JSON.stringify({ ok: true, data: {} }));
 		if (u === '/v1/realm_inbox/get') {
 			const r = typeof inbox_reply === 'function' ? inbox_reply() : inbox_reply;
 			return new Response(JSON.stringify(r.body), { status: r.status ?? 200 });
@@ -40,9 +56,9 @@ function route_fetch(inbox_reply: Reply | (() => Reply)) {
 	});
 }
 
-function render_page(path = '/o/measureone/realms/prod-us/inbox') {
+function render_page(path = '/o/measureone/realms/prod-us/inbox', state: unknown = null) {
 	return render(
-		<MemoryRouter initialEntries={[path]}>
+		<MemoryRouter initialEntries={[{ pathname: path, state }]}>
 			<Routes>
 				<Route path="/o/:org/realms/:slug/inbox" element={<InboxPage />} />
 				<Route path="*" element={<Where />} />
@@ -54,62 +70,116 @@ function render_page(path = '/o/measureone/realms/prod-us/inbox') {
 describe('Realm inbox page', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('makes one inbox call with org + realm slug from the URL (plus the shared sidebar read)', async () => {
+	it('right after New realm: what was set up and the enrollment token, shown once', async () => {
+		route_fetch({ body: { ok: true, data: inbox() } });
+		render_page('/o/measureone/realms/prod-us/inbox', { created: { name: 'Production US', token: 'cliq_rt_abc', token_name: 'prod-us-enroll', qualified_slug: 'measureone.prod-us', invites: [{ email: 'kim@x.com', email_sent: true, invite_url: null }], members_added: 1 } });
+		const banner = await screen.findByTestId('realm-created');
+		expect(banner).toHaveTextContent('Production US is ready.');
+		expect(banner).toHaveTextContent('1 added · 1 invite sent · hello-world installed');
+		expect(within(banner).getByTestId('secret-value')).toHaveTextContent('cliq_rt_abc');
+		expect(banner).toHaveTextContent('CLIQ_DAEMON_TOKEN');
+		fireEvent.click(within(banner).getByLabelText(/saved this token/));
+		fireEvent.click(within(banner).getByRole('button', { name: 'Done' }));
+		await waitFor(() => expect(screen.queryByTestId('realm-created')).toBeNull());
+	});
+
+	it('one call with org + realm slug and summary: true (plus the shared sidebar read); no Core fan-out from the browser', async () => {
 		const spy = route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		await screen.findByRole('heading', { name: 'Inbox' });
-		const inbox_calls = spy.mock.calls.filter(([u]) => u === '/v1/realm_inbox/get');
-		expect(inbox_calls).toHaveLength(1);
-		expect(JSON.parse(String((inbox_calls[0][1] as RequestInit).body))).toEqual({ org_slug: 'measureone', slug: 'prod-us' });
-		// No direct Core fan-out from the browser.
+		await screen.findByRole('heading', { name: 'Prod US' });
+		const calls = spy.mock.calls.filter(([u]) => u === '/v1/realm_inbox/get');
+		expect(calls).toHaveLength(1);
+		expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({ org_slug: 'measureone', slug: 'prod-us', summary: true });
 		const others = spy.mock.calls.map(([u]) => String(u)).filter((u) => u !== '/v1/realm_inbox/get' && u !== '/v1/overview/get' && u !== '/v1/getting_started/get');
 		expect(others).toEqual([]);
 	});
 
-	it('shows counts, rows with the right actions and links', async () => {
+	it('header: name, status, description, slug · creator · updated; no tabs; no Needs attention or Running now', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		await screen.findByRole('heading', { name: 'Inbox' });
-		expect(screen.getByTestId('inbox-stat-Reviews')).toHaveTextContent('1');
-		expect(screen.getByTestId('inbox-stat-Needs input')).toHaveTextContent('1');
-		expect(screen.getByTestId('inbox-stat-Failed · 24h')).toHaveTextContent('1');
-		expect(screen.getByTestId('inbox-stat-Running')).toHaveTextContent('1');
-		expect(screen.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-1');
-		expect(screen.getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
-		expect(screen.getByRole('link', { name: 'Investigate' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-77');
-		expect(screen.getByText('Timeout talking to ledger')).toBeInTheDocument();
-		expect(screen.getByText('Please check the retry budget')).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: /PROJ-491/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1843');
+		await screen.findByRole('heading', { name: 'Prod US' });
+		expect(screen.getByTestId('realm-status')).toHaveTextContent('Missing agents');
+		expect(screen.getByText('Production delivery for the US')).toBeInTheDocument();
+		expect(screen.getByTestId('realm-meta')).toHaveTextContent('measureone.prod-us');
+		expect(screen.getByTestId('realm-meta')).toHaveTextContent('created by sapan');
+		expect(screen.queryByRole('navigation', { name: 'Realm sections' })).toBeNull();
+		expect(screen.queryByText('Needs attention')).toBeNull();
+		expect(screen.queryByText('Running now')).toBeNull();
 	});
 
-	it('filters by tab and by clicking a stat (toggle)', async () => {
+	it.each([
+		[{ daemons: { ...SUMMARY.daemons!, online: 0 } }, 'No daemon available'],
+		[{ teams: { ...SUMMARY.teams!, missing_agents: 0 } }, 'Ready'],
+	] as const)('status follows daemons online, then missing agents (%#)', async (over, label) => {
+		route_fetch({ body: { ok: true, data: inbox({}, over as Partial<Realm_summary>) } });
+		render_page();
+		expect(await screen.findByTestId('realm-status')).toHaveTextContent(label);
+	});
+
+	it('the four buttons: Runs (running · need you), Teams (· missing agent), Daemons (N online, count only), Members', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		await screen.findByRole('heading', { name: 'Inbox' });
-		fireEvent.click(screen.getByRole('tab', { name: /Failed 1/ }));
-		expect(screen.getAllByTestId(/inbox-row-/).map((r) => r.dataset.testid)).toEqual(['inbox-row-failed']);
-		fireEvent.click(screen.getByTestId('inbox-stat-Reviews'));
-		expect(screen.getByTestId('inbox-stat-Reviews')).toHaveAttribute('aria-pressed', 'true');
-		expect(screen.getAllByTestId(/inbox-row-/).map((r) => r.dataset.testid)).toEqual(['inbox-row-review']);
-		fireEvent.click(screen.getByTestId('inbox-stat-Reviews'));
-		expect(screen.getAllByTestId(/inbox-row-/)).toHaveLength(3);
+		const runs = await screen.findByTestId('go-runs');
+		expect(runs).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
+		expect(runs).toHaveTextContent('1running2 need you');
+		expect(screen.getByTestId('go-teams')).toHaveTextContent('21 missing agent');
+		expect(screen.getByTestId('go-daemons')).toHaveTextContent('2online');
+		expect(screen.getByTestId('go-daemons')).not.toHaveTextContent('/');
+		expect(screen.getByTestId('go-members')).toHaveTextContent('31 pending');
 	});
 
-	it('shows inbox zero', async () => {
-		route_fetch({ body: { ok: true, data: inbox({ items: [], live: [], counts: { reviews: 0, awaiting_input: 0, failed_24h: 0, running: 0 } }) } });
+	it('cards: team chips with Ready / Missing agent, daemon lights, people by role; setup list only for what’s missing', async () => {
+		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		expect(await screen.findByText('Inbox zero')).toBeInTheDocument();
-		expect(screen.getByText('Nothing is running right now.')).toBeInTheDocument();
+		expect(await screen.findByTestId('team-hello-world')).toHaveTextContent('Ready');
+		expect(screen.getByTestId('team-income-verify')).toHaveTextContent('Missing agent');
+		expect(within(screen.getByTestId('daemons-card')).getAllByRole('link', { name: /online|offline/ })).toHaveLength(3);
+		expect(screen.getByTestId('roles')).toHaveTextContent('1 admin · 2 operators · 1 invite pending');
+		const setup = screen.getByTestId('setup');
+		expect(setup).toHaveTextContent('1 team uses an agent your org hasn’t registered.');
+		expect(setup).not.toHaveTextContent('daemon');
+		expect(screen.getByRole('link', { name: /Install a team/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams?install=1');
 	});
 
-	it('names the sections that failed to load and still renders the rest', async () => {
-		const d = inbox({ partial: true });
-		d.sections.reviews = { status: 'error', error: 'reviews down' };
-		route_fetch({ body: { ok: true, data: d } });
+	it('More ▾ lists the rest of the realm; Run… lists teams, a team missing an agent can’t be picked', async () => {
+		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		expect(await screen.findByText(/Some of this inbox couldn’t be loaded/)).toBeInTheDocument();
-		expect(screen.getByText('Reviews — reviews down')).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: 'Investigate' })).toBeInTheDocument();
+		await screen.findByRole('heading', { name: 'Prod US' });
+		fireEvent.click(screen.getByRole('button', { name: /More/ }));
+		expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Agents', 'Notifications', 'A2A & mesh', 'Access tokens', 'Settings']);
+		fireEvent.click(screen.getByRole('button', { name: /Run…/ }));
+		expect(screen.getByRole('menuitem', { name: '@cliq/hello-world' })).toBeEnabled();
+		expect(screen.getByRole('menuitem', { name: /income-verify/ })).toBeDisabled();
+	});
+
+	it('Run… is off when no daemon is online', async () => {
+		route_fetch({ body: { ok: true, data: inbox({}, { daemons: { ...SUMMARY.daemons!, online: 0 } }) } });
+		render_page();
+		expect(await screen.findByRole('button', { name: /Run…/ })).toBeDisabled();
+		expect(screen.getByTestId('setup')).toHaveTextContent('No daemon is online');
+	});
+
+	it('✎ opens the Realm details panel: name and description saved together in one realms/update', async () => {
+		const spy = route_fetch({ body: { ok: true, data: inbox() } });
+		render_page();
+		fireEvent.click(await screen.findByRole('button', { name: 'Edit realm details' }));
+		const panel = screen.getByRole('dialog', { name: 'Realm details' });
+		fireEvent.change(within(panel).getByLabelText('Name'), { target: { value: 'Production US' } });
+		fireEvent.change(within(panel).getByLabelText('Description'), { target: { value: 'US delivery' } });
+		fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Realm details' })).toBeNull());
+		const writes = spy.mock.calls.filter(([u]) => u === '/v1/realms/update');
+		expect(writes).toHaveLength(1);
+		expect(JSON.parse(String((writes[0][1] as RequestInit).body))).toEqual({ realm_id: 'r-prod', name: 'Production US', description: 'US delivery' });
+	});
+
+	it('not an admin: no ✎, no Invite, no Danger zone', async () => {
+		route_fetch({ body: { ok: true, data: inbox({}, { you: { role: 'member', is_admin: false } }) } });
+		render_page();
+		await screen.findByRole('heading', { name: 'Prod US' });
+		expect(screen.queryByRole('button', { name: 'Edit realm details' })).toBeNull();
+		expect(screen.queryByTestId('danger-zone')).toBeNull();
+		expect(within(screen.getByTestId('members-card')).queryByRole('link', { name: 'Invite' })).toBeNull();
 	});
 
 	it('403 → no-access state (no retry loop)', async () => {
@@ -131,38 +201,6 @@ describe('Realm inbox page', () => {
 		render_page();
 		expect(await screen.findByRole('alert')).toHaveTextContent('Core unreachable');
 		fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-		expect(await screen.findByRole('heading', { name: 'Inbox' })).toBeInTheDocument();
-	});
-
-	it('realm nav: all sections; sidebar highlights the realm health', async () => {
-		route_fetch({ body: { ok: true, data: inbox() } });
-		render_page();
-		await screen.findByRole('heading', { name: 'Inbox' });
-		const nav = screen.getByRole('navigation', { name: 'Realm sections' });
-		expect(within(nav).getByRole('link', { name: 'Inbox' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
-		expect(within(nav).getByRole('link', { name: 'Runs' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
-		expect(within(nav).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings');
-		expect(await screen.findByTestId('realm-health')).toHaveTextContent('5 online · 1 offline');
-		const crumb = screen.getByRole('navigation', { name: 'Breadcrumb' });
-		// One org at a time: the breadcrumb starts at the org (no "All my work").
-		expect(within(crumb).queryByRole('link', { name: /All my work/ })).toBeNull();
-		expect(within(crumb).getByRole('link', { name: 'prod-us' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
-		expect(within(crumb).getByText('Inbox')).toHaveAttribute('aria-current', 'page');
-		expect(within(crumb).getByRole('link', { name: /MeasureOne/ })).toHaveAttribute('href', '/home?org=measureone');
-		expect(screen.queryByTestId('view-step-up')).toBeNull();
-	});
-});
-
-describe('Colour by kind', () => {
-	afterEach(() => vi.restoreAllMocks());
-	it('uses the shared kind colours (review pink, input amber, failed red) and outlined row actions', async () => {
-		route_fetch({ body: { ok: true, data: inbox() } });
-		render_page();
-		await screen.findByRole('heading', { name: 'Inbox' });
-		const icon = (k: string) => screen.getByTestId(`inbox-row-${k}`).querySelector('[data-kind]') as HTMLElement;
-		expect(icon('review').style.color).toBe('var(--g-hug)');
-		expect(icon('input').style.color).toBe('var(--g-warn-text)');
-		expect(icon('failed').style.color).toBe('var(--g-bad)');
-		expect(screen.getByRole('link', { name: 'Review' }).className).not.toContain('g-acc');
+		expect(await screen.findByRole('heading', { name: 'Prod US' })).toBeInTheDocument();
 	});
 });

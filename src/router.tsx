@@ -213,9 +213,14 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/realm/realm_agents_page')),
           },
           {
-            // Realms by org with daemon health (from the overview read) + New realm wizard (?new=1).
+            // Realms of the org you're in: a table searched, sorted and paged on the server.
             path: 'realms',
             lazy: lazy_route(() => import('@/pages/realms/realms_page')),
+          },
+          {
+            // New realm: its own screen; nothing is saved until Create realm (one transaction).
+            path: 'realms/new',
+            lazy: lazy_route(() => import('@/pages/realms/new_realm_page')),
           },
           {
             // Your account: profile, password, access tokens, your scopes (?tab=).

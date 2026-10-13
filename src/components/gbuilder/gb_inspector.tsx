@@ -13,6 +13,7 @@ import type { SourceEntry, TargetEntry } from '@/lib/types';
 import { CONNECTOR_AGENTS, KINDS, LLM_AGENTS, PALETTE, kind_of, role_need, type Kind_id } from '@/lib/builder/kinds';
 import { change_kind, connect, disconnect, duplicate_phase, remove_bridged, rename_phase, would_cycle, type Op_result } from '@/lib/builder/graph_ops';
 import { Kind_tile } from '@/components/gbuilder/gb_canvas';
+import { phases_using_input } from '@/lib/builder/checks';
 
 export const IN = 'w-full rounded-lg border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[12.5px] text-[var(--g-ink)] outline-none placeholder:text-[var(--g-ink-4)] focus:border-[var(--g-acc-line)]';
 const BTN = 'rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold hover:bg-[var(--g-soft)] disabled:opacity-50';
@@ -310,15 +311,24 @@ export function Team_panel({ team, on_change, on_ask_ai, focus_inputs, on_close 
 			</Section>
 			<Section title="Inputs" right={<span className="text-[10.5px] text-[var(--g-ink-3)]">the form Run asks for</span>} id="team-inputs">
 				<div ref={inputs_ref} className="grid gap-1.5">
-					{inputs.map((inp, i) => (
-						<div key={i} className="grid grid-cols-[110px_1fr_auto] gap-1.5">
-							<input aria-label={`Input ${i + 1} name`} value={inp.name} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} className={`${IN} g-mono`} />
-							<input aria-label={`Input ${i + 1} description`} value={inp.description ?? ''} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, description: e.target.value || undefined } : x)) })} placeholder="what it is" className={IN} />
-							<button type="button" aria-label={`Remove input ${inp.name}`} onClick={() => on_change({ ...team, inputs: inputs.filter((_, j) => j !== i) })} className="px-1.5 text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">✕</button>
-						</div>
-					))}
+					{inputs.map((inp, i) => {
+						const users = inp.name ? phases_using_input(team, inp.name) : [];
+						return (
+							<div key={i} className="grid gap-1" data-testid={`team-input-${inp.name}`}>
+								<div className="grid grid-cols-[110px_1fr_auto] gap-1.5">
+									<input aria-label={`Input ${i + 1} name`} value={inp.name} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} className={`${IN} g-mono`} />
+									<input aria-label={`Input ${i + 1} description`} value={inp.description ?? ''} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, description: e.target.value || undefined } : x)) })} placeholder="what it is" className={IN} />
+									<button type="button" aria-label={`Remove input ${inp.name}`} onClick={() => on_change({ ...team, inputs: inputs.filter((_, j) => j !== i) })} className="px-1.5 text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">✕</button>
+								</div>
+								{/* Where it's referenced: the phases that use {{inputs.name}} / $(inputs.name). */}
+								<p className="flex flex-wrap items-center gap-1 pl-0.5 text-[11.5px] text-[var(--g-ink-3)]" data-testid={`input-refs-${inp.name}`}>
+									{users.length ? <>used by {users.map((u) => <span key={u} className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1 text-[11px] text-[var(--g-ink-2)]">{u}</span>)}</> : <span className="text-[var(--g-warn-text)]">not used by any phase yet</span>}
+								</p>
+							</div>
+						);
+					})}
 					<button type="button" onClick={() => on_change({ ...team, inputs: [...inputs, { name: `input_${inputs.length + 1}` }] })} className="w-fit text-[12px] text-[var(--g-acc)]">+ add input</button>
-					<p className="text-[11.5px] text-[var(--g-ink-3)]">Phases use them as <span className="g-mono">$(inputs.name)</span>.</p>
+					<p className="text-[11.5px] text-[var(--g-ink-3)]">Phases use them as <span className="g-mono">{'{{inputs.name}}'}</span> or <span className="g-mono">$(inputs.name)</span>.</p>
 				</div>
 			</Section>
 			<Section title="Tags">

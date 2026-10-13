@@ -6,7 +6,7 @@ import {
 	add_after, add_root, builder_layout, change_kind, connect, diff_teams, disconnect, duplicate_phase,
 	insert_between, move_within_step, release_notes, remove_bridged, rename_phase, steps_of, would_cycle,
 } from '@/lib/builder/graph_ops';
-import { check_team, closest, find_cycle } from '@/lib/builder/checks';
+import { check_team, closest, find_cycle, has_reviewer, phases_using_input } from '@/lib/builder/checks';
 import { error_position, format_yaml, has_comments, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
 import { next_version, publish_body, suggest_bump, team_scope, team_slug } from '@/lib/builder/publish';
 
@@ -156,6 +156,35 @@ describe('graph edits', () => {
 describe('checks (mirror Core validate_team)', () => {
 	it('a good team only warns about nothing blocking', () => {
 		expect(check_team(team()).filter((p) => p.level === 'error')).toEqual([]);
+	});
+	it('hand-written team.yml: review.reviewers channels count as a reviewer, and {{inputs.x}} counts as using x', () => {
+		// The shape of cliq/examples/hello-hug/team.yml.
+		const review = { timeout: 30, reviewers: [{ policy: 'any', channels: ['{{inputs.reviewers}}'] }] } as unknown as GeneratedPhase['review'];
+		const t = team({
+			inputs: [{ name: 'reviewers' }],
+			phases: [P('greet', { agent: 'exec', commands: [{ name: 'c', run: 'echo hi' }] }), P('human-review', { type: 'gate', agent: 'hug', depends_on: ['greet'], review })],
+			roles: [],
+		});
+		const msgs = check_team(t).map((p) => p.message);
+		expect(msgs).not.toContain('human-review needs a reviewer.');
+		expect(msgs.some((m) => m.includes('isn’t used by any phase'))).toBe(false);
+		expect(has_reviewer({ reviewer: '$(inputs.reviewers)' })).toBe(true);
+		expect(has_reviewer({ reviewers: [{ channels: [] }] })).toBe(false);
+		expect(has_reviewer({ reviewers: [{ users: ['sapan'] }] })).toBe(true);
+		expect(has_reviewer(undefined)).toBe(false);
+		// An undeclared {{inputs.x}} is still an error.
+		const bad = team({ inputs: [], phases: [P('a', { agent: 'exec', commands: [{ name: 'c', run: 'echo {{inputs.ghost}}' }] })], roles: [] });
+		expect(check_team(bad).some((p) => p.message.includes('no input called ghost'))).toBe(true);
+	});
+	it('phases_using_input: settings and role briefs, either syntax, in workflow order', () => {
+		const t = team({
+			inputs: [{ name: 'ticket' }, { name: 'reviewers' }],
+			phases: [P('fetch', { agent: 'exec', commands: [{ name: 'c', run: 'jira get $(inputs.ticket)' }] }), P('design'), P('review', { type: 'gate', agent: 'hug', review: { reviewer: '{{inputs.reviewers}}' } })],
+			roles: [{ name: 'design', content: 'Read the ticket {{ inputs.ticket }} first.' }],
+		});
+		expect(phases_using_input(t, 'ticket')).toEqual(['fetch', 'design']);
+		expect(phases_using_input(t, 'reviewers')).toEqual(['review']);
+		expect(phases_using_input(t, 'nope')).toEqual([]);
 	});
 	it('unknown dependency suggests the closest name, and the fix applies', () => {
 		const t = team();

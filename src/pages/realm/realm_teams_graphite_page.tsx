@@ -174,7 +174,7 @@ export function Component() {
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
 	const [draft, set_draft] = useState(q);
 	const [running, set_running] = useState<Realm_team_row | null>(null);
-	const [installing, set_installing] = useState(false);
+	const [installing, set_installing] = useState(() => search.get('install') === '1');
 	const [confirm_remove, set_confirm_remove] = useState<string | null>(null);
 	const [busy, set_busy] = useState<string | null>(null);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);

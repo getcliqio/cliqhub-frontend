@@ -303,14 +303,13 @@ describe('Graphite builder — workspace', () => {
 		});
 		render_at('/builder?draft=d1');
 		await screen.findByTestId('canvas');
-		fireEvent.click(screen.getByRole('tab', { name: '✦ AI' }));
+		fireEvent.click(screen.getByTestId('ai-item'));
 		fireEvent.change(screen.getByLabelText('Ask AI'), { target: { value: 'add a security scan' } });
 		fireEvent.click(screen.getByText('Send'));
 		expect(await screen.findByText('Added a security scan after design.')).toBeTruthy();
 		expect(screen.getByTestId('preview-banner').textContent).toContain('+1');
 		fireEvent.click(screen.getByText('Apply all'));
 		expect(screen.queryByTestId('preview-banner')).toBeNull();
-		fireEvent.click(screen.getByRole('tab', { name: 'Build' }));
 		expect(outline()).toContain('security-scan');
 		fireEvent.keyDown(window, { key: 'z', metaKey: true });
 		expect(outline()).not.toContain('security-scan');
@@ -320,13 +319,12 @@ describe('Graphite builder — workspace', () => {
 		route_fetch({ 'build:chat': () => ({ body: { ok: true, data: { reply: 'Plan ready.', actions: [{ type: 'REMOVE_PHASE', name: 'check' }] } } }) });
 		render_at('/builder?draft=d1');
 		await screen.findByTestId('canvas');
-		fireEvent.click(screen.getByRole('tab', { name: '✦ AI' }));
+		fireEvent.click(screen.getByTestId('ai-item'));
 		fireEvent.change(screen.getByLabelText('Ask AI'), { target: { value: 'remove the gate' } });
 		fireEvent.click(screen.getByText('Send'));
 		await screen.findByText('Plan ready.');
-		fireEvent.click(screen.getByText('Discard'));
+		fireEvent.click(within(screen.getByTestId('ai-drawer')).getByText('Discard'));
 		expect(screen.getByText('Discarded.')).toBeTruthy();
-		fireEvent.click(screen.getByRole('tab', { name: 'Build' }));
 		expect(outline()).toEqual(['design', 'build', 'check']);
 	});
 
@@ -377,13 +375,43 @@ describe('Graphite builder — workspace', () => {
 		const create = vi.fn(() => 'blob:x');
 		Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() });
 		const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-		fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Download' }));
 		expect(create).toHaveBeenCalled();
 		expect(click).toHaveBeenCalled();
 	});
 });
 
 describe('Graphite builder — layout', () => {
+	it('left nav: Back, Team details, Phases (palette inline), AI, then Problems; team actions top right; views on the canvas', async () => {
+		await open_draft();
+		const nav = screen.getByRole('navigation', { name: 'Builder' });
+		expect(within(nav).getAllByRole('button').map((b) => b.textContent?.replace(/⌘K|[▾▸]/g, '').trim())).toEqual(expect.arrayContaining(['Team details', 'Phases', 'AI']));
+		const order = within(nav).getAllByRole('button').map((b) => b.dataset.testid).filter((id) => ['team-details', 'phases-item', 'ai-item'].includes(id ?? ''));
+		expect(order).toEqual(['team-details', 'phases-item', 'ai-item']);
+		expect(screen.getByTestId('build-panel')).toBeTruthy();
+		fireEvent.click(screen.getByTestId('phases-item'));
+		expect(screen.queryByTestId('build-panel')).toBeNull();
+		// Problems is last in the left nav.
+		const aside = screen.getByRole('complementary', { name: 'Build tools' });
+		expect(aside.lastElementChild!.contains(screen.getByTestId('problems'))).toBe(true);
+		// Views live on the canvas toolbar, not in the header.
+		expect(within(screen.getByTestId('canvas-toolbar')).getByRole('tab', { name: 'YAML' })).toBeTruthy();
+		// The team header (as on the team page) carries the team actions on its row.
+		const head = screen.getByTestId('team-header');
+		expect(within(head).getByRole('heading', { level: 1 })).toBeTruthy();
+		expect(within(head).getByRole('navigation', { name: 'Breadcrumb' }).textContent).toContain('Edit');
+		for (const name of ['Discard', 'Download', 'Publish…']) expect(within(head).getByRole('button', { name })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'New' })).toBeNull();
+		expect(screen.queryByText(/Ask AI to change anything/)).toBeNull();
+		// AI opens on the right and keeps its conversation when closed and reopened.
+		fireEvent.click(screen.getByTestId('ai-item'));
+		expect(screen.getByLabelText('Ask AI')).toBeTruthy();
+		fireEvent.change(screen.getByLabelText('Ask AI'), { target: { value: 'draft text' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Close AI' }));
+		fireEvent.click(screen.getByTestId('ai-item'));
+		expect((screen.getByLabelText('Ask AI') as HTMLTextAreaElement).value).toBe('draft text');
+	});
+
 	it('has no outline, a shape palette, and one Problems list in the left panel', async () => {
 		await open_draft();
 		expect(screen.queryByTestId('outline')).toBeNull();
@@ -395,13 +423,14 @@ describe('Graphite builder — layout', () => {
 		expect(screen.getByTestId('tile-agent').textContent).not.toContain('role brief');
 		expect(screen.getByTestId('tile-agent').getAttribute('title')).toContain('an AI agent with a role brief');
 		// the Problems list stays in the left panel on the AI tab too
-		fireEvent.click(screen.getByRole('tab', { name: '✦ AI' }));
+		fireEvent.click(screen.getByTestId('ai-item'));
 		expect(within(left).getByTestId('problems')).toBeTruthy();
 	});
 
-	it('the inspector is hidden until a phase is selected; empty canvas, the close button and Esc close it', async () => {
+	it('opens on Team details; a phase takes the panel; empty canvas, the close button and Esc close it', async () => {
 		await open_draft();
-		expect(screen.queryByTestId('inspector')).toBeNull();
+		expect(screen.getByRole('complementary', { name: 'Team details' })).toBeTruthy();
+		expect(screen.getByTestId('team-details').getAttribute('aria-expanded')).toBe('true');
 		open_phase('build');
 		const panel = screen.getByRole('complementary', { name: 'Phase details: build' });
 		expect(within(panel).getByLabelText('Phase name')).toHaveProperty('value', 'build');
@@ -418,9 +447,12 @@ describe('Graphite builder — layout', () => {
 		expect(screen.queryByTestId('inspector')).toBeNull();
 	});
 
-	it('Team details opens on demand (focus moves in) and returns focus when closed', async () => {
+	it('Team details is open at first; it toggles (focus moves in) and returns focus when closed', async () => {
 		await open_draft();
 		const btn = screen.getByTestId('team-details');
+		expect(btn.getAttribute('aria-expanded')).toBe('true');
+		fireEvent.click(btn);
+		expect(screen.queryByTestId('inspector')).toBeNull();
 		expect(btn.getAttribute('aria-expanded')).toBe('false');
 		btn.focus();
 		fireEvent.click(btn);
@@ -548,7 +580,7 @@ describe('Graphite builder — cancel', () => {
 		fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'opus' } });
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		expect(within(screen.getByTestId('cancel-confirm')).getByText('Discard your changes?')).toBeTruthy();
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
@@ -559,7 +591,7 @@ describe('Graphite builder — cancel', () => {
 	it('edits that never reached the server: Discard sends nothing', async () => {
 		const calls = await open_draft();
 		fireEvent.click(screen.getByTestId('tile-script'));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
 		expect(writes(calls)).toEqual([]);
@@ -573,7 +605,7 @@ describe('Graphite builder — cancel', () => {
 		await screen.findByTestId('canvas');
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('draft=draft-9'));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		expect(screen.getByText('Discard this new team?')).toBeTruthy();
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
@@ -586,7 +618,7 @@ describe('Graphite builder — cancel', () => {
 		render_at('/builder?view=1&from=%2Fteams%2Fmeasureone%2Ffeature-dev');
 		await screen.findByTestId('canvas');
 		fireEvent.click(screen.getByTestId('tile-script'));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
 		expect(writes(calls)).toEqual([]);
@@ -602,7 +634,7 @@ describe('Graphite builder — cancel', () => {
 		fireEvent.click(screen.getByTestId('tile-script'));
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).not.toContain('fork=1'));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		expect(screen.getByText('Discard this new team?')).toBeTruthy();
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/browse'));
@@ -611,7 +643,7 @@ describe('Graphite builder — cancel', () => {
 
 	it('no changes: Cancel leaves at once, without asking or saving', async () => {
 		const calls = await open_draft();
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
 		expect(writes(calls)).toEqual([]);
 	});
@@ -619,7 +651,7 @@ describe('Graphite builder — cancel', () => {
 	it('Keep editing closes the prompt and keeps the edits', async () => {
 		await open_draft();
 		fireEvent.click(screen.getByTestId('tile-script'));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
 		expect(screen.queryByTestId('cancel-confirm')).toBeNull();
 		expect(outline()).toHaveLength(4);
@@ -634,7 +666,7 @@ describe('Graphite builder — cancel', () => {
 		await screen.findByTestId('canvas');
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		expect((await screen.findByRole('alert')).textContent).toBe('Core is down');
 		expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
@@ -666,7 +698,7 @@ describe('Graphite builder — working copy', () => {
 		expect(calls.find((c) => c.url === '/v1/teams/update')!.body).toMatchObject({ team_id: 'd1', save_as: 'draft' });
 	});
 
-	it('?fresh=1 starts from the published version; Cancel puts the old working copy back', async () => {
+	it('?fresh=1 starts from the published version; Discard asks, then throws away the older working copy too', async () => {
 		vi.useFakeTimers({ shouldAdvanceTime: true });
 		const copy = { manifest: JSON.stringify(COPY), description: 'wip', saved_at: '2026-10-05T09:00:00.000Z' };
 		const calls = route_fetch({ '/v1/teams/get_by_id': detail({ draft: copy }) });
@@ -676,10 +708,23 @@ describe('Graphite builder — working copy', () => {
 		fireEvent.click(screen.getByTestId('tile-script'));
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/update')).toBe(true));
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		expect(screen.getByTestId('cancel-confirm').textContent).toContain('including earlier ones');
 		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
-		expect(calls.filter((c) => c.url === '/v1/teams/update').at(-1)!.body).toEqual({ team_id: 'd1', description: 'wip', team_json: copy.manifest, save_as: 'draft' });
+		expect(calls.filter((c) => c.url === '/v1/teams/update').at(-1)!.body).toEqual({ team_id: 'd1', save_as: 'discard' });
+	});
+
+	it('an older working copy with no edits this session: Discard still asks, then throws it away', async () => {
+		const copy = { manifest: JSON.stringify(COPY), description: 'wip', saved_at: '2026-10-05T09:00:00.000Z' };
+		const calls = route_fetch({ '/v1/teams/get_by_id': detail({ draft: copy }) });
+		render_at('/builder?draft=d1&from=%2Fteams%2Fmeasureone%2Ffeature-dev');
+		await screen.findByTestId('canvas');
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		expect(screen.getByTestId('cancel-confirm')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
+		expect(calls.filter((c) => c.url === '/v1/teams/update').map((c) => c.body)).toEqual([{ team_id: 'd1', save_as: 'discard' }]);
 	});
 
 	it('a published team whose manifest is YAML opens from its version detail (roles kept)', async () => {

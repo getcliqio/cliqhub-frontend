@@ -1,274 +1,224 @@
 /**
- * Build › Teams › one team (Graphite). Tabs, grouped:
- *   Define  — Overview · Workflow · Files
- *   Operate — Runs · Installs
- *   Ship    — Versions · Settings (only for people who can edit)
- * Read: one `POST /v1/team_page/get` per tab (BFF composes Core). Writes are
- * single existing routes (realms/add_team, realms/remove_team, teams/rename,
- * teams/unpublish, teams/delete_version, teams/delete).
+ * Build › Teams › one team (Graphite). One page, no tabs:
+ *   header   — the name (✎ opens the Team details panel, for editors) · Fork · Edit · Install (the main action)
+ *   header   — name (✎) · status, description, then version · @scope · author · tags; actions right
+ *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
+ *              the selected phase described under it; Versions (5 a page, full notes on "more");
+ *              the Danger zone, folded (Unpublish, Delete a version, Delete team), for editors
+ *   right    — Agents (needed on the daemon, incl. ones the team defines), then Inputs (asked on
+ *              Run); always listed, the selected phase's highlighted
+ * Read: one `POST /v1/team_page/get` (view `overview`, which carries team.yml too). Writes are
+ * single existing routes (realms/add_team via the Install dialog, teams/create with `forked_from`,
+ * teams/rename, teams/unpublish, teams/delete_version, teams/delete).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowRight, Copy, Download, Play, RefreshCw } from 'lucide-react';
-import { useAuthFetch } from '@/lib/auth_context';
+import { Code, Download, FileDown, GitFork, Pencil, Route } from 'lucide-react';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { relative_time, use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope } from '@/lib/view_scope';
-import { run_href } from '@/lib/realm_inbox';
-import {
-	REVIEW_COLOR, phase_kind, team_href, type Team_install, type Team_page_data, type Team_phase, type Team_view,
-} from '@/lib/team_page';
-import { builder_href } from '@/lib/team_builder';
-import { Yaml_view } from '@/components/graphite/g_yaml_view';
+import { phase_kind, phase_subtitle, team_href, type Team_input, type Team_page_data, type Team_phase } from '@/lib/team_page';
+import { Yaml_view, find_item, yaml_outline } from '@/components/graphite/g_yaml_view';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { State_pill } from '@/components/graphite/g_status';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
-import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
-import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
-import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
-export const TEAM_RUNS_PAGE_SIZE = 25;
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
-const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const CARD = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
 const H3 = 'flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold';
-const H5 = 'mb-2.5 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]';
+const DANGER_BTN = 'rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)] disabled:opacity-50';
 
-const VIEWS: Team_view[] = ['overview', 'workflow', 'files', 'runs', 'installs', 'versions', 'settings'];
-const TAB_LABEL: Record<Team_view, string> = { overview: 'Overview', workflow: 'Workflow', files: 'YAML', runs: 'Runs', installs: 'Installs', versions: 'Versions', settings: 'Settings' };
-const GROUPS: Team_view[][] = [['overview', 'workflow', 'files'], ['runs', 'installs'], ['versions', 'settings']];
+type Workflow_mode = 'diagram' | 'yaml';
+/** Remembers Diagram / YAML across teams (per browser). */
+export const WORKFLOW_MODE_KEY = 'cliqhub.team_workflow_mode';
+/** A team name: lowercase letters, numbers and hyphens, starting with a letter. */
+const NAME_OK = /^[a-z][a-z0-9-]*$/;
+/** Versions shown per page in the Versions card. */
+export const VERSIONS_PAGE_SIZE = 5;
+/** Names tried for a fork, in order. */
+const FORK_SUFFIXES = ['-fork', '-fork-2', '-fork-3', '-fork-4', '-fork-5'];
+
+function read_mode(): Workflow_mode {
+	try { return localStorage.getItem(WORKFLOW_MODE_KEY) === 'yaml' ? 'yaml' : 'diagram'; } catch { return 'diagram'; }
+}
+
+/** `{{inputs.NAME}}` references in a piece of team.yml or a role brief. */
+const INPUT_REF = /\{\{\s*inputs\.([A-Za-z0-9_-]+)\s*\}\}/g;
+
+/**
+ * The inputs a phase uses: `{{inputs.NAME}}` in its block of team.yml or in its role brief,
+ * limited to the team's declared inputs (in their order).
+ */
+export function inputs_used(phase: Team_phase, team_yml: string | null, inputs: Team_input[]): string[] {
+	let text = phase.role ?? '';
+	if (team_yml) {
+		const item = find_item(yaml_outline(team_yml), phase.name);
+		if (item) text += `\n${team_yml.split('\n').slice(item.start, item.end + 1).join('\n')}`;
+	}
+	const found = new Set<string>();
+	for (const m of text.matchAll(INPUT_REF)) found.add(m[1]);
+	return inputs.map((i) => i.name).filter((n) => found.has(n));
+}
+
+/** First line of a phase's role brief, else what kind of step it is. */
+function phase_line(p: Team_phase): string {
+	const brief = (p.role ?? '').split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean);
+	return brief ?? phase_subtitle(p);
+}
+
+function Kind_tile({ phase, size = 18 }: { phase: Team_phase; size?: number }) {
+	const k = phase_kind(phase);
+	return <span aria-hidden className="grid shrink-0 place-items-center rounded-[5px] font-bold" style={{ width: size, height: size, fontSize: size * 0.6, color: k.color, background: `${k.color}26` }}>{k.glyph}</span>;
+}
 
 function use_post() {
 	const auth_fetch = useAuthFetch();
-	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> => {
+	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true; data: unknown } | { ok: false; error: string; status: number }> => {
 		try {
 			const res = await auth_fetch(path, { method: 'POST', body: JSON.stringify(body) });
 			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) return { ok: false, error: api_message(payload, 'Request failed') };
+			if (!res.ok || !payload?.ok) return { ok: false, error: api_message(payload, 'Request failed'), status: res.status };
 			return { ok: true, data: payload.data ?? payload };
 		} catch {
-			return { ok: false, error: 'Network error — check your connection.' };
+			return { ok: false, error: 'Network error — check your connection.', status: 0 };
 		}
 	};
 }
 
-function Kind_tile({ type, size = 18 }: { type: string | Team_phase; size?: number }) {
-	const k = phase_kind(type);
-	return <span aria-hidden className="grid shrink-0 place-items-center rounded-[5px] font-bold" style={{ width: size, height: size, fontSize: size * 0.6, color: k.color, background: `${k.color}26` }}>{k.glyph}</span>;
-}
-
-function Kv({ rows }: { rows: Array<[string, ReactNode]> }) {
-	return (
-		<dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
-			{rows.map(([k, v]) => [<dt key={`k-${k}`} className="text-[var(--g-ink-3)]">{k}</dt>, <dd key={`v-${k}`} className="min-w-0 break-words text-[var(--g-ink-2)]">{v}</dd>])}
-		</dl>
-	);
-}
-const mono = (s: string) => <span className="g-mono">{s}</span>;
-
-// ── Workflow inspector (per phase type; role only when the version has one) ──
-
-export function Phase_inspector({ phase, phases, statuses, run_name, on_open_file, on_show_yaml }: { phase: Team_phase; phases: Team_phase[]; statuses: Record<string, string> | null; run_name: string | null; on_open_file: (path: string) => void; /** Open team.yml at this phase. */ on_show_yaml?: (phase: string) => void }) {
-	const k = phase_kind(phase);
-	const kind = k.id;
-	const feeds = phases.filter((p) => p.depends_on.includes(phase.name)).map((p) => p.name);
-	const config: Array<[string, ReactNode]> = [
-		['kind', k.label],
-		['type', mono(phase.type)],
-		...(phase.agent ? [['agent', mono(phase.agent)] as [string, ReactNode]] : []),
-		['depends on', phase.depends_on.length ? mono(phase.depends_on.join(', ')) : '—'],
-		['feeds', feeds.length ? mono(feeds.join(', ')) : '—'],
-		...(phase.max_iterations ? [['max iterations', mono(String(phase.max_iterations))] as [string, ReactNode]] : []),
-		...(phase.support ? [['support', 'callable by any phase'] as [string, ReactNode]] : []),
-	];
-	const status = statuses?.[phase.name];
-	const head = (what: string | null) => <h5 className={H5}><Kind_tile type={phase} /><b className="text-[13px] normal-case tracking-normal text-[var(--g-ink)]">{phase.name}</b>{what ? ` · ${what}` : null}</h5>;
-	const cmds = phase.commands.length ? <pre className="g-mono rounded-lg border border-[var(--g-line)] bg-[var(--g-input)] px-3 py-2.5 text-[12px] leading-[1.9] text-[var(--g-ink-2)]">{phase.commands.map((c) => `$ ${c}`).join('\n')}</pre> : null;
-	const urls = (list: string[]) => <ul className="g-mono space-y-1 text-[12px] text-[var(--g-ink-2)]">{list.map((s) => <li key={s} className="break-all">{s}</li>)}</ul>;
-	// First column: the most specific thing this kind of phase has.
-	let primary: ReactNode;
-	if (kind === 'human') {
-		primary = (
-			<>
-				{head('human review')}
-				<Kv rows={[['reviewers', phase.reviewers ? mono(phase.reviewers) : 'set when run'], ['waits for', 'a person to approve or send back']]} />
-				{phase.role ? <pre className="mt-2.5 whitespace-pre-wrap font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid="role-brief">{phase.role.split('\n').slice(0, 8).join('\n')}</pre> : null}
-			</>
-		);
-	} else if (phase.role && (kind === 'agent' || kind === 'gate' || kind === 'team')) {
-		const lines = phase.role.split('\n');
-		primary = (
-			<>
-				<h5 className={H5}><Kind_tile type={phase} /><b className="text-[13px] normal-case tracking-normal text-[var(--g-ink)]">{phase.name}</b> · {kind === 'gate' ? 'verdict criteria' : kind === 'team' ? 'what the sub-team should do' : 'role brief'}
-					<button type="button" onClick={() => on_open_file(`roles/${phase.name}.md`)} className="ml-auto text-[12px] normal-case tracking-normal text-[var(--g-acc)] hover:underline">roles/{phase.name}.md →</button></h5>
-				<pre className="whitespace-pre-wrap font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid="role-brief">{lines.slice(0, 12).join('\n')}</pre>
-				{lines.length > 12 ? <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">… {lines.length - 12} more lines</p> : null}
-				{kind === 'gate' && cmds ? <div className="mt-2.5">{cmds}</div> : null}
-			</>
-		);
-	} else if (kind === 'gate') {
-		primary = <>{head('checks')}{cmds ?? <p className="text-[12.5px] text-[var(--g-ink-3)]">No checks listed.</p>}</>;
-	} else if (kind === 'script') {
-		primary = <>{head('commands')}{cmds ?? <p className="text-[12.5px] text-[var(--g-ink-3)]">No commands listed.</p>}</>;
-	} else if (kind === 'connector' || kind === 'fetch') {
-		primary = (
-			<>
-				{head(kind === 'fetch' ? 'fetch' : phase.agent ? `${phase.agent} connector` : 'connector')}
-				{phase.sources.length ? <><p className="mb-1 text-[11px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">reads</p>{urls(phase.sources)}</> : null}
-				{phase.targets.length ? <><p className="mb-1 mt-2 text-[11px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">writes</p>{urls(phase.targets)}</> : null}
-				{!phase.sources.length && !phase.targets.length ? <p className="text-[12.5px] text-[var(--g-ink-3)]">No sources or targets listed.</p> : null}
-			</>
-		);
-	} else if (kind === 'team') {
-		const m = /^@?([^/]+)\/(.+)$/.exec(phase.team ?? '');
-		primary = (
-			<>
-				{head('sub-team')}
-				{m ? <Link to={team_href(m[1], m[2])} className="text-[13px] text-[var(--g-acc)] hover:underline">{phase.team} →</Link> : <p className="text-[12.5px] text-[var(--g-ink-3)]">{phase.team ?? 'Sub-team not named.'}</p>}
-			</>
-		);
-	} else {
-		primary = <>{head(null)}<p className="text-[12.5px] text-[var(--g-ink-3)]">This phase has no role brief in this version.</p></>;
-	}
-	const third = kind === 'human' ? (
-		<div>
-			<h5 className={H5}><i aria-hidden className="h-2 w-2 rounded-full" style={{ background: REVIEW_COLOR }} />Outcomes</h5>
-			<Kv rows={[['approve', 'continue'], ['send back', phase.depends_on.length ? `to ${phase.depends_on.join(' / ')} with notes` : 'upstream with notes']]} />
-		</div>
-	) : phase.review ? (
-		<div>
-			<h5 className={H5}><i aria-hidden className="h-2 w-2 rounded-full" style={{ background: REVIEW_COLOR }} />Human review</h5>
-			<Kv rows={[['reviewers', phase.reviewers ? mono(phase.reviewers) : 'set when run'], ['on approve', 'continue'], ['on changes', `back to ${phase.name} with notes`]]} />
-		</div>
-	) : kind === 'gate' ? (
-		<div>
-			<h5 className={H5}><span className="text-[var(--g-warn)]">↺</span> Verdicts</h5>
-			<Kv rows={[['pass', 'continue'], ['route', phase.depends_on.length ? `back to ${phase.depends_on.join(' / ')}` : 'back upstream'], ['budget', phase.max_iterations ? `${phase.max_iterations} tries, then escalate` : '—']]} />
-		</div>
-	) : null;
-	return (
-		<div className={`grid ${third ? 'grid-cols-[1.25fr_1fr_1fr]' : 'grid-cols-[1.25fr_1fr]'} overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]`} data-testid="phase-inspector">
-			<div className="min-w-0 border-r border-[var(--g-line)] px-4 py-3.5">{primary}</div>
-			<div className={`min-w-0 px-4 py-3.5 ${third ? 'border-r border-[var(--g-line)]' : ''}`}>
-				<h5 className={H5}>Configuration{on_show_yaml ? <button type="button" onClick={() => on_show_yaml(phase.name)} className="ml-auto text-[12px] normal-case tracking-normal text-[var(--g-acc)] hover:underline" data-testid="show-in-yaml">Show in YAML →</button> : null}</h5>
-				<Kv rows={config} />
-				{run_name ? <p className="mt-3 text-[12px] text-[var(--g-ink-3)]">In {run_name}: {status ? <State_pill state={status} /> : 'not started'}</p> : null}
-			</div>
-			{third ? <div className="min-w-0 px-4 py-3.5">{third}</div> : null}
-		</div>
-	);
-}
-
-function Coverage({ i }: { i: Team_install }) {
-	const n = Math.max(i.online_daemon_count, i.installed_count);
-	if (!n) return <span className="text-[var(--g-ink-3)]">no daemons online</span>;
-	const short = i.installed_count < i.online_daemon_count;
-	return (
-		<span className="inline-flex items-center gap-2.5">
-			<span className="inline-flex gap-[3px]" aria-hidden>{Array.from({ length: Math.min(n, 12) }, (_, k) => <i key={k} className="block h-2.5 w-2.5 rounded-[3px]" style={{ background: k < i.installed_count ? 'var(--g-ok)' : 'var(--g-line-strong)' }} />)}</span>
-			<span className={`g-mono ${short ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>{Math.min(i.installed_count, n)}/{i.online_daemon_count || n}</span>
-		</span>
-	);
-}
-
-
 // ── page ─────────────────────────────────────────────────────────────────
 
 export function Component() {
-	const row = use_row_open();
 	const { scope: scope_param = '', name = '' } = useParams();
 	const team_scope = scope_param === '_' ? '' : scope_param;
 	const navigate = useNavigate();
+	const { pathname } = useLocation();
+	const { user, scopes } = useAuth();
 	const overview = use_overview();
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
 	const post = use_post();
-	const auth_fetch = useAuthFetch();
 	const [search, set_search] = useSearchParams();
-	const tab = ((t) => (VIEWS.includes(t as Team_view) ? t : 'overview'))(search.get('tab') ?? '') as Team_view;
 	const version = search.get('v');
-	const run_sel = search.get('run') ?? 'latest';
-	const phase_sel = search.get('phase');
+	const phase_sel = search.get('phase') ?? search.get('at');
 	const file_sel = search.get('file');
-	const runs_state = ((v) => (v === 'running' || v === 'awaiting_input' || v === 'failed' ? v : null))(search.get('state'));
-	const runs_realm = search.get('realm');
-	const runs_q = search.get('q') ?? '';
-	const runs_page = Math.max(0, Number(search.get('page') ?? 0) || 0);
-	const cmp_from = search.get('from');
-	const cmp_to = search.get('to');
-	const [q_draft, set_q_draft] = useState(runs_q);
-	const [running, set_running] = useState(false);
-	const [install_open, set_install_open] = useState<string | null>(null);
+	// Old links (?tab=files) open the YAML.
+	const [mode, set_mode_state] = useState<Workflow_mode>(() => (search.get('tab') === 'files' ? 'yaml' : read_mode()));
+	const [install_open, set_install_open] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
 	const [edit_choice, set_edit_choice] = useState(false);
-	const { pathname } = useLocation();
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm, set_confirm] = useState<string | null>(null);
-	const [new_name, set_new_name] = useState(name);
 	const [del_version, set_del_version] = useState('');
+	const [renaming, set_renaming] = useState(false);
+	/** Versions card page; null = the page holding the version being viewed. */
+	const [ver_page_pick, set_ver_page] = useState<number | null>(null);
+	/** Versions whose full release notes are shown. */
+	const [notes_open, set_notes_open] = useState<Set<string>>(new Set());
+	const [new_name, set_new_name] = useState(name);
 
-	const set_params = (patch: Record<string, string | null>, replace = false) => set_search((prev) => {
+	const set_params = (patch: Record<string, string | null>, replace = true) => set_search((prev) => {
 		const p = new URLSearchParams(prev);
 		for (const [k, v] of Object.entries(patch)) { if (v === null || v === '') p.delete(k); else p.set(k, v); }
+		p.delete('tab');
 		return p;
 	}, { replace });
-	const go_tab = (t: Team_view, extra: Record<string, string | null> = {}) => {
-		set_msg(null);
-		set_params({ tab: t === 'overview' ? null : t, state: null, realm: null, q: null, page: null, from: null, to: null, ...extra });
-	};
-	useEffect(() => { const t = setTimeout(() => { if (tab === 'runs' && q_draft.trim() !== runs_q) set_params({ q: q_draft.trim() || null, page: null }, true); }, 300); return () => clearTimeout(t); }, [q_draft]); // eslint-disable-line react-hooks/exhaustive-deps
+	function set_mode(m: Workflow_mode) {
+		set_mode_state(m);
+		try { localStorage.setItem(WORKFLOW_MODE_KEY, m); } catch { /* storage unavailable */ }
+	}
 
-	// Runs tab: sorted by Core (runs/get sort_by), so it is right across pages; default = last updated first.
-	// Installs tab: every realm checked is in the answer (no paging), so sorting here is exact.
-	const installs_sort = use_table_sort({ keys: ['realm', 'version', 'daemons', 'last_run_at'], mode: 'client', param: 'installs', first_dir: { daemons: 'desc', last_run_at: 'desc' } });
-	const runs_sort = use_table_sort({ keys: ['run_name', 'state', 'started_at', 'last_updated_at'], default_sort: { by: 'last_updated_at', dir: 'desc' }, first_dir: { started_at: 'desc', last_updated_at: 'desc' } });
 	const body: Record<string, unknown> | null = team_scope && name && (overview.data || overview.status === 'error') ? {
-		scope: team_scope, name, view: tab,
+		scope: team_scope, name, view: 'overview',
 		...(version ? { version } : {}),
 		...(view_org ? { org_id: view_org.id } : {}),
-		...(tab === 'workflow' && run_sel !== 'none' ? { run_id: run_sel } : {}),
-		...(tab === 'versions' && cmp_from ? { compare_from: cmp_from } : {}),
-		...(tab === 'versions' && cmp_to ? { compare_to: cmp_to } : {}),
-		...(tab === 'runs' ? { limit: TEAM_RUNS_PAGE_SIZE, offset: runs_page * TEAM_RUNS_PAGE_SIZE, ...(runs_state ? { state: runs_state } : {}), ...(runs_realm ? { realm_id: runs_realm } : {}), ...runs_sort.body, ...(runs_q ? { q: runs_q } : {}) } : {}),
 	} : null;
-	const read = use_bff_read<Team_page_data>('/v1/team_page/get', body, { refresh_ms: tab === 'runs' || tab === 'workflow' ? 30_000 : 120_000, fallback_error: 'Could not load this team.' });
-	const run_cols = runs_sort.with_sortable(read.data?.runs?.sortable);
-	const any_data = read.data;
-	// Header survives tab switches; the body only renders data for this tab.
-	const data = any_data && any_data.view === tab ? any_data : null;
-	const team = any_data?.team ?? null;
+	const read = use_bff_read<Team_page_data>('/v1/team_page/get', body, { refresh_ms: 120_000, fallback_error: 'Could not load this team.' });
+	const data = read.data;
+	const team = data?.team ?? null;
+	const o = data?.overview ?? null;
+	const files = data?.files?.files ?? [];
+	const team_yml = files.find((f) => f.path === 'team.yml')?.content ?? null;
 	const label = team?.label ?? (team_scope ? `@${team_scope}/${name}` : name);
 	const is_latest = !team || team.version === team.latest_version;
-	const can_settings = Boolean(team && (team.can_edit || team.can_delete));
-	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((o) => !view_org || o.id === view_org.id).flatMap((o) => o.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
-	const realm_by_id = useMemo(() => new Map((overview.data?.orgs ?? []).flatMap((o) => o.realms).map((r) => [r.id, r])), [overview.data]);
+	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((x) => !view_org || x.id === view_org.id).flatMap((x) => x.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
+	const phases = o?.phases ?? [];
+	const all_phases = useMemo(() => [...phases, ...(o?.support ?? [])], [phases, o?.support]);
+	const sel = all_phases.find((p) => p.name === phase_sel) ?? phases[0] ?? null;
+	const used = useMemo(() => (sel && o ? inputs_used(sel, team_yml, o.inputs) : []), [sel, team_yml, o]);
+	// A different version: any open confirmation was about the old one.
+	useEffect(() => { set_confirm(null); }, [version]);
 
 	/** Edit opens the team itself (`?draft=<id>`): autosave goes to its working copy, never a version. */
 	function edit_href(fresh: boolean): string {
 		return `/builder?draft=${encodeURIComponent(team?.id ?? '')}${fresh ? '&fresh=1' : ''}&from=${encodeURIComponent(pathname)}`;
 	}
-	async function open_builder(fork: boolean) {
-		if (!fork && team) {
-			if (team.draft_saved_at) set_edit_choice((v) => !v);
-			else navigate(edit_href(false));
-			return;
-		}
-		set_busy(fork ? 'fork' : 'builder');
+	function edit() {
+		if (!team) return;
+		if (team.draft_saved_at) set_edit_choice((v) => !v);
+		else navigate(edit_href(false));
+	}
+
+	/** Fork: a copy of this version in your scope (`<name>-fork`, or the next free name), then open it. */
+	async function fork() {
+		if (!team) return;
+		const scope = scopes?.[0]?.slug ?? user?.username ?? '';
+		if (!scope) { set_msg({ tone: 'bad', text: 'You need a scope to fork into.' }); return; }
+		set_busy('fork'); set_msg(null);
 		try {
-			const res = await auth_fetch('/v1/teams/get_by_id', { method: 'POST', body: JSON.stringify({ name, scope: team_scope, ...(version ? { version } : {}) }) });
-			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) { set_msg({ tone: 'bad', text: api_message(payload, 'Could not open the Builder.') }); return; }
-			const href = builder_href(payload.data, { label, version: team?.version, fork, from: window.location.pathname });
-			if (href) navigate(href); else set_msg({ tone: 'bad', text: 'Could not open the Builder.' });
-		} catch {
-			set_msg({ tone: 'bad', text: 'Network error — check your connection.' });
+			for (const suffix of FORK_SUFFIXES) {
+				const fork_name = `${team.name}${suffix}`.slice(0, 64);
+				const res = await post('/v1/teams/create', { name: fork_name, scope, forked_from: { team_id: team.id, ...(team.version ? { version: team.version } : {}) } });
+				if (res.ok) { navigate(team_href(scope, fork_name)); return; }
+				if (res.status !== 409) { set_msg({ tone: 'bad', text: res.error }); return; }
+			}
+			set_msg({ tone: 'bad', text: `@${scope}/${team.name}-fork and the next few names are taken. Rename one of them, then fork again.` });
 		} finally {
 			set_busy(null);
 		}
+	}
+
+	/**
+	 * Download the version being viewed: its package (team.yml and role briefs) from the registry;
+	 * team.yml alone when there's no package (a version made in the Builder or by a fork).
+	 */
+	async function download() {
+		if (!team) return;
+		set_busy('download'); set_msg(null);
+		const save = (blob: Blob, filename: string) => {
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url; a.download = filename; a.click();
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+		};
+		try {
+			const res = await post('/v1/teams/download', { name: team.name, scope: team.scope ?? '', ...(team.version ? { version: team.version } : {}) });
+			const pkg = res.ok ? res.data as { filename?: string; data_base64?: string } : null;
+			if (pkg?.data_base64) {
+				const bytes = Uint8Array.from(atob(pkg.data_base64), (c) => c.charCodeAt(0));
+				save(new Blob([bytes], { type: 'application/zip' }), pkg.filename || `${team.name}-${team.version ?? 'latest'}.zip`);
+				return;
+			}
+			if (team_yml) { save(new Blob([team_yml], { type: 'text/yaml' }), `${team.name}${team.version ? `-${team.version}` : ''}.team.yml`); return; }
+			set_msg({ tone: 'bad', text: res.ok ? 'Nothing to download for this version.' : res.error });
+		} finally {
+			set_busy(null);
+		}
+	}
+
+	/** Unpublish (Core removes it from every realm first, or refuses and changes nothing). */
+	async function unpublish() {
+		if (!team) return;
+		set_busy('unpublish'); set_msg(null);
+		const res = await post('/v1/teams/unpublish', { name: team.name, scope: team.scope });
+		set_busy(null); set_confirm(null);
+		if (!res.ok) { set_msg({ tone: 'bad', text: res.error }); return; }
+		const from = (res.data as { uninstalled_from?: Array<{ realm_slug: string }> }).uninstalled_from ?? [];
+		set_msg({ tone: 'ok', text: from.length ? `${label} is a draft again; removed from ${from.map((r) => r.realm_slug).join(', ')}.` : `${label} is a draft again.` });
+		await read.reload();
 	}
 
 	async function act(key: string, path: string, payload: Record<string, unknown>, ok_text: string, after?: () => void) {
@@ -280,401 +230,321 @@ export function Component() {
 		if (after) after(); else await read.reload();
 	}
 
+	// ── team details panel (✎): the name renames now; description and tags come with the next version ──
+	const details_panel = renaming && team?.scope ? (
+		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label="Team details" onMouseDown={(e) => { if (e.target === e.currentTarget) set_renaming(false); }} onKeyDown={(e) => { if (e.key === 'Escape') set_renaming(false); }}>
+			<div className="flex h-full w-[440px] max-w-full flex-col gap-5 overflow-y-auto border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] px-6 py-5 shadow-[var(--g-drawer-shadow)]" data-testid="details-panel">
+				<div className="flex items-center">
+					<h2 className="text-[16px] font-semibold">Team details</h2>
+					<button type="button" onClick={() => set_renaming(false)} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">✕</button>
+				</div>
+				<form className="flex flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); if (NAME_OK.test(new_name) && new_name !== team.name) void act('rename', '/v1/teams/rename', { name: team.name, scope: team.scope, new_name }, `Renamed to ${new_name}.`, () => { set_renaming(false); navigate(team_href(team.scope, new_name), { replace: true }); }); }}>
+					<label htmlFor="team-name" className="text-[12px] font-semibold text-[var(--g-ink-2)]">Name</label>
+					<div className="flex items-center gap-1.5">
+						<input id="team-name" aria-label="Team name" autoFocus value={new_name} onChange={(e) => set_new_name(e.target.value.trim())} className={`${INPUT} g-mono h-8 flex-1 text-[13px]`} />
+						<button type="submit" disabled={busy !== null || !NAME_OK.test(new_name) || new_name === team.name} className={PRIMARY}>{busy === 'rename' ? 'Renaming…' : 'Rename'}</button>
+					</div>
+					{new_name && !NAME_OK.test(new_name)
+						? <span className="text-[12px] text-[var(--g-bad)]">Lowercase letters, numbers and hyphens, starting with a letter.</span>
+						: <span className="text-[12px] text-[var(--g-ink-3)]">Takes effect right away; links to <span className="g-mono">{team.scope}/{team.name}</span> stop working.</span>}
+				</form>
+				<div className="flex flex-col gap-1.5">
+					<span className="text-[12px] font-semibold text-[var(--g-ink-2)]">Description</span>
+					<p className="text-[13px] text-[var(--g-ink-2)]">{team.description || <span className="text-[var(--g-ink-3)]">None yet.</span>}</p>
+					<span className="mt-2 text-[12px] font-semibold text-[var(--g-ink-2)]">Tags</span>
+					<p className="text-[13px] text-[var(--g-ink-2)]">{team.tags.length ? team.tags.join(' · ') : <span className="text-[var(--g-ink-3)]">None.</span>}</p>
+					<p className="mt-2 text-[12px] text-[var(--g-ink-3)]">Description, tags and inputs are part of team.yml, so they change with the next version you publish.</p>
+					<button type="button" onClick={() => { set_renaming(false); edit(); }} className={`${ROW_ACTION_CLS} self-start`}>Change them in the Builder</button>
+				</div>
+			</div>
+		</div>
+	) : null;
+
 	// ── header ──
-	const header = (full: boolean) => (
-		<div className={`flex gap-4 ${full ? 'items-start' : 'items-center'}`}>
-			<Team_avatar name={name} size={full ? 52 : 32} />
+	const header = (
+		<div className="flex items-start gap-4">
+			<Team_avatar name={name} size={48} />
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-2.5">
-					<h1 className={`${full ? 'text-[22px]' : 'text-[18px]'} font-semibold tracking-tight`}>{team?.name ?? name}</h1>
-					<span className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 py-px text-[11px] text-[var(--g-ink-2)]">{label}</span>
+					<h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>
+					{team?.can_edit && team.scope ? <button type="button" aria-label="Edit team details" title="Name, description and tags" onClick={() => { set_new_name(team.name); set_renaming(true); }} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]"><Pencil aria-hidden className="h-3.5 w-3.5" /></button> : null}
 					{team ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
+				</div>
+				{team?.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
+				<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
 					{team && team.versions.length ? (
-						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value, from: null, to: null })} className={`${INPUT} h-7 w-[150px]`}>
+						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value }, false)} className={`${INPUT} h-6 w-[140px] text-[12px]`}>
 							{team.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.is_latest ? ' · latest' : ''}</option>)}
 						</select>
 					) : null}
+					<span className="g-mono text-[var(--g-ink-2)]">{label}</span>
+					{team?.author ? <span>· by {team.author}</span> : null}
+					{team?.tags.length ? <span>· {team.tags.join(' · ')}</span> : null}
 				</div>
-				{full && team?.description ? <p className="mt-1.5 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
-				{full && team?.author ? <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">by {team.author}{team.tags.length ? ` · ${team.tags.join(' · ')}` : ''}</p> : null}
 			</div>
 			<div className="relative flex shrink-0 items-center gap-1.5">
-				{team && tab !== 'files' ? <button type="button" onClick={() => go_tab('files', { file: 'team.yml', at: null, run: null, phase: null })} className={ROW_ACTION_CLS} data-testid="view-yaml">View YAML</button> : null}
-				{team?.status === 'published' && team.scope ? <button type="button" aria-expanded={install_open === 'header'} onClick={() => set_install_open(install_open === 'header' ? null : 'header')} className={ROW_ACTION_CLS}>Install ▾</button> : null}
-				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>{busy === 'builder' ? 'Opening…' : 'Open in Builder'}</button> : null}
-				{team ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(true)} className={ROW_ACTION_CLS}>{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
-				{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_running(true)} className={`${PRIMARY} px-4 py-2 text-[13px]`}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button> : null}
+				{team ? <button type="button" disabled={busy !== null} onClick={() => void fork()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title="Copy this version into your scope and open the copy"><GitFork aria-hidden className="h-3.5 w-3.5" />{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
+				{team && team.versions.length ? <button type="button" disabled={busy !== null} onClick={() => void download()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title={`Download v${team.version} (team.yml and role briefs)`}><FileDown aria-hidden className="h-3.5 w-3.5" />{busy === 'download' ? 'Downloading…' : 'Download'}</button> : null}
+				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={edit} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Pencil aria-hidden className="h-3.5 w-3.5" />Edit</button> : null}
+				{team?.status === 'published' && team.scope ? <button type="button" aria-expanded={install_open} onClick={() => set_install_open((v) => !v)} className={PRIMARY}><Download aria-hidden className="h-3.5 w-3.5" />Install ▾</button> : null}
 				{edit_choice && team?.draft_saved_at ? (
-					<div role="dialog" aria-label="Open in Builder" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-3.5 text-left shadow-[var(--g-pop-shadow)]">
+					<div role="dialog" aria-label="Edit" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-3.5 text-left shadow-[var(--g-pop-shadow)]">
 						<p className="text-[13px] font-semibold">You have unpublished changes</p>
 						<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Saved {relative_time(Date.parse(team.draft_saved_at))}. Pick up where you left off, or start again from {team.latest_version ? `v${team.latest_version}` : 'the published team'}.</p>
 						<div className="mt-3 flex flex-col gap-1.5">
 							<button type="button" onClick={() => navigate(edit_href(false))} className={`${PRIMARY} justify-center`}>Resume my changes</button>
 							<button type="button" onClick={() => navigate(edit_href(true))} className={`${ROW_ACTION_CLS} justify-center`}>Start from {team.latest_version ? `v${team.latest_version}` : 'published'}</button>
+							{confirm === 'drop' ? (
+								<span className="flex gap-1.5">
+									<button type="button" disabled={busy !== null} onClick={() => void act('drop', '/v1/teams/update', { team_id: team.id, save_as: 'discard' }, 'Unpublished changes thrown away.', () => { set_edit_choice(false); void read.reload(); })} className={`${DANGER_BTN} flex-1`}>{busy === 'drop' ? 'Throwing away…' : 'Throw them away'}</button>
+									<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
+								</span>
+							) : (
+								<button type="button" onClick={() => set_confirm('drop')} className="rounded-md px-2.5 py-1 text-[12px] text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)]">Throw away my changes…</button>
+							)}
 						</div>
-						<p className="mt-2 text-[11px] text-[var(--g-ink-3)]">Starting again replaces the unpublished changes once you edit; Cancel in the Builder puts them back.</p>
+						<p className="mt-2 text-[11px] text-[var(--g-ink-3)]">Starting again replaces the unpublished changes once you edit; Discard in the Builder puts them back. Throwing them away can’t be undone.</p>
 					</div>
 				) : null}
-				{install_open === 'header' && team?.scope ? (
-					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((data?.overview?.installs ?? data?.installs?.items ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(null)} on_done={(m) => { set_install_open(null); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
+				{install_open && team?.scope ? (
+					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((o?.installs ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(false)} on_done={(m) => { set_install_open(false); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
 				) : null}
 			</div>
 		</div>
 	);
 
-	const count_of = (v: Team_view): string | null => {
-		if (!data) return null;
-		if (v === 'workflow') return String(data.counts.phases);
-		if (v === 'files' && data.files) return String(data.files.files.length);
-		if (v === 'runs') return data.counts.runs === null ? null : String(data.counts.runs);
-		if (v === 'installs' && (data.installs || data.overview)) return String((data.installs?.items ?? data.overview?.installs ?? []).length);
-		if (v === 'versions') return String(data.counts.versions);
-		return null;
-	};
-	const tabs = (
-		<nav aria-label="Team" className="flex items-center gap-0.5 border-b border-[var(--g-line)]">
-			{GROUPS.map((g, gi) => (
-				<span key={gi} className="flex items-center">
-					{gi ? <span aria-hidden className="mx-2 h-4 w-px bg-[var(--g-line)]" /> : null}
-					{g.filter((v) => v !== 'settings' || can_settings).map((v) => {
-						const n = count_of(v);
+	// ── workflow (two modes) ──
+	const mode_btn = (m: Workflow_mode, text: string, Icon: typeof Route) => (
+		<button type="button" role="tab" aria-selected={mode === m} onClick={() => set_mode(m)} className={`inline-flex h-7 items-center gap-1.5 px-2.5 text-[12px] ${mode === m ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
+			<Icon aria-hidden className="h-3.5 w-3.5" />{text}
+		</button>
+	);
+	const workflow = o ? (
+		<section className={CARD} data-testid="workflow">
+			<div className={H3}>
+				Workflow <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{phases.length} phase{phases.length === 1 ? '' : 's'}{team?.version ? ` · v${team.version}` : ''}</span>
+				<div role="tablist" aria-label="Workflow view" className="ml-auto flex overflow-hidden rounded-md border border-[var(--g-line-strong)]">
+					{mode_btn('diagram', 'Diagram', Route)}
+					{mode_btn('yaml', 'YAML', Code)}
+				</div>
+			</div>
+			{mode === 'diagram' ? (
+				<div className="bg-[var(--g-input)]">
+					<Workflow_graph phases={phases} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
+					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5">
+						<Workflow_legend phases={phases} />
+						{o.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support: {o.support.map((s) => <button key={s.name} type="button" aria-pressed={sel?.name === s.name} onClick={() => set_params({ phase: s.name })} className={`g-mono rounded border px-1.5 text-[11px] ${sel?.name === s.name ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line-2)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{s.name}</button>)}</span> : null}
+					</div>
+				</div>
+			) : (
+				<div className="p-3">
+					<Yaml_view
+						files={files}
+						selected={file_sel}
+						on_select={(f) => set_params({ file: f })}
+						focus={sel?.name ?? null}
+						on_focus={(n) => set_params({ phase: n })}
+						version={team?.version ?? null}
+						on_copied={(path) => set_msg({ tone: 'ok', text: `Copied ${path}.` })}
+					/>
+				</div>
+			)}
+			{sel ? (
+				<div className="border-t border-[var(--g-line)] px-4 py-2.5" data-testid="selected-phase">
+					<div className="flex flex-wrap items-center gap-2">
+						<Kind_tile phase={sel} />
+						<b className="g-mono text-[13px]">{sel.name}</b>
+						<span className="text-[12px] text-[var(--g-ink-3)]">{phase_kind(sel).label}{sel.agent ? ` · ${sel.agent}` : ''}{sel.depends_on.length ? ` · after ${sel.depends_on.join(', ')}` : ''}</span>
+					</div>
+					<p className="mt-1 text-[12.5px] leading-relaxed text-[var(--g-ink-2)]">{phase_line(sel)}</p>
+				</div>
+			) : null}
+		</section>
+	) : null;
+
+	// Agents the team uses (phases and support phases), with how many phases use each.
+	const agent_rows = useMemo(() => {
+		const n = new Map<string, number>();
+		for (const p of all_phases) if (p.agent) n.set(p.agent, (n.get(p.agent) ?? 0) + 1);
+		return [...n.entries()].map(([agent, count]) => ({ agent, count }));
+	}, [all_phases]);
+	const defs = o?.agent_defs ?? [];
+	const RAIL_ROW = (on: boolean) => `border-b border-[var(--g-line-2)] px-4 py-2 last:border-b-0 ${on ? 'bg-[var(--g-acc-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`;
+	const agent_def_lines = (d: { entry: string | null; env: string[] }) => (
+		<>
+			{d.entry ? <p className="g-mono mt-0.5 truncate text-[11.5px] text-[var(--g-ink-3)]" title={d.entry}>{d.entry}</p> : null}
+			{d.env.length ? <p className="mt-0.5 text-[11.5px] text-[var(--g-ink-3)]">needs <span className="g-mono">{d.env.join(', ')}</span></p> : null}
+		</>
+	);
+	/**
+	 * Right 30%: what the team needs to run — Agents first (on the daemon, including ones the team
+	 * defines), then Inputs (asked on Run); always listed, the selected phase's highlighted.
+	 */
+	const needs = o ? (
+		<div className="flex flex-col gap-3.5 self-start xl:sticky xl:top-4" data-testid="needs">
+			<section className={`${CARD} overflow-hidden`}>
+				<div data-testid="agents">
+					<h3 className={H3}>Agents <span className="text-[12px] font-normal text-[var(--g-ink-3)]">needed on the daemon to run{sel?.agent ? ` · ${sel.name} uses ${sel.agent}` : ''}</span></h3>
+					{agent_rows.length === 0 && defs.length === 0 ? <p className="px-4 pb-3 text-[12.5px] text-[var(--g-ink-3)]">This team’s phases don’t name an agent.</p> : null}
+					{agent_rows.map(({ agent, count }) => {
+						const here = sel?.agent === agent;
+						const def = defs.find((x) => x.name === agent);
 						return (
-							<button key={v} type="button" aria-current={tab === v ? 'page' : undefined} onClick={() => go_tab(v)} className={`-mb-px flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2.5 text-[13px] font-medium ${tab === v ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
-								{TAB_LABEL[v]}{n !== null ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{n}</span> : null}
-							</button>
+							<div key={agent} data-testid={`agent-${agent}`} data-selected={here ? 'true' : undefined} className={RAIL_ROW(here)}>
+								<div className="flex items-center gap-2">
+									<span className="g-mono min-w-0 flex-1 truncate text-[12.5px]">{agent}</span>
+									{def ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]" title="Defined in this team’s team.yml">this team’s</span> : null}
+									<span className="text-[11px] text-[var(--g-ink-3)]">{count} phase{count === 1 ? '' : 's'}</span>
+								</div>
+								{def ? agent_def_lines(def) : null}
+							</div>
 						);
 					})}
-				</span>
-			))}
-		</nav>
-	);
-
-	// ── tab bodies ──
-	let content: ReactNode = null;
-	if (data?.overview) {
-		const o = data.overview;
-		content = (
-			<>
-				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-input)]">
-					<div className="absolute left-3.5 top-3 z-10 flex items-center gap-2"><b className="text-[13px]">Workflow</b><span className="text-[12px] text-[var(--g-ink-3)]">{o.phases.length} phases{team?.version ? ` · v${team.version}` : ''}</span></div>
-					<button type="button" onClick={() => go_tab('workflow')} className="absolute right-3 top-2.5 z-10 inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Open workflow <ArrowRight aria-hidden className="h-3 w-3" /></button>
-					<div className="pt-9"><Workflow_graph phases={o.phases} height={200} on_select={(p) => go_tab('workflow', { phase: p })} /></div>
-					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5"><Workflow_legend phases={o.phases} />{o.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support: {o.support.map((s) => <span key={s.name} className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]">{s.name}</span>)}</span> : null}</div>
-				</div>
-				<div className="grid grid-cols-[1fr_1fr_330px] gap-3.5">
-					<section className={CARD}>
-						<h3 className={H3}>Inputs <span className="text-[12px] font-normal text-[var(--g-ink-3)]">the form you fill in on Run</span></h3>
-						{o.inputs.length ? o.inputs.map((i) => (
-							<div key={i.name} className="flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-2.5 last:border-b-0">
-								<span className="g-mono w-[120px] shrink-0 truncate text-[12.5px]">{i.name}</span>
-								<span className="min-w-0 flex-1 truncate text-[12.5px] text-[var(--g-ink-3)]">{i.description ?? (i.default ? `default: ${i.default}` : '—')}</span>
-								<span className={`g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] ${i.required ? 'text-[var(--g-acc)]' : 'text-[var(--g-ink-2)]'}`}>{i.required ? 'required' : 'optional'}</span>
+					{defs.filter((x) => !agent_rows.some((r) => r.agent === x.name)).map((x) => (
+						<div key={x.name} data-testid={`agent-${x.name}`} className={RAIL_ROW(false)}>
+							<div className="flex items-center gap-2">
+								<span className="g-mono min-w-0 flex-1 truncate text-[12.5px] text-[var(--g-ink-2)]">{x.name}</span>
+								<span className="rounded bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]">this team’s</span>
+								<span className="text-[11px] text-[var(--g-ink-3)]">no phase</span>
 							</div>
-						)) : <p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">No inputs — runs start straight away.</p>}
-					</section>
-					<section className={CARD}>
-						<h3 className={H3}>{o.latest ? `What’s new in ${o.latest.version}` : 'Releases'}{o.latest?.published_at ? <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{relative_time(o.latest.published_at)}</span> : null}</h3>
-						<div className="px-4 py-3 text-[12.5px] text-[var(--g-ink-2)]">
-							{o.latest?.changelog ? <pre className="whitespace-pre-wrap font-[inherit] leading-relaxed">{o.latest.changelog}</pre> : <p className="text-[var(--g-ink-3)]">{o.latest ? 'No release notes for this version.' : 'Not published yet.'}</p>}
-							{data.counts.versions > 1 ? <button type="button" onClick={() => go_tab('versions')} className="mt-2.5 text-[12.5px] text-[var(--g-acc)] hover:underline">All {data.counts.versions} versions →</button> : null}
-						</div>
-					</section>
-					<section className={`${CARD} px-4 py-3.5`}>
-						<h4 className="mb-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Runs here</h4>
-						{o.installs.length ? o.installs.slice(0, 6).map((i) => (
-							<div key={i.realm_id} className="flex items-center justify-between py-1 text-[12.5px] text-[var(--g-ink-2)]">
-								<span className="truncate">{i.realm_slug}</span>
-								<span className="g-mono text-[var(--g-ink-3)]">{i.installed_count}/{i.online_daemon_count}</span>
-								<span className={`g-mono ${i.behind ? 'text-[var(--g-warn-text)]' : ''}`}>{i.version ?? '—'}{i.behind ? ' ↑' : ''}</span>
-							</div>
-						)) : <p className="text-[12.5px] text-[var(--g-ink-3)]">Not installed in any realm you can see.</p>}
-						<button type="button" onClick={() => go_tab('installs')} className="mt-1.5 text-[12.5px] text-[var(--g-acc)] hover:underline">{o.installs.length ? 'Manage installs →' : '+ Install in a realm'}</button>
-						{o.agents.length ? <div className="mt-2 flex justify-between gap-3 border-t border-[var(--g-line-2)] pt-2 text-[12.5px]"><span className="text-[var(--g-ink-3)]">Agents</span><span className="text-right text-[var(--g-ink-2)]">{o.agents.join(', ')}</span></div> : null}
-					</section>
-				</div>
-			</>
-		);
-	} else if (data?.workflow) {
-		const w = data.workflow;
-		const ov = w.overlay;
-		const graph_phases = ov?.phases ?? w.phases;
-		const all = [...graph_phases, ...w.support];
-		const sel = all.find((p) => p.name === phase_sel) ?? graph_phases[0] ?? null;
-		content = (
-			<>
-				<div className="relative overflow-hidden rounded-xl border border-[var(--g-line)] bg-[var(--g-input)]">
-					<div className="absolute left-3 top-2.5 z-10 flex flex-wrap items-center gap-2">
-						<select aria-label="Overlay a run" value={run_sel} onChange={(e) => set_params({ run: e.target.value === 'latest' ? null : e.target.value })} className={`${INPUT} h-7 w-[280px] bg-[var(--g-pop)]`}>
-							<option value="none">Plain</option>
-							<option value="latest">Last run</option>
-							{w.recent_runs.map((r) => <option key={r.run_id} value={r.run_id}>{r.run_name || r.run_id.slice(0, 8)} · {r.realm_slug ?? ''} · {r.state}</option>)}
-						</select>
-						{ov ? <span className="text-[11.5px] text-[var(--g-ink-3)]"><span className="text-[var(--g-ok)]">●</span> done <span className="text-[var(--g-run)]">●</span> running <span style={{ color: REVIEW_COLOR }}>●</span> waiting <span className="text-[var(--g-bad)]">●</span> failed</span> : null}
-						{ov?.phases ? <span className="rounded bg-[var(--g-warn-soft)] px-1.5 text-[11.5px] text-[var(--g-warn-text)]">graph of v{ov.version}, the version this run used</span> : null}
-						{run_sel !== 'none' && !ov ? <span className="text-[11.5px] text-[var(--g-ink-3)]">No runs to overlay.</span> : null}
-					</div>
-					<div className="absolute right-3 top-2.5 z-10 flex gap-1.5">
-						{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={() => void open_builder(false)} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line-strong)] bg-[var(--g-pop)] px-2.5 text-[12px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">Edit in Builder</button> : null}
-					</div>
-					<div className="pt-11"><Workflow_graph phases={graph_phases} height={240} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p }, true)} statuses={ov ? ov.statuses : null} /></div>
-					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5"><Workflow_legend phases={graph_phases} />
-						{w.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support phases (callable by any phase): {w.support.map((s) => <button key={s.name} type="button" aria-pressed={sel?.name === s.name} onClick={() => set_params({ phase: s.name }, true)} className={`g-mono rounded border px-1.5 text-[11px] ${sel?.name === s.name ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line-2)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{s.name}</button>)}</span> : null}
-					</div>
-				</div>
-				{sel ? <Phase_inspector phase={sel} phases={graph_phases} statuses={ov?.statuses ?? null} run_name={ov ? (ov.run.run_name || ov.run.run_id.slice(0, 8)) : null} on_open_file={(f) => go_tab('files', { file: f })} on_show_yaml={(ph) => go_tab('files', { file: 'team.yml', at: ph, run: null, phase: null })} /> : null}
-			</>
-		);
-	} else if (data?.files) {
-		content = (
-			<Yaml_view
-				files={data.files.files}
-				selected={file_sel}
-				on_select={(f) => set_params({ file: f, at: null }, true)}
-				focus={search.get('at')}
-				on_focus={(n) => set_params({ at: n }, true)}
-				version={team?.version ?? null}
-				on_copied={(path) => set_msg({ tone: 'ok', text: `Copied ${path}.` })}
-				actions={team?.can_edit && is_latest ? <button type="button" onClick={() => void open_builder(false)} className={ROW_ACTION_CLS}>Edit in Builder</button> : null}
-			/>
-		);
-	} else if (data?.runs) {
-		const r = data.runs;
-		const chips: Array<[string | null, string, number | null]> = [[null, 'All', r.counts.all], ['running', 'Running', r.counts.running], ['awaiting_input', 'Needs input', r.counts.awaiting_input], ['failed', 'Failed · 7d', r.counts.failed_7d]];
-		const from = r.total ? r.offset + 1 : 0;
-		const to = Math.min(r.offset + r.limit, r.total);
-		content = (
-			<>
-				<div className="flex flex-wrap items-center gap-2">
-					<div role="group" aria-label="State" className="flex gap-2">
-						{chips.map(([id, l, n]) => <button key={l} type="button" aria-pressed={runs_state === id} onClick={() => set_params({ state: id, page: null }, true)} className={PILL(runs_state === id)}>{l}{n !== null ? <span className="g-mono text-[11px] text-[var(--g-ink-3)]"> {n}</span> : null}</button>)}
-					</div>
-					<select aria-label="Realm" value={runs_realm ?? ''} onChange={(e) => set_params({ realm: e.target.value || null, page: null }, true)} className={`${INPUT} ml-2 w-[200px]`}>
-						<option value="">Realm: all</option>
-						{r.realms.map((x) => <option key={x.id} value={x.id}>{x.slug}</option>)}
-					</select>
-					<input aria-label="Search runs" value={q_draft} onChange={(e) => set_q_draft(e.target.value)} placeholder="Search runs…" className={`${INPUT} w-[240px]`} />
-					<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">across {view_org ? `${view_org.display_name}’s realms` : 'this org’s realms'}</span>
-				</div>
-				<div className={`${CARD} overflow-hidden`}>
-					{r.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{runs_state || runs_realm || runs_q ? 'No runs match these filters.' : 'This team hasn’t run yet.'}</p> : (
-						<table className="w-full text-left text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={run_cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th><th className="px-4 py-2.5 font-semibold">Realm</th><Sort_th sort={run_cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th><th className="px-4 py-2.5 font-semibold">Phase</th><Sort_th sort={run_cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th><Sort_th sort={run_cols} k="last_updated_at" className="px-4 py-2.5 font-semibold">Updated</Sort_th></tr></thead>
-							<tbody>
-								{r.items.map((x) => {
-									const realm = x.realm_id ? realm_by_id.get(x.realm_id) : undefined;
-									const href = x.org_slug && x.realm_slug ? run_href(x.org_slug, x.realm_slug, x.run_id) : realm ? run_href(realm.org_slug, realm.slug, x.run_id) : null;
-									return (
-										<tr key={x.run_id} {...row({ to: href })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${href ? ROW_OPENS : ''}`} data-testid={`run-${x.run_id}`}>
-											<td className="max-w-[320px] px-4 py-2.5">{href ? <Link to={href} onClick={(e) => e.stopPropagation()} className="block truncate font-semibold text-[var(--g-ink)] hover:underline">{x.run_name || x.run_id}</Link> : <span className="block truncate font-semibold">{x.run_name || x.run_id}</span>}</td>
-											<td className="px-4 py-2.5">{x.realm_slug ?? realm?.slug ? <span className="rounded-[5px] bg-[var(--g-run-soft)] px-1.5 py-px text-[11.5px] text-[var(--g-run-text)]">{x.realm_slug ?? realm?.slug}</span> : '—'}</td>
-											<td className="px-4 py-2.5"><State_pill state={x.state} /></td>
-											<td className="g-mono px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{x.current_phase ?? '—'}</td>
-											<td className="px-4 py-2.5 text-[var(--g-ink-3)]">{x.started_at ? relative_time(x.started_at) : '—'}</td>
-											<td className="px-4 py-2.5 text-[var(--g-ink-3)]">{x.updated_at ? relative_time(x.updated_at) : '—'}</td>
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
-					)}
-					{r.total > r.limit ? (
-						<div className="flex items-center justify-end gap-2 border-t border-[var(--g-line)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
-							<span>{from}–{to} of {r.total}</span>
-							<button type="button" aria-label="Previous page" disabled={runs_page === 0} onClick={() => set_params({ page: runs_page - 1 ? String(runs_page - 1) : null }, true)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">‹</button>
-							<button type="button" aria-label="Next page" disabled={to >= r.total} onClick={() => set_params({ page: String(runs_page + 1) }, true)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">›</button>
-						</div>
-					) : null}
-				</div>
-			</>
-		);
-	} else if (data?.installs) {
-		const ins = { ...data.installs, items: sort_rows(data.installs.items, installs_sort, {
-			realm: (i) => i.realm_name || i.realm_slug, version: (i) => i.version, daemons: (i) => i.installed_count, last_run_at: (i) => i.last_run_at,
-		}) };
-		content = (
-			<>
-				<div className="relative flex flex-wrap items-center gap-2">
-					<span className="text-[13px] text-[var(--g-ink-2)]">Installed in <b className="text-[var(--g-ink)]">{ins.items.length}</b> of {ins.realms_total} realm{ins.realms_total === 1 ? '' : 's'} you can see</span>
-					{ins.realms_checked < ins.realms_total ? <span className="text-[11.5px] text-[var(--g-ink-3)]">(checked the first {ins.realms_checked})</span> : null}
-					{team?.status === 'published' && team.scope ? <button type="button" onClick={() => set_install_open(install_open === 'installs' ? null : 'installs')} className={`${PRIMARY} ml-auto`}>+ Install in realm</button> : null}
-					{install_open === 'installs' && team?.scope ? (
-						<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set(ins.items.map((i) => i.realm_id))} on_close={() => set_install_open(null)} on_done={(m) => { set_install_open(null); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
-					) : null}
-				</div>
-				<div className={`${CARD} overflow-hidden`}>
-					{ins.items.length === 0 ? <p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">Not installed in any realm yet.</p> : (
-						<table className="w-full text-left text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={installs_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={installs_sort} k="version" className="px-4 py-2.5 font-semibold">Version</Sort_th><Sort_th sort={installs_sort} k="daemons" className="px-4 py-2.5 font-semibold" title="Online daemons in the realm that have this team">Daemons with it</Sort_th><Sort_th sort={installs_sort} k="last_run_at" className="px-4 py-2.5 font-semibold">Last run</Sort_th><th className="w-[280px] px-4 py-2.5" /></tr></thead>
-							<tbody>
-								{ins.items.map((i) => {
-									const short = i.installed_count < i.online_daemon_count;
-									return (
-										<tr key={i.realm_id} {...row({ to: i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${i.org_slug ? ROW_OPENS : ''}`} data-testid={`install-${i.realm_slug}`}>
-											<td className="px-4 py-2.5"><Link to={i.org_slug ? `/o/${i.org_slug}/realms/${i.realm_slug}/teams` : '#'} className="font-semibold text-[var(--g-ink)] hover:underline">{i.realm_slug}</Link></td>
-											<td className="px-4 py-2.5"><span className={`g-mono ${i.behind ? 'text-[var(--g-warn-text)]' : ''}`}>{i.version ?? '—'}</span>{i.behind ? <span className="ml-2 rounded-full bg-[var(--g-warn-soft)] px-2 py-px text-[11px] font-semibold text-[var(--g-warn-text)]">{team?.latest_version} available</span> : i.version && i.version === team?.latest_version ? <span className="ml-2 text-[11.5px] text-[var(--g-ink-3)]">latest</span> : null}
-												{i.missing_agents.length ? <span className="block text-[11px] text-[var(--g-warn-text)]">needs agents: {i.missing_agents.join(', ')}</span> : null}</td>
-											<td className="px-4 py-2.5"><Coverage i={i} /></td>
-											<td className="px-4 py-2.5 text-[var(--g-ink-3)]">{i.last_run_at ? relative_time(i.last_run_at) : 'never'}</td>
-											<td className="px-4 py-2.5 text-right">
-												{confirm === `rm:${i.realm_id}` ? (
-													<span className="inline-flex gap-1.5">
-														<button type="button" disabled={busy !== null} onClick={() => void act(`rm:${i.realm_id}`, '/v1/realms/remove_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Removed from ${i.realm_slug}; its daemons uninstall it.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Uninstall</button>
-														<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
-													</span>
-												) : (
-													<span className="inline-flex gap-1.5">
-														{i.org_slug ? <Row_open to={`/o/${i.org_slug}/realms/${i.realm_slug}/teams`} label={`Open ${i.realm_slug}`} /> : null}
-														{i.behind ? <button type="button" disabled={busy !== null} onClick={() => void act(`up:${i.realm_id}`, '/v1/realms/add_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Upgrading ${i.realm_slug} to ${team?.latest_version}.`)} className={PRIMARY}>{busy === `up:${i.realm_id}` ? 'Upgrading…' : `Upgrade to ${team?.latest_version}`}</button>
-															: short ? <button type="button" disabled={busy !== null} onClick={() => void act(`sync:${i.realm_id}`, '/v1/realms/add_team', { realm_id: i.realm_id, scope: team?.scope, slug: team?.name }, `Syncing ${i.realm_slug}’s daemons.`)} className={ROW_ACTION_CLS}>{busy === `sync:${i.realm_id}` ? 'Syncing…' : 'Sync daemons'}</button> : null}
-														<button type="button" onClick={() => set_confirm(`rm:${i.realm_id}`)} className={ROW_ACTION_CLS}>Uninstall</button>
-													</span>
-												)}
-											</td>
-										</tr>
-									);
-								})}
-							</tbody>
-						</table>
-					)}
-				</div>
-				{ins.not_installed.length ? (
-					<div className={`${CARD} flex flex-wrap items-center gap-2 px-4 py-3 text-[12.5px] text-[var(--g-ink-3)]`}>
-						Not installed: {ins.not_installed.slice(0, 12).map((r) => <span key={r.id} className="rounded-[5px] bg-[var(--g-soft)] px-1.5 py-px text-[11.5px] text-[var(--g-ink-2)]">{r.slug}</span>)}
-						<span className="ml-auto">Realm admins can install and remove teams.</span>
-					</div>
-				) : null}
-			</>
-		);
-	} else if (data?.versions) {
-		const vs = data.versions;
-		const cmp = vs.compare;
-		const tone: Record<string, string> = { added: '#3ecf8e', changed: '#f5a524', removed: '#ff5c5c' };
-		const sign: Record<string, string> = { added: '+', changed: '~', removed: '−' };
-		content = (
-			<div className="grid grid-cols-[minmax(0,1fr)_480px] gap-4">
-				<div className={`${CARD} py-1.5 pl-3 pr-4`}>
-					{vs.items.length === 0 ? <p className="px-2 py-6 text-[12.5px] text-[var(--g-ink-3)]">No published versions yet.</p> : null}
-					{vs.items.map((v) => (
-						<div key={v.version} {...row({ on_open: v.version !== team?.version ? () => set_params({ v: v.is_latest ? null : v.version, tab: null }) : null })} className={`grid grid-cols-[18px_minmax(0,1fr)] gap-3 ${v.version !== team?.version ? ROW_OPENS : ''}`} data-testid={`version-${v.version}`}>
-							<div className="relative before:absolute before:bottom-0 before:left-2 before:top-0 before:w-px before:bg-[var(--g-line)]">
-								<i className={`absolute left-[3px] top-[17px] block h-[11px] w-[11px] rounded-full border-2 ${v.is_latest ? 'border-[var(--g-acc)] bg-[var(--g-acc)] shadow-[0_0_0_4px_var(--g-acc-soft)]' : 'border-[var(--g-line-strong)] bg-[var(--g-panel)]'}`} />
-							</div>
-							<div className="border-b border-[var(--g-line-2)] py-3">
-								<div className="flex flex-wrap items-center gap-2.5">
-									<b className="g-mono text-[14px]">{v.version}</b>
-									{v.is_latest ? <span className="rounded-full bg-[var(--g-acc-soft)] px-2 py-px text-[11px] font-semibold text-[var(--g-acc)]">latest</span> : null}
-									{v.version === team?.version && !v.is_latest ? <span className="rounded-full bg-[var(--g-soft)] px-2 py-px text-[11px] text-[var(--g-ink-2)]">viewing</span> : null}
-									<span className="text-[12px] text-[var(--g-ink-3)]">{v.published_at ? relative_time(v.published_at) : ''}</span>
-									<span className="ml-auto flex gap-1.5">
-										{v.version !== team?.version ? <button type="button" onClick={() => set_params({ v: v.is_latest ? null : v.version, tab: null })} className={ROW_ACTION_CLS}>View</button> : null}
-										{cmp?.to !== v.version && cmp?.from !== v.version ? <button type="button" onClick={() => set_params({ from: v.version, to: cmp?.to ?? team?.version ?? null }, true)} className={ROW_ACTION_CLS}>Compare</button> : null}
-									</span>
-								</div>
-								{v.changelog ? <pre className="mt-1.5 whitespace-pre-wrap font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]">{v.changelog}</pre> : <p className="mt-1 text-[12px] text-[var(--g-ink-3)]">No release notes.</p>}
-							</div>
+							{agent_def_lines(x)}
 						</div>
 					))}
 				</div>
-				<div className={`${CARD} self-start overflow-hidden`}>
-					<div className={H3}>Compare
-						<select aria-label="Compare from" value={cmp?.from ?? ''} onChange={(e) => set_params({ from: e.target.value }, true)} className={`${INPUT} h-7 w-[100px]`}>{vs.items.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}</select>
-						→
-						<select aria-label="Compare to" value={cmp?.to ?? team?.version ?? ''} onChange={(e) => set_params({ to: e.target.value }, true)} className={`${INPUT} h-7 w-[100px]`}>{vs.items.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}</select>
-					</div>
-					{!cmp ? <p className="px-4 py-5 text-[12.5px] text-[var(--g-ink-3)]">{vs.items.length < 2 ? 'Only one version so far.' : 'Pick two different versions.'}</p>
-						: cmp.changes.length === 0 ? <p className="px-4 py-5 text-[12.5px] text-[var(--g-ink-3)]">No workflow, role or input changes between {cmp.from} and {cmp.to}.</p>
-							: cmp.changes.map((c) => (
-								<div key={`${c.target}:${c.name}`} className="flex items-start gap-2.5 border-b border-[var(--g-line-2)] px-4 py-2.5 text-[12.5px] last:border-b-0" data-testid="version-change">
-									<span className="g-mono grid h-5 w-5 shrink-0 place-items-center rounded-[5px] font-bold" style={{ color: tone[c.kind], background: `${tone[c.kind]}24` }}>{sign[c.kind]}</span>
-									<div className="min-w-0"><b className="g-mono text-[12.5px]">{c.name}</b><div className="text-[var(--g-ink-3)]">{c.detail}</div></div>
+			</section>
+			<section className={`${CARD} overflow-hidden`}>
+				<div data-testid="inputs">
+					<h3 className={H3}>Inputs <span className="text-[12px] font-normal text-[var(--g-ink-3)]">asked on Run{sel ? ` · ${sel.name} uses ${used.length || 'none'}` : ''}</span></h3>
+					{o.inputs.length === 0 ? <p className="px-4 pb-3 text-[12.5px] text-[var(--g-ink-3)]">No inputs — runs start straight away.</p> : null}
+					{o.inputs.map((i) => {
+						const on = used.includes(i.name);
+						return (
+							<div key={i.name} data-testid={`input-${i.name}`} data-used={on ? 'true' : undefined} className={RAIL_ROW(on)}>
+								<div className="flex items-center gap-2">
+									<span className={`g-mono min-w-0 flex-1 truncate text-[12.5px] ${on ? '' : 'text-[var(--g-ink-2)]'}`}>{i.name}</span>
+									<span className={`g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] ${i.required ? 'text-[var(--g-acc)]' : 'text-[var(--g-ink-2)]'}`}>{i.required ? 'required' : 'optional'}</span>
 								</div>
-							))}
+								{i.description || i.default ? <p className="mt-0.5 truncate text-[12px] text-[var(--g-ink-3)]">{i.description ?? `default: ${i.default}`}</p> : null}
+							</div>
+						);
+					})}
 				</div>
-			</div>
-		);
-	} else if (tab === 'settings' && team) {
-		content = !can_settings ? <p className="text-[13px] text-[var(--g-ink-3)]">Only people who can edit this team see its settings.</p> : (
-			<div className="grid grid-cols-2 gap-4">
-				<section className={CARD}>
-					<h3 className={H3}>General</h3>
-					{team.can_edit && team.scope ? (
-						<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 border-b border-[var(--g-line-2)] px-4 py-3.5">
-							<div><b className="text-[13px]">Name</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Renames within @{team.scope}. Lowercase letters, numbers and hyphens.</p></div>
-							<div className="flex items-start gap-2">
-								<input aria-label="New name" value={new_name} onChange={(e) => set_new_name(e.target.value)} className={`${INPUT} flex-1`} />
-								<button type="button" disabled={busy !== null || !/^[a-z][a-z0-9-]*$/.test(new_name) || new_name === team.name} onClick={() => void act('rename', '/v1/teams/rename', { name: team.name, scope: team.scope, new_name }, `Renamed to ${new_name}.`, () => navigate(team_href(team.scope, new_name, 'settings'), { replace: true }))} className={ROW_ACTION_CLS}>{busy === 'rename' ? 'Renaming…' : 'Rename'}</button>
-							</div>
-						</div>
-					) : null}
-					<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 px-4 py-3.5">
-						<div><b className="text-[13px]">Description</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Edited with the team in the Builder.</p></div>
-						<p className="text-[12.5px] text-[var(--g-ink-2)]">{team.description || '—'}</p>
-					</div>
-				</section>
-				<div className="flex flex-col gap-4">
-					{team.can_edit && team.status === 'published' ? (
-						<section className={CARD}>
-							<h3 className={H3}>Publishing</h3>
-							<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 border-b border-[var(--g-line-2)] px-4 py-3.5">
-								<div><b className="text-[13px]">Unpublish</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Back to draft.</p></div>
-								<div>{confirm === 'unpublish'
-									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('unpublish', '/v1/teams/unpublish', { name: team.name, scope: team.scope }, `${label} is a draft again.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Unpublish</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
-									: <button type="button" onClick={() => set_confirm('unpublish')} className={ROW_ACTION_CLS}>Unpublish…</button>}</div>
-							</div>
-							{team.versions.length > 1 ? (
-								<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 px-4 py-3.5">
-									<div><b className="text-[13px]">Delete a version</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Removes one version from the registry.</p></div>
-									<div className="flex items-start gap-2">
-										<select aria-label="Version to delete" value={del_version} onChange={(e) => set_del_version(e.target.value)} className={`${INPUT} w-[140px]`}>
-											<option value="">Pick…</option>
-											{team.versions.filter((v) => !v.is_latest).map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
-										</select>
-										{confirm === 'delver'
-											? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Deleted ${del_version}.`)} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Delete {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
-											: <button type="button" disabled={!del_version} onClick={() => set_confirm('delver')} className={ROW_ACTION_CLS}>Delete version…</button>}
-									</div>
-								</div>
-							) : null}
-						</section>
-					) : null}
-					{team.can_delete ? (
-						<section className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]">
-							<h3 className={`${H3} text-[var(--g-bad)]`}>Danger zone</h3>
-							<div className="grid grid-cols-[200px_minmax(0,1fr)] gap-4 px-4 py-3.5">
-								<div><b className="text-[13px]">Delete team</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Removes it from the registry and from every realm’s team list.</p></div>
-								<div>{confirm === 'delete'
-									? <span className="inline-flex gap-1.5"><button type="button" disabled={busy !== null} onClick={() => void act('delete', '/v1/teams/delete', { name: team.name, scope: team.scope }, `Deleted ${label}.`, () => navigate('/teams', { replace: true }))} className="rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)]">Delete {team.name}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></span>
-									: <button type="button" onClick={() => set_confirm('delete')} className="rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-bad)]">Delete team…</button>}</div>
-							</div>
-						</section>
-					) : null}
+			</section>
+		</div>
+	) : null;
+
+	const ver_total = team?.versions.length ?? 0;
+	const ver_pages = Math.max(1, Math.ceil(ver_total / VERSIONS_PAGE_SIZE));
+	const viewing_at = Math.max(0, team?.versions.findIndex((v) => v.version === team.version) ?? 0);
+	const ver_page = Math.min(ver_page_pick ?? Math.floor(viewing_at / VERSIONS_PAGE_SIZE), ver_pages - 1);
+	const ver_from = ver_page * VERSIONS_PAGE_SIZE;
+	const versions_card = team ? (
+		<section className={CARD} data-testid="versions">
+			<h3 className={H3}>Versions <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{team.versions.length}</span></h3>
+			{team.versions.length === 0 ? <p className="px-4 py-4 text-[12.5px] text-[var(--g-ink-3)]">Not published yet.</p> : (
+				<ul>
+					{team.versions.slice(ver_from, ver_from + VERSIONS_PAGE_SIZE).map((v) => {
+						const viewing = v.version === team.version;
+						return (
+							<li key={v.version} data-testid={`version-${v.version}`} className="border-b border-[var(--g-line-2)] last:border-b-0">
+								{(() => {
+									const lines = (v.changelog ?? '').split('\n').filter((l) => l.trim());
+									const open = notes_open.has(v.version);
+									return (
+										<div className={`flex items-start gap-2.5 px-4 py-2.5 ${viewing ? 'bg-[var(--g-soft)]' : ''}`}>
+											<button type="button" disabled={viewing} onClick={() => set_params({ v: v.is_latest ? null : v.version, phase: null }, false)} className="g-mono w-[56px] shrink-0 text-left text-[12.5px] font-bold hover:underline disabled:no-underline" title={viewing ? 'Viewing' : `View v${v.version}`}>{v.version}</button>
+											<span className="min-w-0 flex-1">
+												<span className="flex flex-wrap items-center gap-2">
+													{v.is_latest ? <span className="rounded-full bg-[var(--g-acc-soft)] px-2 py-px text-[11px] font-semibold text-[var(--g-acc)]">latest</span> : null}
+													{viewing ? <span className="rounded-full bg-[var(--g-panel)] px-2 py-px text-[11px] text-[var(--g-ink-2)]">viewing</span> : null}
+													<span className="text-[12px] text-[var(--g-ink-3)]">{v.published_at ? relative_time(v.published_at) : ''}</span>
+												</span>
+												{!lines.length ? <span className="mt-0.5 block text-[12.5px] text-[var(--g-ink-3)]">No release notes.</span>
+													: open ? <pre className="mt-0.5 whitespace-pre-wrap font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid={`notes-${v.version}`}>{v.changelog}</pre>
+														: <span className="mt-0.5 block truncate text-[12.5px] text-[var(--g-ink-2)]">{lines[0]}</span>}
+												{lines.length > 1 || (lines[0]?.length ?? 0) > 90 ? (
+													<button type="button" onClick={() => set_notes_open((prev) => { const n = new Set(prev); if (n.has(v.version)) n.delete(v.version); else n.add(v.version); return n; })} className="mt-0.5 text-[12px] text-[var(--g-acc)] hover:underline" aria-expanded={open}>{open ? 'less' : 'more'}</button>
+												) : null}
+											</span>
+										</div>
+									);
+								})()}
+							</li>
+						);
+					})}
+				</ul>
+			)}
+			{ver_total > VERSIONS_PAGE_SIZE ? (
+				<div className="flex items-center justify-end gap-2 border-t border-[var(--g-line)] px-4 py-2 text-[12px] text-[var(--g-ink-3)]" data-testid="versions-pager">
+					<span>{ver_from + 1}–{Math.min(ver_from + VERSIONS_PAGE_SIZE, ver_total)} of {ver_total}</span>
+					<button type="button" aria-label="Newer versions" disabled={ver_page === 0} onClick={() => set_ver_page(ver_page - 1)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">‹</button>
+					<button type="button" aria-label="Older versions" disabled={ver_page >= ver_pages - 1} onClick={() => set_ver_page(ver_page + 1)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">›</button>
 				</div>
+			) : null}
+		</section>
+	) : null;
+
+	const row = (title: string, text: string, control: ReactNode, last = false) => (
+		<div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3.5 ${last ? '' : 'border-b border-[var(--g-line-2)]'}`}>
+			<div><b className="text-[13px]">{title}</b><p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">{text}</p></div>
+			<div className="flex items-center gap-1.5">{control}</div>
+		</div>
+	);
+	const can_unpublish = Boolean(team?.can_edit && team.status === 'published');
+	const can_delete_version = Boolean(team?.can_edit && team.status === 'published' && team.versions.length > 1);
+	const danger = team && (can_unpublish || can_delete_version || team.can_delete) ? (
+		<details className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]" data-testid="danger-zone">
+			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· {[can_unpublish ? 'unpublish' : null, can_delete_version ? 'delete a version' : null, team.can_delete ? 'delete team' : null].filter(Boolean).join(', ')}</span></summary>
+			<div className="border-t border-[var(--g-line)]">
+			{can_unpublish ? row('Unpublish', 'Removes it from every realm that has it, then makes it a draft. If you can’t remove it from any one of those realms, nothing changes.',
+				confirm === 'unpublish'
+					? <><button type="button" disabled={busy !== null} onClick={() => void unpublish()} className={DANGER_BTN}>{busy === 'unpublish' ? 'Unpublishing…' : 'Uninstall everywhere and unpublish'}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+					: <button type="button" onClick={() => set_confirm('unpublish')} className={ROW_ACTION_CLS}>Unpublish…</button>,
+				!can_delete_version && !team.can_delete) : null}
+			{can_delete_version ? row('Delete a version', 'Removes one older version from the registry.', (
+				<>
+					<select aria-label="Version to delete" value={del_version} onChange={(e) => { set_del_version(e.target.value); set_confirm(null); }} className={`${INPUT} w-[120px]`}>
+						<option value="">Pick…</option>
+						{team.versions.filter((v) => !v.is_latest).map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
+					</select>
+					{confirm === 'delver'
+						? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Deleted ${del_version}.`)} className={DANGER_BTN}>Delete {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+						: <button type="button" disabled={!del_version} onClick={() => set_confirm('delver')} className={ROW_ACTION_CLS}>Delete version…</button>}
+				</>
+			), !team.can_delete) : null}
+			{team.can_delete ? row('Delete team', 'Removes it and every version from the registry and from every realm’s team list. Can’t be undone.',
+				confirm === 'delete'
+					? <><button type="button" disabled={busy !== null} onClick={() => void act('delete', '/v1/teams/delete', { name: team.name, scope: team.scope }, `Deleted ${label}.`, () => navigate('/teams', { replace: true }))} className={DANGER_BTN}>{busy === 'delete' ? 'Deleting…' : `Delete ${team.name}`}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+					: <button type="button" onClick={() => set_confirm('delete')} className="rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-bad)]">Delete team…</button>,
+				true) : null}
 			</div>
-		);
-	}
+		</details>
+	) : null;
 
 	return (
-		<Graphite_shell
-			data={overview.data}
-			title={team?.name ?? name}
-			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
-		>
+		<Graphite_shell data={overview.data} title={team?.name ?? name}>
 			<div className="flex flex-col gap-3.5 px-7 py-6">
 				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>
-				{read.status === 'error' && !any_data ? (
+				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="team" />
 				) : (
 					<>
-						{header(tab === 'overview')}
-						{tabs}
+						{header}
+						{details_panel}
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						{data?.partial ? <p className="text-[11.5px] text-[var(--g-ink-3)]">Some of this couldn’t be loaded — what’s shown may be incomplete.</p> : null}
-						{!content && !(tab === 'settings' && team) ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : content}
+						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (
+							<>
+								<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
+									<div className="flex min-w-0 flex-col gap-3.5">{workflow}{versions_card}{danger}</div>
+									{needs}
+								</div>
+							</>
+						)}
 					</>
 				)}
 			</div>
-			{running && team?.scope ? <Run_in_realm_dialog scope={team.scope} slug={team.name} on_close={() => set_running(false)} /> : null}
 		</Graphite_shell>
 	);
 }

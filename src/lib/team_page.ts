@@ -112,7 +112,7 @@ export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
 	view: Team_view;
-	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; latest: Team_release | null; installs: Team_install[] };
+	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[] };
 	workflow?: {
 		phases: Team_phase[];
 		support: Team_phase[];

@@ -31,11 +31,35 @@ export function closest(name: string, options: string[]): string | null {
 	return best;
 }
 
-const INPUT_REF = /\$\(inputs\.([a-zA-Z0-9_-]+)\)/g;
+/** `$(inputs.x)` (what the Builder writes) and `{{inputs.x}}` (what hand-written team.yml uses). */
+const INPUT_REF = /\$\(inputs\.([a-zA-Z0-9_-]+)\)|\{\{\s*inputs\.([a-zA-Z0-9_-]+)\s*\}\}/g;
+
+/**
+ * A human review has someone to ask: the Builder's `review.reviewer`, or a hand-written
+ * `review.reviewers` list naming users or channels.
+ */
+export function has_reviewer(review: unknown): boolean {
+	if (!review || typeof review !== 'object') return false;
+	const r = review as { reviewer?: unknown; reviewers?: unknown };
+	if (typeof r.reviewer === 'string' && r.reviewer.trim()) return true;
+	if (!Array.isArray(r.reviewers)) return false;
+	const named = (v: unknown): boolean => (typeof v === 'string' ? Boolean(v.trim()) : Array.isArray(v) ? v.some(named) : false);
+	return r.reviewers.some((x) => (typeof x === 'string' ? Boolean(x.trim()) : Boolean(x) && typeof x === 'object' && (named((x as Record<string, unknown>).channels) || named((x as Record<string, unknown>).users))));
+}
 function refs_in(s: unknown, out: Set<string>) {
-	if (typeof s === 'string') { for (const m of s.matchAll(INPUT_REF)) out.add(m[1]); return; }
+	if (typeof s === 'string') { for (const m of s.matchAll(INPUT_REF)) out.add(m[1] ?? m[2]); return; }
 	if (Array.isArray(s)) s.forEach((x) => refs_in(x, out));
 	else if (s && typeof s === 'object') Object.values(s).forEach((x) => refs_in(x, out));
+}
+
+/** Phases that use input `name` (in their settings or their role brief), in workflow order. */
+export function phases_using_input(team: GeneratedTeam, name: string): string[] {
+	return team.phases.filter((p) => {
+		const used = new Set<string>();
+		refs_in(p, used);
+		refs_in(team.roles.find((r) => r.name === p.name)?.content, used);
+		return used.has(name);
+	}).map((p) => p.name);
 }
 
 export function find_cycle(team: GeneratedTeam): string[] | null {
@@ -93,7 +117,7 @@ export function check_team(team: GeneratedTeam): Problem[] {
 		if (k === 'script' && !p.commands?.some((c) => c.run?.trim())) add({ level: 'error', phase: p.name, field: 'commands', message: `${p.name} needs at least one command.` });
 		if (k === 'gate' && !p.commands?.length) add({ level: 'error', phase: p.name, field: 'commands', message: `${p.name} (gate) needs at least one check.` });
 		if (k === 'human') {
-			if (!p.review?.reviewer?.trim()) add({ level: 'error', phase: p.name, field: 'review', message: `${p.name} needs a reviewer.` });
+			if (!has_reviewer(p.review)) add({ level: 'error', phase: p.name, field: 'review', message: `${p.name} needs a reviewer.` });
 		}
 		if ((k === 'gate' || k === 'human') && p.commands?.some((c) => c.escalate_on_fail !== undefined)) add({ level: 'error', phase: p.name, field: 'commands', message: `${p.name}: gate checks can’t set escalate_on_fail.` });
 		if (k === 'team' && !p.team?.trim()) add({ level: 'error', phase: p.name, field: 'team', message: `${p.name} needs a sub-team.` });
