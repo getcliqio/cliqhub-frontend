@@ -1,7 +1,8 @@
 /**
  * Build › Teams › one team (Graphite). One page, no tabs. Opened inside a realm
  * (/o/:org/realms/:slug/teams/:scope/:name?v=…) it's read-only: the version installed there, its
- * name as the realm header's title, no version picker, history, actions or danger zone.
+ * name as the realm header's title, no version picker, history or actions; its danger zone is
+ * Uninstall from this realm (`realms/remove_team`).
  *   header   — name · status, description, then version · @scope · author · tags; actions right:
  *              Fork · Download · Edit (the Builder — everything about the team changes there) · Install
  *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
@@ -24,6 +25,7 @@ import { phase_kind, phase_subtitle, team_href, type Team_input, type Team_page_
 import { Yaml_view, find_item, yaml_outline } from '@/components/graphite/g_yaml_view';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
+import { use_access } from '@/lib/access';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -102,6 +104,7 @@ export function Component() {
 	const { pathname } = useLocation();
 	const { user, scopes } = useAuth();
 	const overview = use_overview();
+	const access = use_access(overview.data);
 	const sidebar_realm = in_realm ? overview.data?.orgs.find((o) => o.slug === realm_org)?.realms.find((r) => r.slug === realm_slug) ?? null : null;
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
@@ -470,6 +473,20 @@ export function Component() {
 	);
 	const can_unpublish = Boolean(team?.can_edit && team.status === 'published');
 	const can_delete_version = Boolean(team?.can_edit && team.status === 'published' && team.versions.length > 1);
+	// In a realm the one thing to do with an installed team: take it off this realm.
+	const realm_manage = access.realm(sidebar_realm?.id, 'operate', 'realms.teams.manage');
+	const realm_danger = in_realm && team?.scope && sidebar_realm ? (
+		<details className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]" data-testid="realm-danger-zone">
+			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· uninstall from {sidebar_realm.name || realm_slug}</span></summary>
+			<div className="border-t border-[var(--g-line)]">
+				{row(`Uninstall from ${sidebar_realm.name || realm_slug}`, 'Takes the team off this realm’s team list; its daemons uninstall it. Runs already finished stay. Other realms keep it.',
+					confirm === 'uninstall'
+						? <><button type="button" disabled={busy !== null} onClick={() => void act('uninstall', '/v1/realms/remove_team', { realm_id: sidebar_realm.id, scope: team.scope, slug: team.name }, `${label} uninstalled from ${sidebar_realm.name || realm_slug}.`, () => navigate(`/o/${realm_org}/realms/${realm_slug}/teams`, { replace: true }))} className={DANGER_BTN}>{busy === 'uninstall' ? 'Uninstalling…' : `Uninstall ${team.name}`}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+						: <button type="button" disabled={!realm_manage.ok} title={realm_manage.reason ?? undefined} onClick={() => set_confirm('uninstall')} className="rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-bad)] disabled:opacity-45">Uninstall…</button>,
+					true)}
+			</div>
+		</details>
+	) : null;
 	const danger = team && (can_unpublish || can_delete_version || team.can_delete) ? (
 		<details className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]" data-testid="danger-zone">
 			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· {[can_unpublish ? 'unpublish' : null, can_delete_version ? 'delete a version' : null, team.can_delete ? 'delete team' : null].filter(Boolean).join(', ')}</span></summary>
@@ -515,8 +532,8 @@ export function Component() {
 						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (
 							<>
 								<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
-									{/* In a realm: only the installed version — no version history, no danger zone. */}
-								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? null : danger}</div>
+									{/* In a realm: only the installed version — no version history; its danger zone is uninstalling from the realm. */}
+								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
 									{needs}
 								</div>
 							</>

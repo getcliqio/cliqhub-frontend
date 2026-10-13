@@ -105,6 +105,7 @@ function render_at(path: string) {
 				<Route path="/teams" element={<><ListPage /><Loc /></>} />
 				<Route path="/teams/:scope/:name" element={<><TeamPage /><Loc /></>} />
 				<Route path="/o/:org/realms/:slug/teams/:scope/:name" element={<><TeamPage /><Loc /></>} />
+				<Route path="/o/:org/realms/:slug/teams" element={<Loc />} />
 				<Route path="/builder" element={<Loc />} />
 			</Routes>
 		</MemoryRouter>,
@@ -433,6 +434,17 @@ describe('Team page', () => {
 		for (const name of [/Fork/, /^Download$/, /^Edit$/, /Install/]) expect(screen.queryByRole('button', { name })).toBeNull();
 		expect(screen.queryByTestId('versions')).toBeNull();
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
+	});
+
+	it('opened from a realm: its danger zone uninstalls it from that realm (one write), then back to the realm\'s teams', async () => {
+		const calls = route_fetch();
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const dz = await screen.findByTestId('realm-danger-zone');
+		expect(dz).toHaveTextContent('Uninstall from prod-us');
+		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall…' }));
+		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall feature-dev-js' }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/remove_team').map((c) => c.body)).toEqual([{ realm_id: 'r-prod', scope: 'measureone', slug: 'feature-dev-js' }]));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/o/measureone/realms/prod-us/teams'));
 	});
 
 	it('opened from the Teams list: no realm header', async () => {
