@@ -3,7 +3,7 @@
  * (components/graphite/realm_header.tsx: name, status, Edit details, Teams · Runs · Settings · Daemons).
  *
  *   setup    — what's missing, only when something is
- *   cards    — teams (chips: Ready / Missing agent), daemons (lights), people (avatars, roles, invites)
+ *   cards    — teams (chips: Ready / Missing agent config), daemons (lights), people (avatars, roles, invites)
  *   danger   — folded; Delete realm lives in Settings › Danger zone
  *
  * Runs that need you and runs in progress live on the Runs page; a run starts from a team.
@@ -57,7 +57,7 @@ export function Realm_summary_view({ data, org_slug, slug }: { data: Realm_inbox
 	const people = s?.people ?? null;
 	const setup: Array<{ key: string; text: string; to: string; action: string }> = [];
 	if (s?.daemons && online === 0) setup.push({ key: 'daemon', text: s.daemons.total ? 'No daemon is online, so nothing can run.' : 'No daemon has joined yet, so nothing can run.', to: `${base}/daemons`, action: 'Connect a daemon' });
-	if (missing > 0) setup.push({ key: 'agents', text: `${missing} team${missing === 1 ? ' uses' : 's use'} an agent your org hasn’t registered.`, to: `${base}/agents`, action: 'Set up agents' });
+	if (missing > 0) setup.push({ key: 'agents', text: `${missing} team${missing === 1 ? ' is' : 's are'} missing agent config — an agent ${missing === 1 ? 'it uses' : 'they use'} isn’t set up in your org.`, to: `${base}/agents`, action: 'Set up agents' });
 	if (teams.length === 0 && s?.teams) setup.push({ key: 'teams', text: 'No teams installed yet.', to: `${base}/teams?install=1`, action: 'Install a team' });
 	if (people && people.total <= 1 && admin) setup.push({ key: 'people', text: 'You’re the only one here.', to: `${base}/settings?section=members`, action: 'Invite people' });
 
@@ -86,7 +86,7 @@ export function Realm_summary_view({ data, org_slug, slug }: { data: Realm_inbox
 								<li key={t.label} data-testid={`team-${t.slug}`} className="flex items-center gap-2 rounded-full border border-[var(--g-line)] py-1 pl-1 pr-3 text-[12.5px]">
 									<Team_avatar name={t.slug} size={22} />
 									{t.scope ? <Link to={`${base}/teams/${encodeURIComponent(t.scope)}/${encodeURIComponent(t.slug)}`} className="font-medium hover:underline">{t.label}</Link> : <span className="font-medium">{t.label}</span>}
-									{t.missing_agents.length ? <span title={`Needs ${t.missing_agents.join(', ')}`}><Chip tone="warn">Missing agent</Chip></span> : <span className="text-[11.5px] font-semibold text-[var(--g-ok)]">Ready</span>}
+									{t.missing_agents.length ? <span title={`Needs ${t.missing_agents.join(', ')}`}><Chip tone="warn">Missing agent config</Chip></span> : <span className="text-[11.5px] font-semibold text-[var(--g-ok)]">Ready</span>}
 								</li>
 							))}
 						</ul>

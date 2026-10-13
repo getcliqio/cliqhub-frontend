@@ -45,7 +45,7 @@ afterEach(() => vi.restoreAllMocks());
 describe('Realms page', () => {
 	it('slugify', () => { expect(slugify('Production US!')).toBe('production-us'); });
 
-	it('a table read from the server: status (Ready / Missing agents / No daemon available), online daemons, runs (+ need you), members, created, updated', async () => {
+	it('a table read from the server: status (Ready / Missing agent config / No daemon available), online daemons, runs (+ need you), members, created, updated', async () => {
 		const calls = route_fetch();
 		open();
 		const row = await screen.findByTestId('realm-prod-us');
@@ -53,7 +53,7 @@ describe('Realms page', () => {
 		expect(reads[0].body).toEqual({ org_id: expect.any(String), with_stats: true, limit: 25, offset: 0 });
 		const cells = within(row).getAllByRole('cell').map((c) => c.textContent);
 		expect(cells[0]).toContain('Production delivery, US');
-		expect(cells[1]).toBe('Missing agents');
+		expect(cells[1]).toBe('Missing agent config');
 		expect(cells[2]).toBe('5');
 		expect(cells[3]).toContain('3 running');
 		expect(cells[3]).toContain('4 need you');

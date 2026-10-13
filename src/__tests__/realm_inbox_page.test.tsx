@@ -98,7 +98,7 @@ describe('Realm inbox page', () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
 		await screen.findByRole('heading', { name: 'Prod US' });
-		expect(screen.getByTestId('realm-status')).toHaveTextContent('Missing agents');
+		expect(screen.getByTestId('realm-status')).toHaveTextContent('Missing agent config');
 		expect(screen.getByText('Production delivery for the US')).toBeInTheDocument();
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('measureone.prod-us');
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('created by sapan');
@@ -115,12 +115,12 @@ describe('Realm inbox page', () => {
 		expect(await screen.findByTestId('realm-status')).toHaveTextContent(label);
 	});
 
-	it('header buttons, in order: Teams (· missing agent), Runs (running · need you), Settings, Daemons (N online); no More, no Run…', async () => {
+	it('header buttons, in order: Teams (· missing agent config), Runs (running · need you), Settings, Daemons (N online); no More, no Run…', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
 		const nav = await screen.findByRole('navigation', { name: 'Realm sections' });
 		expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-settings', 'go-daemons']);
-		expect(screen.getByTestId('go-teams')).toHaveTextContent('Teams21 missing agent');
+		expect(screen.getByTestId('go-teams')).toHaveTextContent('Teams21 missing agent config');
 		expect(screen.getByTestId('go-runs')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
 		expect(screen.getByTestId('go-runs')).toHaveTextContent('Runs1 running2 need you');
 		expect(screen.getByTestId('go-settings')).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings');
@@ -129,15 +129,15 @@ describe('Realm inbox page', () => {
 		expect(screen.queryByRole('button', { name: /Run…/ })).toBeNull();
 	});
 
-	it('cards: team chips with Ready / Missing agent, daemon lights, people by role; setup list only for what’s missing', async () => {
+	it('cards: team chips with Ready / Missing agent config, daemon lights, people by role; setup list only for what’s missing', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
 		expect(await screen.findByTestId('team-hello-world')).toHaveTextContent('Ready');
-		expect(screen.getByTestId('team-income-verify')).toHaveTextContent('Missing agent');
+		expect(screen.getByTestId('team-income-verify')).toHaveTextContent('Missing agent config');
 		expect(within(screen.getByTestId('daemons-card')).getAllByRole('link', { name: /online|offline/ })).toHaveLength(3);
 		expect(screen.getByTestId('roles')).toHaveTextContent('1 admin · 2 operators · 1 invite pending');
 		const setup = screen.getByTestId('setup');
-		expect(setup).toHaveTextContent('1 team uses an agent your org hasn’t registered.');
+		expect(setup).toHaveTextContent('1 team is missing agent config — an agent it uses isn’t set up in your org.');
 		expect(setup).not.toHaveTextContent('daemon');
 		expect(screen.getByRole('link', { name: /Install a team/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams?install=1');
 	});

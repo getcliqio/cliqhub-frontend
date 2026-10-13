@@ -59,7 +59,7 @@ export function realm_health(online: number, teams_missing_agents: number): Real
 	return teams_missing_agents > 0 ? 'missing_agents' : 'ready';
 }
 export const REALM_HEALTH_LABEL: Record<Realm_health, string> = {
-	ready: 'Ready', missing_agents: 'Missing agents', no_daemon: 'No daemon available',
+	ready: 'Ready', missing_agents: 'Missing agent config', no_daemon: 'No daemon available',
 };
 
 export interface Run_detail_phase {
