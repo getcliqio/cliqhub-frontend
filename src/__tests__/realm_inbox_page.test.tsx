@@ -30,12 +30,12 @@ type Reply = { status?: number; body: unknown };
 
 const SUMMARY: Realm_summary = {
 	realm: { description: 'Production delivery for the US', created_at: Date.now() - 86_400_000, updated_at: Date.now() - 3_600_000, created_by_username: 'sapan' },
-	teams: { total: 2, missing_agents: 1, items: [
-		{ scope: 'cliq', slug: 'hello-world', label: '@cliq/hello-world', version: '1.0.0', missing_agents: [] },
-		{ scope: 'measureone', slug: 'income-verify', label: '@measureone/income-verify', version: '2.1.0', missing_agents: ['codex'] },
+	teams: { total: 2, missing_agents: 1, offset: 0, limit: 5, items: [
+		{ scope: 'measureone', slug: 'income-verify', label: '@measureone/income-verify', version: '2.1.0', latest_version: '2.2.0', missing_agents: ['codex'], last_run_at: Date.now() - 3_600_000, description: 'Verifies income from payroll' },
+		{ scope: 'cliq', slug: 'hello-world', label: '@cliq/hello-world', version: '1.0.0', latest_version: null, missing_agents: [], last_run_at: null, description: null },
 	] },
 	daemons: { online: 2, total: 3, truncated: false, items: [{ id: 'd1', name: 'mac-1', status: 'online' }, { id: 'd2', name: 'mac-2', status: 'online' }, { id: 'd3', name: 'old', status: 'offline' }] },
-	people: { total: 3, by_role: { admin: 1, operator: 2 }, pending_invites: 1, items: [
+	people: { total: 3, offset: 0, limit: 5, by_role: { admin: 1, operator: 2 }, pending_invites: 1, items: [
 		{ member_id: 'u1', username: 'sapan', role: 'admin', is_you: true }, { member_id: 'u2', username: 'lena', role: 'operator', is_you: false }, { member_id: 'u3', username: 'bo', role: 'operator', is_you: false },
 	] },
 	you: { role: 'admin', is_admin: true },
@@ -129,13 +129,25 @@ describe('Realm inbox page', () => {
 		expect(screen.queryByRole('button', { name: /Run…/ })).toBeNull();
 	});
 
-	it('cards: team chips with Ready / Missing agent config, daemon lights, people by role; setup list only for what’s missing', async () => {
+	it('tables: teams (description, version, status, last run) and members (role); daemon lights; setup list only for what’s missing', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		expect(await screen.findByTestId('team-hello-world')).toHaveTextContent('Ready');
-		expect(screen.getByTestId('team-income-verify')).toHaveTextContent('Missing agent config');
+		// Teams: a table — name and description, version (and a newer one), status, last run.
+		const iv = await screen.findByTestId('team-income-verify');
+		expect(iv).toHaveTextContent('Verifies income from payroll');
+		expect(iv).toHaveTextContent('2.1.0↑ 2.2.0');
+		expect(iv).toHaveTextContent('Missing agent config');
+		expect(iv).toHaveTextContent('1h ago');
+		expect(screen.getByTestId('team-hello-world')).toHaveTextContent('Ready');
+		expect(screen.getByTestId('team-hello-world')).toHaveTextContent('never');
+		expect(within(screen.getByTestId('teams-card')).getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams');
 		expect(within(screen.getByTestId('daemons-card')).getAllByRole('link', { name: /online|offline/ })).toHaveLength(3);
-		expect(screen.getByTestId('roles')).toHaveTextContent('1 admin · 2 operators · 1 invite pending');
+		// Members: a table — who and their role; pending invites under it.
+		expect(within(screen.getByTestId('members-table')).getAllByRole('row').slice(1).map((r) => r.textContent?.replace(/^[A-Z]{1,2}/, ''))).toEqual(['sapanyouadmin', 'lenaoperator', 'booperator']); // avatar initials first
+		expect(screen.getByTestId('pending-invites')).toHaveTextContent('1 invite pending');
+		expect(within(screen.getByTestId('members-card')).getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings?section=members');
+		// Everything fits on one page: no pager.
+		expect(screen.queryByTestId('teams-pager')).toBeNull();
 		const setup = screen.getByTestId('setup');
 		expect(setup).toHaveTextContent('1 team is missing agent config — an agent it uses isn’t set up in your org.');
 		expect(setup).not.toHaveTextContent('daemon');
@@ -146,6 +158,17 @@ describe('Realm inbox page', () => {
 		route_fetch({ body: { ok: true, data: inbox({}, { daemons: { ...SUMMARY.daemons!, online: 0 } }) } });
 		render_page();
 		expect(await screen.findByTestId('setup')).toHaveTextContent('No daemon is online');
+	});
+
+	it('teams and members page 5 at a time on the server: Next asks for the next offset', async () => {
+		const spy = route_fetch({ body: { ok: true, data: inbox({}, { teams: { ...SUMMARY.teams!, total: 12 }, people: { ...SUMMARY.people!, total: 7 } }) } });
+		render_page();
+		const pager = await screen.findByTestId('teams-pager');
+		expect(pager).toHaveTextContent('1–5 of 12');
+		fireEvent.click(within(pager).getByRole('button', { name: 'Next teams' }));
+		await waitFor(() => expect(spy.mock.calls.filter(([u]) => u === '/v1/realm_inbox/get').map(([, i]) => JSON.parse(String((i as RequestInit).body))).at(-1)).toMatchObject({ teams_offset: 5, summary: true }));
+		fireEvent.click(within(screen.getByTestId('members-pager')).getByRole('button', { name: 'Next members' }));
+		await waitFor(() => expect(spy.mock.calls.filter(([u]) => u === '/v1/realm_inbox/get').map(([, i]) => JSON.parse(String((i as RequestInit).body))).at(-1)).toMatchObject({ teams_offset: 5, members_offset: 5 }));
 	});
 
 	it('Edit realm opens the Realm details side panel: name and description saved together in one realms/update', async () => {

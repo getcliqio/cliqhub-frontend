@@ -11,10 +11,10 @@
  * Data: one `POST /v1/realm_inbox/get { org_slug, slug, summary: true }` (BFF composes the realm,
  * run counts, teams, daemons and people), shared with the header.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { AlertTriangle, CheckCircle2, Lock, Plus, RefreshCw, SearchX } from 'lucide-react';
-import { use_overview } from '@/lib/overview';
+import { relative_time, use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Realm_inbox_data, Realm_summary } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
@@ -23,6 +23,7 @@ import { Realm_header } from '@/components/graphite/realm_header';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Avatar } from '@/components/graphite/g_admin';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
+import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 import { Team_avatar } from '@/pages/teams/teams_graphite_page';
 import type { Realm_created_state } from '@/pages/realms/new_realm_page';
 
@@ -47,7 +48,26 @@ function Card({ title, action, children, testid }: { title: ReactNode; action?: 
 	);
 }
 
-export function Realm_summary_view({ data, org_slug, slug }: { data: Realm_inbox_data; org_slug: string; slug: string }) {
+/** "1–5 of 12 ‹ ›" under a table; nothing when it all fits. */
+function Pager({ what, offset, limit, total, on_page }: { what: string; offset: number; limit: number; total: number; on_page: (offset: number) => void }) {
+	if (total <= limit) return null;
+	const btn = 'grid h-6 w-6 place-items-center rounded-md border border-[var(--g-line)] text-[12px] disabled:opacity-40';
+	return (
+		<div className="mt-2 flex items-center justify-end gap-2 text-[12px] text-[var(--g-ink-3)]" data-testid={`${what}-pager`}>
+			<span>{offset + 1}–{Math.min(offset + limit, total)} of {total}</span>
+			<button type="button" aria-label={`Previous ${what}`} disabled={offset === 0} onClick={() => on_page(Math.max(0, offset - limit))} className={btn}>‹</button>
+			<button type="button" aria-label={`Next ${what}`} disabled={offset + limit >= total} onClick={() => on_page(offset + limit)} className={btn}>›</button>
+		</div>
+	);
+}
+
+export function Realm_summary_view({ data, org_slug, slug, on_teams_page = () => {}, on_members_page = () => {} }: {
+	data: Realm_inbox_data; org_slug: string; slug: string;
+	/** Load another page of the Teams / Members tables (an offset). */
+	on_teams_page?: (offset: number) => void;
+	on_members_page?: (offset: number) => void;
+}) {
+	const row = use_row_open();
 	const s: Realm_summary | null = data.summary ?? null;
 	const base = realm_path(org_slug, slug);
 	const online = s?.daemons?.online ?? 0;
@@ -78,47 +98,73 @@ export function Realm_summary_view({ data, org_slug, slug }: { data: Realm_inbox
 				</section>
 			) : null}
 
+			<Card testid="teams-card" title={<>Teams <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{s?.teams ? s.teams.total : ''}</span></>} action={<><Link to={`${base}/teams`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">View all</Link><Link to={`${base}/teams?install=1`} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</Link></>}>
+				{!s?.teams ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the teams.</p> : teams.length === 0 ? <p className="text-[13px] text-[var(--g-ink-3)]">No teams installed yet.</p> : (
+					<>
+						<table className="w-full text-left text-[12.5px]" data-testid="teams-table">
+							<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
+								<th className="py-2 pr-3 font-semibold">Team</th><th className="py-2 pr-3 font-semibold">Version</th><th className="py-2 pr-3 font-semibold">Status</th><th className="py-2 text-right font-semibold">Last run</th>
+							</tr></thead>
+							<tbody>
+								{teams.map((t) => {
+									// The version installed here: the realm's team page shows that one.
+									const href = t.scope ? `${base}/teams/${encodeURIComponent(t.scope)}/${encodeURIComponent(t.slug)}${t.version ? `?v=${encodeURIComponent(t.version)}` : ''}` : null;
+									return (
+										<tr key={t.label} {...row({ to: href })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${href ? ROW_OPENS : ''}`} data-testid={`team-${t.slug}`}>
+											<td className="max-w-[420px] py-2.5 pr-3">
+												<span className="flex min-w-0 items-center gap-2">
+													<Team_avatar name={t.slug} size={22} />
+													{href ? <Link to={href} className="truncate font-semibold hover:underline">{t.label}</Link> : <span className="truncate font-semibold">{t.label}</span>}
+												</span>
+												{t.description ? <span className="mt-0.5 block truncate pl-[30px] text-[12px] text-[var(--g-ink-3)]" title={t.description} data-testid="team-description">{t.description}</span> : null}
+											</td>
+											<td className="g-mono whitespace-nowrap py-2.5 pr-3 text-[12px]">
+												{t.version ?? '—'}
+												{t.latest_version ? <span className="ml-1.5 rounded-full bg-[var(--g-acc-soft)] px-1.5 py-px text-[11px] text-[var(--g-acc)]" title="A newer version is published">↑ {t.latest_version}</span> : null}
+											</td>
+											<td className="whitespace-nowrap py-2.5 pr-3">{t.missing_agents.length ? <span title={`Needs ${t.missing_agents.join(', ')}`}><Chip tone="warn">Missing agent config</Chip></span> : <span className="text-[12px] font-semibold text-[var(--g-ok)]">Ready</span>}</td>
+											<td className="whitespace-nowrap py-2.5 text-right text-[var(--g-ink-2)]">{t.last_run_at ? relative_time(t.last_run_at) : <span className="text-[var(--g-ink-3)]">never</span>}</td>
+										</tr>
+									);
+								})}
+							</tbody>
+						</table>
+						<Pager what="teams" offset={s.teams.offset} limit={s.teams.limit} total={s.teams.total} on_page={on_teams_page} />
+					</>
+				)}
+			</Card>
+
 			<div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(280px,2fr)]">
-				<Card testid="teams-card" title="Teams" action={<><Link to={`${base}/teams`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">View all</Link><Link to={`${base}/teams?install=1`} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</Link></>}>
-					{!s?.teams ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the teams.</p> : teams.length === 0 ? <p className="text-[13px] text-[var(--g-ink-3)]">No teams installed yet.</p> : (
-						<ul className="flex flex-wrap gap-2">
-							{teams.map((t) => (
-								<li key={t.label} data-testid={`team-${t.slug}`} className="flex items-center gap-2 rounded-full border border-[var(--g-line)] py-1 pl-1 pr-3 text-[12.5px]">
-									<Team_avatar name={t.slug} size={22} />
-									{t.scope ? <Link to={`${base}/teams/${encodeURIComponent(t.scope)}/${encodeURIComponent(t.slug)}`} className="font-medium hover:underline">{t.label}</Link> : <span className="font-medium">{t.label}</span>}
-									{t.missing_agents.length ? <span title={`Needs ${t.missing_agents.join(', ')}`}><Chip tone="warn">Missing agent config</Chip></span> : <span className="text-[11.5px] font-semibold text-[var(--g-ok)]">Ready</span>}
+				<Card testid="members-card" title={<>Members <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{people ? people.total : ''}</span></>} action={<><Link to={`${base}/settings?section=members`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">View all</Link>{admin ? <Link to={`${base}/settings?section=members`} className={ROW_ACTION_CLS}>Invite</Link> : null}</>}>
+					{!people ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the members.</p> : (
+						<>
+							<table className="w-full text-left text-[12.5px]" data-testid="members-table">
+								<thead><tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><th className="py-2 pr-3 font-semibold">Member</th><th className="py-2 font-semibold">Role</th></tr></thead>
+								<tbody>
+									{people.items.map((m) => (
+										<tr key={m.member_id} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`member-${m.member_id}`}>
+											<td className="py-2 pr-3"><span className="flex items-center gap-2"><Avatar name={m.username ?? '?'} size={24} /><span className="font-medium">{m.username ?? 'someone'}</span>{m.is_you ? <span className="text-[11.5px] text-[var(--g-ink-3)]">you</span> : null}</span></td>
+											<td className="py-2 capitalize text-[var(--g-ink-2)]">{m.role}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+							<Pager what="members" offset={people.offset} limit={people.limit} total={people.total} on_page={on_members_page} />
+							{people.pending_invites ? <p className="mt-2 text-[12px] text-[var(--g-ink-3)]" data-testid="pending-invites">{people.pending_invites} invite{people.pending_invites === 1 ? '' : 's'} pending</p> : null}
+						</>
+					)}
+				</Card>
+				<Card testid="daemons-card" title={<>Daemons <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{s?.daemons ? `${online} online` : ''}</span></>} action={<Link to={`${base}/daemons`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{online === 0 ? 'Connect' : 'View all'}</Link>}>
+					{!s?.daemons ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the daemons.</p> : s.daemons.items.length === 0 ? <p className="text-[13px] text-[var(--g-ink-3)]">None yet. Run <code className="g-mono">cliqd</code> with an enrollment token to add one.</p> : (
+						<ul className="flex flex-wrap gap-1.5" aria-label="Daemons">
+							{s.daemons.items.map((d) => (
+								<li key={d.id}>
+									<Link to={`${base}/daemons/${d.id}`} title={`${d.name} · ${d.status}`} aria-label={`${d.name}, ${d.status}`} className="block h-3.5 w-3.5 rounded-full" style={{ background: d.status === 'online' ? 'var(--g-ok)' : d.status === 'stale' ? 'var(--g-warn)' : 'var(--g-line-strong)' }} />
 								</li>
 							))}
 						</ul>
 					)}
 				</Card>
-				<div className="flex flex-col gap-4">
-					<Card testid="daemons-card" title={<>Daemons <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{s?.daemons ? `${online} online` : ''}</span></>} action={<Link to={`${base}/daemons`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{online === 0 ? 'Connect' : 'View all'}</Link>}>
-						{!s?.daemons ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the daemons.</p> : s.daemons.items.length === 0 ? <p className="text-[13px] text-[var(--g-ink-3)]">None yet. Run <code className="g-mono">cliqd</code> with an enrollment token to add one.</p> : (
-							<ul className="flex flex-wrap gap-1.5" aria-label="Daemons">
-								{s.daemons.items.map((d) => (
-									<li key={d.id}>
-										<Link to={`${base}/daemons/${d.id}`} title={`${d.name} · ${d.status}`} aria-label={`${d.name}, ${d.status}`} className="block h-3.5 w-3.5 rounded-full" style={{ background: d.status === 'online' ? 'var(--g-ok)' : d.status === 'stale' ? 'var(--g-warn)' : 'var(--g-line-strong)' }} />
-									</li>
-								))}
-							</ul>
-						)}
-					</Card>
-					<Card testid="members-card" title="Members" action={admin ? <Link to={`${base}/settings?section=members`} className={ROW_ACTION_CLS}>Invite</Link> : null}>
-						{!people ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the members.</p> : (
-							<>
-								<div className="flex -space-x-1.5">
-									{people.items.slice(0, 8).map((m) => <span key={m.member_id} title={`${m.username ?? 'someone'} · ${m.role}`}><Avatar name={m.username ?? '?'} size={28} /></span>)}
-									{people.total > 8 ? <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--g-soft)] text-[11px] text-[var(--g-ink-3)]">+{people.total - 8}</span> : null}
-								</div>
-								<p className="mt-2 text-[12px] text-[var(--g-ink-3)]" data-testid="roles">
-									{Object.entries(people.by_role).map(([r, n]) => `${n} ${r}${n === 1 ? '' : 's'}`).join(' · ')}
-									{people.pending_invites ? ` · ${people.pending_invites} invite${people.pending_invites === 1 ? '' : 's'} pending` : ''}
-								</p>
-							</>
-						)}
-					</Card>
-				</div>
 			</div>
 
 			{admin ? (
@@ -193,9 +239,12 @@ function Skeleton() {
 export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const overview = use_overview();
+	// Pages of the Teams / Members tables (the read returns 5 of each).
+	const [teams_offset, set_teams_offset] = useState(0);
+	const [members_offset, set_members_offset] = useState(0);
 	const inbox = use_bff_read<Realm_inbox_data>(
 		'/v1/realm_inbox/get',
-		org && slug ? { org_slug: org, slug, summary: true } : null,
+		org && slug ? { org_slug: org, slug, summary: true, ...(teams_offset ? { teams_offset } : {}), ...(members_offset ? { members_offset } : {}) } : null,
 		{ refresh_ms: INBOX_REFRESH_MS, fallback_error: 'Could not load this realm.' },
 	);
 	const data = inbox.data;
@@ -257,7 +306,7 @@ export function Component() {
 				{inbox.status === 'error' && !data ? (
 					<Blocking_error http_status={inbox.http_status} code={inbox.code} error={inbox.error} on_retry={() => void inbox.reload()} what="realm" />
 				) : null}
-				{data ? <Realm_summary_view data={data} org_slug={org} slug={slug} /> : null}
+				{data ? <Realm_summary_view data={data} org_slug={org} slug={slug} on_teams_page={set_teams_offset} on_members_page={set_members_offset} /> : null}
 			</div>
 		</Graphite_shell>
 	);

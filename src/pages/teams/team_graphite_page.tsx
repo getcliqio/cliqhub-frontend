@@ -1,5 +1,7 @@
 /**
- * Build › Teams › one team (Graphite). One page, no tabs:
+ * Build › Teams › one team (Graphite). One page, no tabs. Opened inside a realm
+ * (/o/:org/realms/:slug/teams/:scope/:name?v=…) it's read-only: the version installed there, its
+ * name as the realm header's title, no version picker, history, actions or danger zone.
  *   header   — name · status, description, then version · @scope · author · tags; actions right:
  *              Fork · Download · Edit (the Builder — everything about the team changes there) · Install
  *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
@@ -235,16 +237,19 @@ export function Component() {
 	// ── header ──
 	const header = (
 		<div className="flex items-start gap-4">
-			<Team_avatar name={name} size={48} />
+			{in_realm ? null : <Team_avatar name={name} size={48} />}
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-2.5">
-					<h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>
-					{team ? <Status_badge status={team.status} /> : null}
-					{team?.draft_saved_at ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
+					{/* In a realm the team's name is the realm header's title. */}
+					{in_realm ? null : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
+					{team && !in_realm ? <Status_badge status={team.status} /> : null}
+					{team?.draft_saved_at && !in_realm ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>
 				{team?.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
 				<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
-					{team && team.versions.length ? (
+					{in_realm && team ? (
+						<span className="g-mono text-[var(--g-ink-2)]" data-testid="installed-version">{team.version ? `v${team.version} installed here` : 'installed here'}</span>
+					) : team && team.versions.length ? (
 						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value }, false)} className={`${INPUT} h-6 w-[140px] text-[12px]`}>
 							{team.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.is_latest ? ' · latest' : ''}</option>)}
 						</select>
@@ -254,7 +259,8 @@ export function Component() {
 					{team?.tags.length ? <span>· {team.tags.join(' · ')}</span> : null}
 				</div>
 			</div>
-			<div className="relative flex shrink-0 items-center gap-1.5">
+			{/* In a realm this is what's installed there: no Fork, Download, Edit or Install. */}
+			{in_realm ? null : <div className="relative flex shrink-0 items-center gap-1.5">
 				{team ? <button type="button" disabled={busy !== null} onClick={() => void fork()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title="Copy this version into your scope and open the copy"><GitFork aria-hidden className="h-3.5 w-3.5" />{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
 				{team && team.versions.length ? <button type="button" disabled={busy !== null} onClick={() => void download()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title={`Download v${team.version} (team.yml and role briefs)`}><FileDown aria-hidden className="h-3.5 w-3.5" />{busy === 'download' ? 'Downloading…' : 'Download'}</button> : null}
 				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={edit} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Pencil aria-hidden className="h-3.5 w-3.5" />Edit</button> : null}
@@ -281,7 +287,7 @@ export function Component() {
 				{install_open && team?.scope ? (
 					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((o?.installs ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(false)} on_done={(m) => { set_install_open(false); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
 				) : null}
-			</div>
+			</div>}
 		</div>
 	);
 
@@ -495,7 +501,7 @@ export function Component() {
 
 	return (
 		<Graphite_shell data={overview.data} title={team?.name ?? name} current_realm_id={sidebar_realm?.id ?? null}>
-			{in_realm ? <Realm_nav org_slug={realm_org} slug={realm_slug} realm={sidebar_realm} /> : null}
+			{in_realm ? <Realm_nav org_slug={realm_org} slug={realm_slug} realm={sidebar_realm} title={team?.name ?? name} /> : null}
 			<div className="flex flex-col gap-3.5 px-7 py-6">
 				{/* In a realm the realm header's Teams button leads back; no second breadcrumb. */}
 				{in_realm ? null : <nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>}
@@ -509,7 +515,8 @@ export function Component() {
 						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (
 							<>
 								<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
-									<div className="flex min-w-0 flex-col gap-3.5">{workflow}{versions_card}{danger}</div>
+									{/* In a realm: only the installed version — no version history, no danger zone. */}
+								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? null : danger}</div>
 									{needs}
 								</div>
 							</>

@@ -422,6 +422,19 @@ describe('Team page', () => {
 		expect(screen.getAllByRole('navigation', { name: 'Breadcrumb' })).toHaveLength(1); // the top bar's only
 	});
 
+	it('opened from a realm: read-only at the version installed there — one title, no version picker, history, actions or danger zone', async () => {
+		route_fetch();
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		await screen.findByTestId('workflow');
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^feature-dev-js\s*in\s*measureone\.prod-us$/);
+		expect(screen.getByTestId('installed-version')).toHaveTextContent('v1.4.2 installed here');
+		expect(screen.queryByRole('combobox', { name: 'Version' })).toBeNull();
+		for (const name of [/Fork/, /^Download$/, /^Edit$/, /Install/]) expect(screen.queryByRole('button', { name })).toBeNull();
+		expect(screen.queryByTestId('versions')).toBeNull();
+		expect(screen.queryByTestId('danger-zone')).toBeNull();
+	});
+
 	it('opened from the Teams list: no realm header', async () => {
 		route_fetch();
 		render_at('/teams/measureone/feature-dev-js');

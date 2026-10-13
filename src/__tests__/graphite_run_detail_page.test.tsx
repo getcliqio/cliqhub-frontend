@@ -305,7 +305,8 @@ describe('Graphite run detail', () => {
 		route_fetch(run_detail({ parent: { run_id: 'run-main', run_name: 'easy-carmine-spruce', phase: 'design', state: 'failed', realm_slug: null, org_slug: null } },
 			{ run_id: 'run-77', run_name: 'solar-lilac-fox', team_label: '@measureone/design-lld' }));
 		const { unmount: unmount2 } = render_page();
-		expect(await screen.findByRole('heading', { level: 1, name: 'design-lld' })).toBeInTheDocument();
+		// One title bar: the sub-team run's team, in the realm header.
+		expect(await screen.findByRole('heading', { level: 1, name: /^design-lld\s*in\s*measureone\.prod-us$/ })).toBeInTheDocument();
 		const crumb = screen.getByTestId('parent-crumb');
 		expect(crumb).toHaveTextContent('easy-carmine-spruce›design›this sub-team run');
 		unmount2();
@@ -318,7 +319,7 @@ describe('Graphite run detail', () => {
 			],
 		}, { run_id: 'run-77', run_name: 'small-lint', team_label: '@measureone/lint-lld' }));
 		render_page();
-		await screen.findByRole('heading', { level: 1, name: 'lint-lld' });
+		await screen.findByRole('heading', { level: 1, name: /^lint-lld\s*in/ });
 		expect(screen.getByTestId('parent-crumb')).toHaveTextContent('peaceful-rust-cliff›design›brave-rust-anchor›assemble›this sub-team run');
 		expect(within(crumb).getByRole('link', { name: 'easy-carmine-spruce' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-main');
 	});

@@ -46,9 +46,11 @@ export interface Realm_inbox_data {
 /** `realm_inbox/get { summary: true }` — header details, teams, daemons and people of one realm. */
 export interface Realm_summary {
 	realm: { description: string | null; created_at: number | null; updated_at: number | null; created_by_username: string | null };
-	teams: { total: number; missing_agents: number; items: Array<{ scope: string | null; slug: string; label: string; version: string | null; missing_agents: string[] }> } | null;
+	/** One page of the realm's teams (most recently run first). */
+	teams: { total: number; missing_agents: number; offset: number; limit: number; items: Array<{ scope: string | null; slug: string; label: string; version: string | null; latest_version: string | null; missing_agents: string[]; last_run_at: number | null; description: string | null }> } | null;
 	daemons: { online: number; total: number; items: Array<{ id: string; name: string; status: string }>; truncated: boolean } | null;
-	people: { total: number; by_role: Record<string, number>; items: Array<{ member_id: string; username: string | null; role: string; is_you: boolean }>; pending_invites: number | null } | null;
+	/** One page of the realm's people (admins, then operators, then members). */
+	people: { total: number; offset: number; limit: number; by_role: Record<string, number>; items: Array<{ member_id: string; username: string | null; role: string; is_you: boolean }>; pending_invites: number | null } | null;
 	you: { role: string | null; is_admin: boolean };
 }
 

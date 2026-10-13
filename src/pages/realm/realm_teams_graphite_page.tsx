@@ -70,7 +70,7 @@ function Row_menu({ row, base, on_remove, on_add, manage }: { row: Realm_team_ro
 			</button>
 			{open ? (
 				<div role="menu" className="absolute right-0 top-8 z-40 w-[200px] overflow-hidden rounded-lg border border-[var(--g-line-strong)] bg-[var(--g-pop)] py-1 shadow-[var(--g-pop-shadow)]">
-					{row.scope ? <Link role="menuitem" to={`${base}/teams/${encodeURIComponent(row.scope)}/${encodeURIComponent(row.slug)}`} className={item}>View team</Link> : null}
+					{row.scope ? <Link role="menuitem" to={`${base}/teams/${encodeURIComponent(row.scope)}/${encodeURIComponent(row.slug)}${row.version ? `?v=${encodeURIComponent(row.version)}` : ''}`} className={item}>View team</Link> : null}
 					<Link role="menuitem" to={`${base}/runs?team=${encodeURIComponent(row.scope ? `${row.scope}/${row.slug}` : row.slug)}`} className={item}>Runs of this team</Link>
 					{row.in_team_list
 						? <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_remove(); }} className={`${item} ${GATED} text-[var(--g-bad)]`}>Remove from realm…</button>
@@ -227,7 +227,7 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title="Teams" />
 			<div className="flex flex-col gap-4 px-7 py-6">
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" />
@@ -267,11 +267,11 @@ export function Component() {
 										{data.items.map((r) => {
 											const full = r.online_daemon_count > 0 && r.installed_count >= r.online_daemon_count;
 											return (
-												<tr key={r.label} {...row({ to: r.scope ? `${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${r.scope ? ROW_OPENS : ''}`} data-testid={`team-${r.label}`}>
+												<tr key={r.label} {...row({ to: r.scope ? `${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${r.scope ? ROW_OPENS : ''}`} data-testid={`team-${r.label}`}>
 													<td className="max-w-[360px] px-4 py-2.5">
 														{/* The team with its version, e.g. @cliq/hello-world · 2.0.0 (↑ newer published). */}
 														<span className="flex min-w-0 items-center gap-1.5">
-															{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} className="truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="truncate text-[13px] font-semibold">{r.label}</span>}
+															{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}`} className="truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="truncate text-[13px] font-semibold">{r.label}</span>}
 															{r.version ? <span className="g-mono shrink-0 text-[12px] text-[var(--g-ink-3)]" data-testid="team-version">· {r.version}</span> : null}
 															{r.update_available ? <span className="shrink-0 rounded-full bg-[var(--g-acc-soft)] px-2 py-0.5 text-[11px] text-[var(--g-acc)]" data-testid="update-badge">↑ {r.latest_version}</span> : null}
 														</span>
@@ -291,7 +291,7 @@ export function Component() {
 															</span>
 														) : (
 															<span className="inline-flex items-center gap-1.5">
-																{r.scope ? <Row_open to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} label={`Open ${r.label}`} /> : null}
+																{r.scope ? <Row_open to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}`} label={`Open ${r.label}`} /> : null}
 																{r.scope && r.in_team_list ? <button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_running(r)} className={`${ROW_ACTION_CLS} ${GATED} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
 																{r.update_available ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'update')} className={`${ROW_ACTION_CLS} ${GATED}`}>{busy === `update:${r.label}` ? 'Updating…' : 'Update'}</button> : null}
 																{!r.in_team_list && r.scope ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'add')} className={`${ROW_ACTION_CLS} ${GATED}`}>Add to realm</button> : null}

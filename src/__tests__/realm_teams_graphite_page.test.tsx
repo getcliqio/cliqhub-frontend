@@ -75,13 +75,13 @@ describe('Realm teams page', () => {
 		route_fetch();
 		render_page();
 		const rowel = await screen.findByTestId('team-@measureone/recon');
-		const href = '/o/measureone/realms/prod-us/teams/measureone/recon';
+		const href = '/o/measureone/realms/prod-us/teams/measureone/recon?v=0.8.3'; // the version installed here
 		expect(within(rowel).getByRole('link', { name: '@measureone/recon' })).toHaveAttribute('href', href);
 		expect(within(rowel).getByTestId('row-open')).toHaveAttribute('href', href);
 		fireEvent.click(within(rowel).getByRole('button', { name: /More for/ }));
 		expect(screen.queryByTestId('where')).toBeNull();
 		fireEvent.click(within(rowel).getByTestId('team-version')); // the version now sits with the team name
-		expect(await screen.findByTestId('where')).toHaveTextContent(href);
+		expect(await screen.findByTestId('where')).toHaveTextContent(href.split('?')[0]);
 	});
 
 	it('coverage chip and search go to the BFF', async () => {
@@ -118,7 +118,7 @@ describe('Realm teams page', () => {
 		expect(screen.getByRole('dialog', { name: 'Run dialog' })).toHaveTextContent('cliq/feature-dev-js in prod-us');
 		fireEvent.click(within(fd).getByRole('button', { name: 'More for @cliq/feature-dev-js' }));
 		expect(screen.getByRole('menuitem', { name: 'Runs of this team' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs?team=cliq%2Ffeature-dev-js');
-		expect(screen.getByRole('menuitem', { name: 'View team' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/cliq/feature-dev-js');
+		expect(screen.getByRole('menuitem', { name: 'View team' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/cliq/feature-dev-js?v=2.4.1');
 	});
 
 	it('install drawer searches the catalog and adds with one write', async () => {

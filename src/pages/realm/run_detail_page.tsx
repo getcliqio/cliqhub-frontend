@@ -74,6 +74,12 @@ const OLD_TAB: Record<string, Tab> = { timeline: 'phases', dag: 'workflow' };
 type Panel = null | 'supply' | 'cancel' | 'resume';
 
 /** `scope/slug` team id → parts for "Run again"; null hides the action. */
+/** A run's title: a sub-team run reads as its team ("design-lld"); otherwise its name. */
+export function run_title(run: Run_row, is_sub_team: boolean): string {
+	const team = is_sub_team ? (run.team_label ?? '').replace(/^@[^/]+\//, '') : '';
+	return team || run.run_name || run.run_id;
+}
+
 export function parse_team_id(team_id: string | null | undefined): { scope: string; slug: string } | null {
 	const parts = (team_id ?? '').trim().split('/');
 	if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
@@ -671,7 +677,6 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	const inputs = parse_inputs(run.inputs);
 	// A sub-team run reads as its team ("design-lld"), with its run name beside it.
 	const sub_team_name = data.parent ? (run.team_label ?? '').replace(/^@[^/]+\//, '') : '';
-	const title = sub_team_name || run.run_name || run.run_id;
 
 	async function control(kind: 'supply' | 'cancel' | 'resume', path: string, body: Record<string, unknown>, on_ok: (payload: unknown) => string) {
 		set_error(null);
@@ -727,7 +732,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 						</nav>
 					) : null}
 					<div className="flex flex-wrap items-center gap-2.5">
-						<h1 className="min-w-0 truncate text-[22px] font-semibold tracking-[-0.02em]">{title}</h1>
+						{/* The run's name is the realm header's title; a sub-team run shows its run name here. */}
 						{sub_team_name && run.run_name ? <span className="g-mono text-[13px] text-[var(--g-ink-3)]">{run.run_name}</span> : null}
 						<State_pill state={run.state} />
 						<Origin_badge origin={run.origin} />
@@ -969,7 +974,7 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title={data ? run_title(data.run, Boolean(data.parent)) : 'Run'} />
 			<div className="px-7 py-6">
 				{detail.status === 'loading' ? <Skeleton /> : null}
 				{detail.status === 'error' && data ? (

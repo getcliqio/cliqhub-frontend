@@ -158,15 +158,14 @@ export function Component() {
 			title="Daemon"
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title={dm ? dm.name || dm.id : 'Daemon'} />
 			<div className="flex flex-col gap-5 px-7 py-6">
 				{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="daemon" /> : null}
 				{!d && read.status !== 'error' ? <div className="h-[320px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading daemon" /> : null}
 				{d && dm ? (
 					<>
-						<div className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={`${base}/daemons`} className="hover:text-[var(--g-ink)]">Daemons</Link> / <span className="text-[var(--g-ink-2)]">{dm.name || dm.id}</span></div>
+						{/* The daemon's name is the realm header's title; no second one here. */}
 						<header className="flex flex-wrap items-center gap-3">
-							<h1 className="text-[22px] font-semibold tracking-tight">{dm.name || dm.id}</h1>
 							<Daemon_status status={dm.status} />
 							<span className="ml-auto">{removing
 								? <span className="inline-flex gap-2"><button type="button" onClick={() => void remove()} className={G_DANGER}>Remove daemon</button><button type="button" onClick={() => set_removing(false)} className={G_BTN}>Keep</button></span>

@@ -122,7 +122,7 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title="Runs" />
 			<div className="flex flex-col gap-4 px-7 py-6">
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" />

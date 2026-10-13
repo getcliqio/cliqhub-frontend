@@ -1,6 +1,7 @@
 /**
- * The realm header — the same on every realm page (overview, runs, teams, daemons, settings, a run,
- * a daemon), so it stays put while you move around the realm.
+ * The realm header. On the overview: name, status, description, meta, Edit realm and the section
+ * buttons. On every page below it (a section, a run, a team…): one compact title bar —
+ * "{title} in org.realm" — with the same section buttons, so there's never a second title.
  *
  *   name · status (Ready / Missing agent config / No daemon available); description; org.slug · created by · updated
  *   on the right, buttons (not tabs): Edit realm (realm overview only) · Teams (N · missing agent config) · Runs (N running · need you)
@@ -95,11 +96,13 @@ const SECTION_OF: Record<string, 'teams' | 'runs' | 'settings' | 'daemons'> = {
 };
 
 /**
- * @param data - The overview page's own read (skips the header's read).
+ * @param data - The overview page's own read (skips the header's read). Given → the full header.
+ * @param title - Below the overview (a section, a run, a team…): the page's one title, shown as
+ *   "{title} in org.realm" in a single compact row with the section buttons.
  * @param realm - The sidebar's realm (name / daemons online) while nothing has loaded yet.
  */
-export function Realm_header({ org_slug, slug, data, reload, realm = null }: {
-	org_slug: string; slug: string; data?: Realm_inbox_data | null; reload?: () => Promise<void>; realm?: Overview_realm | null;
+export function Realm_header({ org_slug, slug, data, reload, realm = null, title = null }: {
+	org_slug: string; slug: string; data?: Realm_inbox_data | null; reload?: () => Promise<void>; realm?: Overview_realm | null; title?: ReactNode;
 }) {
 	const key = `${org_slug}/${slug}`;
 	const own = use_bff_read<Realm_inbox_data>('/v1/realm_inbox/get', data === undefined && org_slug && slug ? { org_slug, slug, summary: true } : null, { refresh_ms: 60_000, fallback_error: 'Could not load this realm.' });
@@ -129,16 +132,38 @@ export function Realm_header({ org_slug, slug, data, reload, realm = null }: {
 	);
 	const count = (n: number | null | undefined, suffix = '') => (n === null || n === undefined ? null : <span className="g-mono font-normal text-[var(--g-ink-3)]">{n}{suffix}</span>);
 
+	const sections = (
+		<>
+			{button('teams', `${base}/teams`, 'Teams', <>{count(s?.teams?.total)}{missing ? <Chip tone="warn">{missing} missing agent config</Chip> : null}</>)}
+			{button('runs', `${base}/runs`, 'Runs', <>{count(running, ' running')}{need_you ? <Chip tone="warn">{need_you} need you</Chip> : null}</>)}
+			{button('settings', `${base}/settings`, 'Settings')}
+			{button('daemons', `${base}/daemons`, 'Daemons', count(online, ' online'))}
+		</>
+	);
+
+	// Below the overview: one title bar — "{title} in org.realm" — and the section buttons.
+	if (data === undefined) {
+		return (
+			<header className="flex flex-wrap items-center gap-3 border-b border-[var(--g-line)] px-7 py-3" data-testid="realm-header">
+				<Link to={`${base}/inbox`} aria-label={`${name} overview`} className="shrink-0"><Team_avatar name={name} size={30} /></Link>
+				<h1 className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[18px] font-semibold tracking-tight">
+					{title ? <span className="min-w-0 truncate">{title}</span> : null}
+					{title ? <span className="text-[14px] font-normal text-[var(--g-ink-3)]">in</span> : null}
+					<Link to={`${base}/inbox`} className={`g-mono hover:underline ${title ? 'text-[14px] font-medium text-[var(--g-ink-2)]' : ''}`} data-testid="realm-name">{org_slug}.{slug}</Link>
+				</h1>
+				{health ? <Health_badge health={health} /> : null}
+				<nav aria-label="Realm sections" className="ml-auto flex flex-wrap items-center justify-end gap-2">{sections}</nav>
+			</header>
+		);
+	}
+
 	return (
 		<header className="border-b border-[var(--g-line)] px-7 pb-4 pt-5" data-testid="realm-header">
 			<div className="flex flex-wrap items-start gap-4">
 				<Team_avatar name={name} size={44} />
 				<div className="min-w-0 flex-1">
 					<div className="flex flex-wrap items-center gap-2.5">
-						{/* The overview's heading; on other realm pages the page's own title is the h1. */}
-						{data !== undefined
-							? <h1 className="text-[22px] font-semibold tracking-tight">{name}</h1>
-							: <Link to={`${base}/inbox`} className="text-[22px] font-semibold tracking-tight hover:underline" data-testid="realm-name">{name}</Link>}
+						<h1 className="text-[22px] font-semibold tracking-tight">{name}</h1>
 						{health ? <Health_badge health={health} /> : null}
 					</div>
 					{s?.realm.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{s.realm.description}</p> : null}
@@ -150,12 +175,8 @@ export function Realm_header({ org_slug, slug, data, reload, realm = null }: {
 				</div>
 				{/* Buttons, not tabs: Edit realm, then a way into each part of the realm. */}
 				<nav aria-label="Realm sections" className="flex flex-wrap items-center justify-end gap-2">
-					{/* Only on the realm's own page: inside a run, a team or a section you're not editing the realm. */}
-					{data !== undefined && s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className={ROW_ACTION_CLS}>Edit realm</button> : null}
-					{button('teams', `${base}/teams`, 'Teams', <>{count(s?.teams?.total)}{missing ? <Chip tone="warn">{missing} missing agent config</Chip> : null}</>)}
-					{button('runs', `${base}/runs`, 'Runs', <>{count(running, ' running')}{need_you ? <Chip tone="warn">{need_you} need you</Chip> : null}</>)}
-					{button('settings', `${base}/settings`, 'Settings')}
-					{button('daemons', `${base}/daemons`, 'Daemons', count(online, ' online'))}
+					{s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className={ROW_ACTION_CLS}>Edit realm</button> : null}
+					{sections}
 				</nav>
 			</div>
 			{editing && d ? <Details_panel realm_id={d.realm.id} name={d.realm.name} description={s?.realm.description ?? null} on_close={() => set_editing(false)} on_saved={async () => { await (reload ? reload() : own.reload()); }} /> : null}
