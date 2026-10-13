@@ -296,16 +296,21 @@ describe('Realm › Agents', () => {
 		expect(screen.getByTestId('go-settings')).toHaveAttribute('aria-current', 'page');
 	});
 
-	it('agent in realm: inherited keys dashed + Override here; Use org value clears the override', async () => {
+	it('agent in realm: a key is empty (the org value shows as a hint) or typed to override; emptying an override removes it', async () => {
 		const calls = route_fetch();
 		render_at(`/o/measureone/realms/prod-us/agents/${JIRA}`);
 		const form = await screen.findByTestId('settings-form');
 		expect(calls.find((c) => c.url === '/v1/agent_page/get')!.body).toEqual({ org_id: ORG_A, id: JIRA, realm: { org_slug: 'measureone', slug: 'prod-us' } });
 		expect(within(form).getByText('Values in prod-us')).toBeInTheDocument();
-		expect(within(form).getByTestId('inherited-base_url')).toHaveTextContent('https://m1.atlassian.net');
-		fireEvent.click(within(screen.getByTestId('field-base_url')).getByText('Override here'));
-		fireEvent.change(within(screen.getByTestId('field-base_url')).getByLabelText('base_url'), { target: { value: 'https://prod.atlassian.net' } });
-		fireEvent.click(within(screen.getByTestId('field-api_token')).getByText('Use org value'));
+		// No Override here / Use org value: an inherited key is an empty box with the org's value as the hint.
+		expect(within(form).queryByText('Override here')).toBeNull();
+		expect(within(form).queryByText('Use org value')).toBeNull();
+		const base_url = within(screen.getByTestId('field-base_url')).getByLabelText('base_url') as HTMLInputElement;
+		expect(base_url.value).toBe('');
+		expect(base_url.placeholder).toContain('org: https://m1.atlassian.net');
+		fireEvent.change(base_url, { target: { value: 'https://prod.atlassian.net' } });
+		// A realm-set secret: Replace, leave it empty → the override goes, the org value applies again.
+		fireEvent.click(within(screen.getByTestId('field-api_token')).getByText('Replace'));
 		fireEvent.click(within(form).getByText('Save for prod-us'));
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/agents/update_settings')).toBe(true));
 		expect(calls.find((c) => c.url === '/v1/agents/update_settings')!.body).toEqual({ org_id: ORG_A, id: JIRA, realm_id: 'r-prod', settings: { values: { base_url: 'https://prod.atlassian.net' }, clear: ['api_token'] } });

@@ -65,15 +65,19 @@ function Source_tag({ f, mode, realm }: { f: Agent_field; mode: 'org' | 'realm';
 	if (mode === 'realm') {
 		if (f.source === 'realm') return <span className="text-[11px] text-[var(--g-run-text)]">overridden in {realm}</span>;
 		if (f.org_value) return <span className="text-[11px] text-[var(--g-ink-3)]">from the org</span>;
-		return <span className="text-[11px] text-[var(--g-warn-text)]">not set anywhere</span>;
+		if (f.default) return <span className="text-[11px] text-[var(--g-ink-3)]">default</span>;
+		return <span className={`text-[11px] ${f.required ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>not set anywhere</span>;
 	}
-	return f.set ? <span className="text-[11px] text-[var(--g-ink-3)]">set for org</span> : <span className={`text-[11px] ${f.required ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>not set</span>;
+	if (f.set) return <span className="text-[11px] text-[var(--g-ink-3)]">set for org</span>;
+	if (f.default) return <span className="text-[11px] text-[var(--g-ink-3)]">default</span>;
+	return <span className={`text-[11px] ${f.required ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>not set</span>;
 }
 
 /**
  * One form for both scopes.
  *   org   — edit the org defaults every realm inherits.
- *   realm — per key: inherit the org value, or override it here ("Use org value" clears).
+ *   realm — per key: empty uses the org value (shown as the hint); a value overrides it here;
+ *           emptying an override removes it.
  * Secret values arrive masked; they can be replaced, never read back.
  */
 export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agent_settings_view; org_id: string; agent_id: string; on_saved: (msg: string) => void }) {
@@ -121,21 +125,15 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 	function field(f: Agent_field) {
 		const editing = f.key in edits;
 		const cleared = clears.has(f.key);
-		const inherited = mode === 'realm' && f.source !== 'realm';
+		// Realm: a key is either empty (the org's value applies) or set here (an override). Nothing else.
+		const own_value = mode === 'realm' ? f.source === 'realm' : f.set;
+		const from_org = mode === 'realm' && !own_value;
 		let control: ReactNode;
-		if (inherited && !editing) {
-			control = (
-				<>
-					<div className="flex-1 truncate rounded-lg border border-dashed border-[var(--g-line)] px-3 py-1.5 text-[13px] text-[var(--g-ink-3)]" data-testid={`inherited-${f.key}`}>{f.org_value ?? 'not set for the org'}</div>
-					<button type="button" onClick={() => set_edits((e) => ({ ...e, [f.key]: '' }))} className={G_BTN}>Override here</button>
-				</>
-			);
-		} else if (f.secret && f.set && !editing && !cleared) {
+		if (f.secret && own_value && !editing && !cleared) {
 			control = (
 				<>
 					<div className="flex flex-1 items-center rounded-lg border border-[var(--g-line)] px-3 py-1.5 text-[13px]"><span className="g-mono text-[var(--g-ink-2)]" aria-label={`${f.key} is set`}>{f.value}</span>
 						<button type="button" onClick={() => set_edits((e) => ({ ...e, [f.key]: '' }))} className="ml-auto text-[12px] font-semibold text-[var(--g-acc)]">Replace</button></div>
-					{mode === 'realm' ? <button type="button" onClick={() => set_clears((c) => new Set(c).add(f.key))} className={G_BTN}>Use org value</button> : null}
 				</>
 			);
 		} else if (cleared) {
@@ -152,13 +150,14 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 						aria-label={f.key}
 						type={f.secret ? 'password' : 'text'}
 						autoComplete="off"
-						value={editing ? edits[f.key] : (f.value ?? '')}
+						value={editing ? edits[f.key] : from_org ? '' : (f.value ?? '')}
 						onChange={(e) => set_edits((x) => ({ ...x, [f.key]: e.target.value }))}
-						placeholder={f.secret ? 'Paste value — stored encrypted, never shown again' : f.default ? `default: ${f.default}` : ''}
+						placeholder={from_org
+							? (f.org_value ? `org: ${f.org_value} — type to override here` : f.default ? `default: ${f.default} — type to override here` : 'not set for the org — type a value for this realm')
+							: f.secret ? 'Paste value — stored encrypted, never shown again' : f.default ? `default: ${f.default}` : ''}
 						className={`${G_INPUT} flex-1 ${f.secret ? '' : 'g-mono'} ${f.required && !f.set && !editing ? 'border-[rgba(255,178,36,.5)]' : ''} ${mode === 'realm' ? 'border-[rgba(91,157,255,.5)]' : ''}`}
 					/>
-					{mode === 'realm' && (f.source === 'realm' || editing) ? <button type="button" onClick={() => { set_edits((e) => { const n = { ...e }; delete n[f.key]; return n; }); if (f.source === 'realm') set_clears((c) => new Set(c).add(f.key)); }} className={G_BTN}>Use org value</button> : null}
-					{mode === 'org' && editing && f.secret ? <button type="button" onClick={() => set_edits((e) => { const n = { ...e }; delete n[f.key]; return n; })} className={G_BTN}>Cancel</button> : null}
+					{editing && f.secret && own_value ? <button type="button" onClick={() => set_edits((e) => { const n = { ...e }; delete n[f.key]; return n; })} className={G_BTN}>Cancel</button> : null}
 				</>
 			);
 		}
@@ -175,7 +174,7 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 		<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4" data-testid="settings-form">
 			<div className="flex items-center gap-2 border-b border-[var(--g-line)] py-3">
 				<b className="text-[13.5px]">{mode === 'realm' ? `Values in ${realm_slug}` : 'Org defaults'}</b>
-				<span className="text-[12.5px] text-[var(--g-ink-3)]">{mode === 'realm' ? 'override a key to change it here only' : 'used by every realm unless the realm overrides a key'}</span>
+				<span className="text-[12.5px] text-[var(--g-ink-3)]">{mode === 'realm' ? 'leave a key empty to use the org’s value; type one to override it here' : 'a value here applies to every realm that leaves the key empty'}</span>
 				<span className="ml-auto text-[12px] text-[var(--g-ink-3)]">Required {view.required_configured} of {view.required_total} set</span>
 			</div>
 			{!view.fields.length ? <p className="py-4 text-[13px] text-[var(--g-ink-3)]">This agent has no settings.</p> : null}
