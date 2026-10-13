@@ -322,7 +322,7 @@ const SECTIONS: Array<{ id: Settings_section; label: string }> = [
 	{ id: 'general', label: 'General' },
 	{ id: 'members', label: 'Members' },
 	{ id: 'tokens', label: 'Access tokens' },
-	{ id: 'a2a', label: 'A2A & mesh' },
+	{ id: 'a2a', label: 'A2A' },
 ];
 
 export function Component() {

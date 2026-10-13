@@ -166,7 +166,9 @@ export function Realm_header({ org_slug, slug, data, reload, realm = null, title
 						<h1 className="text-[22px] font-semibold tracking-tight">{name}</h1>
 						{health ? <Health_badge health={health} /> : null}
 					</div>
-					{s?.realm.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{s.realm.description}</p> : null}
+					{s?.realm.description
+						? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]" data-testid="realm-description">{s.realm.description}</p>
+						: s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className="mt-1 text-[13px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)] hover:underline" data-testid="add-description">Add a description</button> : null}
 					<p className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-[var(--g-ink-3)]" data-testid="realm-meta">
 						<span className="g-mono text-[var(--g-ink-2)]">{org_slug}.{slug}</span>
 						{s?.realm.created_by_username ? <span>· created by {s.realm.created_by_username}{s.realm.created_at ? ` ${relative_time(s.realm.created_at)}` : ''}</span> : null}

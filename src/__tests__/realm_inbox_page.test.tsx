@@ -99,7 +99,7 @@ describe('Realm inbox page', () => {
 		render_page();
 		await screen.findByRole('heading', { name: 'Prod US' });
 		expect(screen.getByTestId('realm-status')).toHaveTextContent('Missing agent config');
-		expect(screen.getByText('Production delivery for the US')).toBeInTheDocument();
+		expect(screen.getByTestId('realm-description')).toHaveTextContent('Production delivery for the US');
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('measureone.prod-us');
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('created by sapan');
 		expect(screen.queryByText('Needs attention')).toBeNull();
@@ -186,6 +186,13 @@ describe('Realm inbox page', () => {
 		const writes = spy.mock.calls.filter(([u]) => u === '/v1/realms/update');
 		expect(writes).toHaveLength(1);
 		expect(JSON.parse(String((writes[0][1] as RequestInit).body))).toEqual({ realm_id: 'r-prod', name: 'Production US', description: 'US delivery' });
+	});
+
+	it('the realm\'s description shows under its name; with none, an admin gets "Add a description" (opens Edit realm)', async () => {
+		route_fetch({ body: { ok: true, data: inbox({}, { realm: { ...SUMMARY.realm, description: null } }) } });
+		render_page();
+		fireEvent.click(await screen.findByTestId('add-description'));
+		expect(screen.getByRole('dialog', { name: 'Realm details' })).toBeInTheDocument();
 	});
 
 	it('not an admin: no Edit realm, no Invite, no Danger zone', async () => {
