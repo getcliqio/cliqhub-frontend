@@ -3,9 +3,10 @@
  * List: a table read from `realms/get` (Core, through the BFF) with `with_stats` — searched, sorted
  * and paged on the server (name, online daemons, active runs, members, created, updated). "Needs
  * you" comes from the overview already loaded on every page.
- * New realm (owners/admins) is its own screen: /realms/new (pages/realms/new_realm_page).
+ * New realm (owners/admins) is a side panel over this list: ?new=1 (pages/realms/new_realm_page).
  */
-import { Health_badge } from '@/pages/realm/realm_inbox_page';
+import { New_realm_panel } from '@/pages/realms/new_realm_page';
+import { Health_badge } from '@/components/graphite/realm_header';
 import { realm_health } from '@/lib/realm_inbox';
 import { useEffect, useMemo, useState } from 'react';
 import { use_bff_read } from '@/lib/use_bff_read';
@@ -139,9 +140,10 @@ export function Component() {
 	const page = Math.max(0, Number(sp.get('page') ?? 0) || 0);
 	const [draft, set_draft] = useState(sp.get('q') ?? '');
 	const navigate = useNavigate();
-	const new_href = `/realms/new${org ? `?org=${encodeURIComponent(org.slug)}` : ''}`;
-	// Old links (?new=1) open the New realm screen.
-	useEffect(() => { if (sp.get('new') === '1') navigate(new_href, { replace: true }); }, [sp, navigate, new_href]);
+	// New realm is a side panel over this list (?new=1, so Back closes it).
+	const creating = sp.get('new') === '1';
+	const open_new = () => set_sp((prev) => { const p = new URLSearchParams(prev); p.set('new', '1'); return p; });
+	const close_new = () => set_sp((prev) => { const p = new URLSearchParams(prev); p.delete('new'); return p; }, { replace: true });
 	const joined = sp.get('joined');
 	const joined_realm = joined ? (org?.realms ?? []).find((r) => r.slug === joined) ?? null : null;
 	const { user } = useAuth();
@@ -157,7 +159,7 @@ export function Component() {
 				<header className="flex flex-wrap items-center gap-3">
 					<div><h1 className="text-[22px] font-semibold tracking-tight">Realms</h1><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">Groups of machines that run your teams. {total} realm{total === 1 ? '' : 's'} in {org?.display_name || org?.slug || 'this organization'}.</p></div>
 					{org ? (
-						<button type="button" disabled={!may_create} title={may_create ? undefined : `Your role in ${org.display_name || org.slug} doesn't allow creating realms`} onClick={() => navigate(new_href)} className={`${G_PRIMARY} ml-auto disabled:cursor-not-allowed disabled:opacity-45`}><Plus className="h-3.5 w-3.5" /> New realm</button>
+						<button type="button" disabled={!may_create} title={may_create ? undefined : `Your role in ${org.display_name || org.slug} doesn't allow creating realms`} onClick={open_new} className={`${G_PRIMARY} ml-auto disabled:cursor-not-allowed disabled:opacity-45`}><Plus className="h-3.5 w-3.5" /> New realm</button>
 					) : null}
 				</header>
 				{joined_realm ? <Banner tone="ok">You joined {joined_realm.name || joined_realm.slug}. <Link to={`${realm_path(joined_realm.org_slug, joined_realm.slug)}/inbox`} className="font-semibold underline">Open it →</Link></Banner> : null}
@@ -168,9 +170,10 @@ export function Component() {
 				{org && org.status !== 'error' ? <Realms_table org_id={org.id} realms_by_id={realms_by_id} q={q} page={page} set={set} /> : null}
 				{org?.status === 'error' ? <Banner tone="bad">{org.error ?? 'Could not load this organization’s realms.'}</Banner> : null}
 				{org && !total ? (
-					<p className="rounded-[10px] border border-dashed border-[var(--g-line)] px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">No realms yet.{may_create ? <> <button type="button" onClick={() => navigate(new_href)} className="text-[var(--g-acc)] hover:underline">Create one</button></> : ' Ask an org admin to add you to one.'}</p>
+					<p className="rounded-[10px] border border-dashed border-[var(--g-line)] px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">No realms yet.{may_create ? <> <button type="button" onClick={open_new} className="text-[var(--g-acc)] hover:underline">Create one</button></> : ' Ask an org admin to add you to one.'}</p>
 				) : null}
 			</div>
+			{creating && org && may_create ? <New_realm_panel org={org} on_close={close_new} /> : null}
 		</Graphite_shell>
 	);
 }

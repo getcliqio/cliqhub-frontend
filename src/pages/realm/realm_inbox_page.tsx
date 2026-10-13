@@ -1,82 +1,34 @@
 /**
- * Realm page (Graphite) — one page, no tabs: who the realm is, whether it can run, and a way into
- * each part of it.
+ * Realm page (Graphite) — the realm's overview, under the realm header that every realm page shares
+ * (components/graphite/realm_header.tsx: name, status, Edit details, Teams · Runs · Settings · Daemons).
  *
- *   header   — name, ✎ (Realm details panel: name + description, one realms/update), status
- *              (Ready / Missing agents / No daemon available), description, slug · creator · updated;
- *              More ▾ (Agents, Notifications, A2A, Access tokens, Settings) and Run… (pick a team)
- *   buttons  — Runs (running · need you) · Teams (· missing agent) · Daemons (N online) · Members
  *   setup    — what's missing, only when something is
- *   cards    — teams (chips), daemons (lights), people (avatars, roles, pending invites)
+ *   cards    — teams (chips: Ready / Missing agent), daemons (lights), people (avatars, roles, invites)
  *   danger   — folded; Delete realm lives in Settings › Danger zone
  *
- * Runs that need you and runs in progress live on the Runs page, not here.
+ * Runs that need you and runs in progress live on the Runs page; a run starts from a team.
  *
  * Data: one `POST /v1/realm_inbox/get { org_slug, slug, summary: true }` (BFF composes the realm,
- * run counts, teams, daemons and people). Writes: `realms/update`.
+ * run counts, teams, daemons and people), shared with the header.
  */
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
-import { AlertTriangle, CheckCircle2, ChevronDown, Lock, Pencil, Play, Plus, RefreshCw, SearchX } from 'lucide-react';
-import { use_overview, relative_time } from '@/lib/overview';
+import { AlertTriangle, CheckCircle2, Lock, Plus, RefreshCw, SearchX } from 'lucide-react';
+import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
-import { useAuthFetch } from '@/lib/auth_context';
-import { api_message } from '@/lib/use_bff_read';
-import { REALM_HEALTH_LABEL, realm_health, type Realm_health, type Realm_inbox_data, type Realm_summary } from '@/lib/realm_inbox';
+import type { Realm_inbox_data, Realm_summary } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
-import { Realm_nav } from '@/components/graphite/realm_nav';
+import { Realm_header } from '@/components/graphite/realm_header';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Avatar } from '@/components/graphite/g_admin';
-import { G_PRIMARY } from '@/components/graphite/g_agents';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Team_avatar } from '@/pages/teams/teams_graphite_page';
 import type { Realm_created_state } from '@/pages/realms/new_realm_page';
 
 export const INBOX_REFRESH_MS = 15_000;
 
 const CARD = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
-const INPUT = 'w-full rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[13px] outline-none focus:border-[var(--g-acc-line)]';
-
-const HEALTH_TONE: Record<Realm_health, string> = {
-	ready: 'bg-[var(--g-ok-soft,var(--g-soft))] text-[var(--g-ok)]',
-	missing_agents: 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]',
-	no_daemon: 'bg-[var(--g-bad-soft)] text-[var(--g-bad)]',
-};
-
-export function Health_badge({ health }: { health: Realm_health }) {
-	return (
-		<span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${HEALTH_TONE[health]}`} data-testid="realm-status">
-			<i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />{REALM_HEALTH_LABEL[health]}
-		</span>
-	);
-}
-
-function use_post() {
-	const auth_fetch = useAuthFetch();
-	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true } | { ok: false; error: string }> => {
-		try {
-			const res = await auth_fetch(path, { method: 'POST', body: JSON.stringify(body) });
-			const payload = await res.json().catch(() => null);
-			if (!res.ok || !payload?.ok) return { ok: false, error: api_message(payload, 'Request failed') };
-			return { ok: true };
-		} catch { return { ok: false, error: 'Network error' }; }
-	};
-}
-
-/** One of the four buttons under the header: a count and a way in. */
-function Section_button({ to, label, value, extra, testid }: { to: string; label: string; value: ReactNode; extra?: ReactNode; testid: string }) {
-	return (
-		<Link to={to} data-testid={testid} className={`${CARD} flex flex-col gap-1 px-4 py-3 hover:border-[var(--g-line-strong)]`}>
-			<span className="text-[11px] font-medium uppercase tracking-[0.06em] text-[var(--g-ink-3)]">{label}</span>
-			<span className="flex flex-wrap items-baseline gap-2">
-				<span className="g-mono text-[22px] font-medium leading-tight">{value}</span>
-				{extra}
-			</span>
-		</Link>
-	);
-}
 
 function Chip({ tone, children }: { tone: 'warn' | 'bad' | 'muted'; children: ReactNode }) {
 	const cls = tone === 'warn' ? 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]' : tone === 'bad' ? 'bg-[var(--g-bad-soft)] text-[var(--g-bad)]' : 'bg-[var(--g-soft)] text-[var(--g-ink-3)]';
@@ -95,73 +47,11 @@ function Card({ title, action, children, testid }: { title: ReactNode; action?: 
 	);
 }
 
-/** Realm details panel (✎): name and description, saved together in one realms/update. */
-function Details_panel({ realm_id, name, description, on_close, on_saved }: { realm_id: string; name: string; description: string | null; on_close: () => void; on_saved: () => Promise<void> }) {
-	const post = use_post();
-	const [n, set_n] = useState(name);
-	const [d, set_d] = useState(description ?? '');
-	const [busy, set_busy] = useState(false);
-	const [err, set_err] = useState<string | null>(null);
-	const changed = n.trim() !== name || d.trim() !== (description ?? '');
-	async function save() {
-		set_busy(true); set_err(null);
-		const res = await post('/v1/realms/update', { realm_id, name: n.trim(), description: d.trim() });
-		set_busy(false);
-		if (!res.ok) { set_err(res.error); return; }
-		await on_saved();
-		on_close();
-	}
-	return (
-		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label="Realm details" onMouseDown={(e) => { if (e.target === e.currentTarget) on_close(); }} onKeyDown={(e) => { if (e.key === 'Escape') on_close(); }}>
-			<form onSubmit={(e) => { e.preventDefault(); if (changed && n.trim()) void save(); }} className="flex h-full w-[440px] max-w-full flex-col gap-4 overflow-y-auto border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] px-6 py-5 shadow-[var(--g-drawer-shadow)]">
-				<div className="flex items-center">
-					<h2 className="text-[16px] font-semibold">Realm details</h2>
-					<button type="button" onClick={on_close} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">✕</button>
-				</div>
-				<label className="flex flex-col gap-1.5 text-[12px] font-semibold text-[var(--g-ink-2)]">Name
-					<input autoFocus value={n} onChange={(e) => set_n(e.target.value)} maxLength={100} className={INPUT} />
-				</label>
-				<label className="flex flex-col gap-1.5 text-[12px] font-semibold text-[var(--g-ink-2)]">Description
-					<textarea value={d} onChange={(e) => set_d(e.target.value)} rows={4} maxLength={500} placeholder="What this realm is for" className={INPUT} />
-				</label>
-				<p className="text-[12px] text-[var(--g-ink-3)]">The slug stays the same, so links keep working.</p>
-				{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
-				<div className="flex gap-2">
-					<button type="submit" disabled={busy || !changed || !n.trim()} className={G_PRIMARY}>{busy ? 'Saving…' : 'Save'}</button>
-					<button type="button" onClick={on_close} className={ROW_ACTION_CLS}>Cancel</button>
-				</div>
-			</form>
-		</div>
-	);
-}
-
-/** A small menu that closes when you pick something or click away. */
-function Menu({ label, primary, disabled, title, children }: { label: ReactNode; primary?: boolean; disabled?: boolean; title?: string; children: (close: () => void) => ReactNode }) {
-	const [open, set_open] = useState(false);
-	return (
-		<div className="relative" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) set_open(false); }}>
-			<button type="button" disabled={disabled} title={title} aria-haspopup="menu" aria-expanded={open} onClick={() => set_open((v) => !v)} className={primary ? G_PRIMARY : `${ROW_ACTION_CLS} inline-flex items-center gap-1`}>
-				{label}
-			</button>
-			{open ? (
-				<div role="menu" className="absolute right-0 z-40 mt-1 flex min-w-[220px] flex-col rounded-lg border border-[var(--g-line)] bg-[var(--g-panel)] py-1 shadow-[var(--g-drawer-shadow)]">
-					{children(() => set_open(false))}
-				</div>
-			) : null}
-		</div>
-	);
-}
-const MENU_ITEM = 'px-3 py-1.5 text-left text-[13px] hover:bg-[var(--g-soft)] disabled:cursor-not-allowed disabled:opacity-50';
-
-export function Realm_summary_view({ data, org_slug, slug, reload }: { data: Realm_inbox_data; org_slug: string; slug: string; reload: () => Promise<void> }) {
+export function Realm_summary_view({ data, org_slug, slug }: { data: Realm_inbox_data; org_slug: string; slug: string }) {
 	const s: Realm_summary | null = data.summary ?? null;
 	const base = realm_path(org_slug, slug);
-	const [editing, set_editing] = useState(false);
-	const [running, set_running] = useState<{ scope: string; slug: string } | null>(null);
 	const online = s?.daemons?.online ?? 0;
 	const missing = s?.teams?.missing_agents ?? 0;
-	const health = s?.daemons ? realm_health(online, missing) : null;
-	const need_you = data.counts.reviews + data.counts.awaiting_input;
 	const teams = s?.teams?.items ?? [];
 	const admin = s?.you.is_admin ?? false;
 	const people = s?.people ?? null;
@@ -170,54 +60,9 @@ export function Realm_summary_view({ data, org_slug, slug, reload }: { data: Rea
 	if (missing > 0) setup.push({ key: 'agents', text: `${missing} team${missing === 1 ? ' uses' : 's use'} an agent your org hasn’t registered.`, to: `${base}/agents`, action: 'Set up agents' });
 	if (teams.length === 0 && s?.teams) setup.push({ key: 'teams', text: 'No teams installed yet.', to: `${base}/teams?install=1`, action: 'Install a team' });
 	if (people && people.total <= 1 && admin) setup.push({ key: 'people', text: 'You’re the only one here.', to: `${base}/settings?section=members`, action: 'Invite people' });
-	const run_reason = online === 0 ? 'No daemon is online' : teams.length === 0 ? 'No teams installed' : undefined;
 
 	return (
 		<div className="flex flex-col gap-4">
-			<div className="flex flex-wrap items-start gap-4">
-				<Team_avatar name={data.realm.name || slug} size={48} />
-				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2.5">
-						<h1 className="text-[22px] font-semibold tracking-tight">{data.realm.name || slug}</h1>
-						{admin ? <button type="button" aria-label="Edit realm details" title="Name and description" onClick={() => set_editing(true)} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]"><Pencil aria-hidden className="h-3.5 w-3.5" /></button> : null}
-						{health ? <Health_badge health={health} /> : null}
-					</div>
-					{s?.realm.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{s.realm.description}</p> : null}
-					<p className="mt-1.5 flex flex-wrap gap-x-2 text-[12px] text-[var(--g-ink-3)]" data-testid="realm-meta">
-						<span className="g-mono text-[var(--g-ink-2)]">{org_slug}.{slug}</span>
-						{s?.realm.created_by_username ? <span>· created by {s.realm.created_by_username}{s.realm.created_at ? ` ${relative_time(s.realm.created_at)}` : ''}</span> : null}
-						{s?.realm.updated_at ? <span>· updated {relative_time(s.realm.updated_at)}</span> : null}
-					</p>
-				</div>
-				<div className="flex items-center gap-2">
-					<Menu label={<>More<ChevronDown aria-hidden className="h-3.5 w-3.5" /></>}>
-						{(close) => (
-							<>
-								<Link role="menuitem" to={`${base}/agents`} onClick={close} className={MENU_ITEM}>Agents</Link>
-								<Link role="menuitem" to={`/notifications?org=${encodeURIComponent(org_slug)}&realm=${encodeURIComponent(slug)}`} onClick={close} className={MENU_ITEM}>Notifications</Link>
-								<Link role="menuitem" to={`${base}/settings?section=a2a`} onClick={close} className={MENU_ITEM}>A2A &amp; mesh</Link>
-								<Link role="menuitem" to={`${base}/settings?section=tokens`} onClick={close} className={MENU_ITEM}>Access tokens</Link>
-								<Link role="menuitem" to={`${base}/settings?section=general`} onClick={close} className={MENU_ITEM}>Settings</Link>
-							</>
-						)}
-					</Menu>
-					<Menu primary disabled={!!run_reason} title={run_reason} label={<><Play aria-hidden className="h-3.5 w-3.5" />Run…</>}>
-						{(close) => teams.map((t) => (
-							<button key={t.label} role="menuitem" type="button" disabled={!t.scope || t.missing_agents.length > 0} title={t.missing_agents.length ? `Needs ${t.missing_agents.join(', ')}` : undefined} onClick={() => { close(); if (t.scope) set_running({ scope: t.scope, slug: t.slug }); }} className={MENU_ITEM}>
-								{t.label}{t.missing_agents.length ? <span className="ml-2 text-[11.5px] text-[var(--g-warn-text)]">missing agent</span> : null}
-							</button>
-						))}
-					</Menu>
-				</div>
-			</div>
-
-			<div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-				<Section_button testid="go-runs" to={`${base}/runs`} label="Runs" value={data.counts.running} extra={<><span className="text-[12px] text-[var(--g-ink-3)]">running</span>{need_you ? <Chip tone="warn">{need_you} need you</Chip> : null}</>} />
-				<Section_button testid="go-teams" to={`${base}/teams`} label="Teams" value={s?.teams?.total ?? '—'} extra={missing ? <Chip tone="warn">{missing} missing agent</Chip> : null} />
-				<Section_button testid="go-daemons" to={`${base}/daemons`} label="Daemons" value={s?.daemons ? online : '—'} extra={<span className="text-[12px] text-[var(--g-ink-3)]">online</span>} />
-				<Section_button testid="go-members" to={`${base}/settings?section=members`} label="Members" value={people?.total ?? '—'} extra={people?.pending_invites ? <Chip tone="muted">{people.pending_invites} pending</Chip> : null} />
-			</div>
-
 			{setup.length ? (
 				<section className={`${CARD} px-4 py-3`} data-testid="setup">
 					<h2 className="text-[14px] font-semibold">Finish setting up</h2>
@@ -240,7 +85,7 @@ export function Realm_summary_view({ data, org_slug, slug, reload }: { data: Rea
 							{teams.map((t) => (
 								<li key={t.label} data-testid={`team-${t.slug}`} className="flex items-center gap-2 rounded-full border border-[var(--g-line)] py-1 pl-1 pr-3 text-[12.5px]">
 									<Team_avatar name={t.slug} size={22} />
-									{t.scope ? <Link to={`/teams/${t.scope}/${t.slug}`} className="font-medium hover:underline">{t.label}</Link> : <span className="font-medium">{t.label}</span>}
+									{t.scope ? <Link to={`${base}/teams/${encodeURIComponent(t.scope)}/${encodeURIComponent(t.slug)}`} className="font-medium hover:underline">{t.label}</Link> : <span className="font-medium">{t.label}</span>}
 									{t.missing_agents.length ? <span title={`Needs ${t.missing_agents.join(', ')}`}><Chip tone="warn">Missing agent</Chip></span> : <span className="text-[11.5px] font-semibold text-[var(--g-ok)]">Ready</span>}
 								</li>
 							))}
@@ -286,8 +131,6 @@ export function Realm_summary_view({ data, org_slug, slug, reload }: { data: Rea
 				</details>
 			) : null}
 
-			{editing ? <Details_panel realm_id={data.realm.id} name={data.realm.name} description={s?.realm.description ?? null} on_close={() => set_editing(false)} on_saved={reload} /> : null}
-			{running ? <Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }} on_close={() => set_running(null)} /> : null}
 		</div>
 	);
 }
@@ -369,7 +212,7 @@ export function Component() {
 		<Graphite_shell
 			data={overview.data}
 			current_realm_id={realm_id}
-			title={data?.realm.name || slug}
+			title="Overview"
 			actions={
 				<button
 					type="button"
@@ -382,7 +225,7 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} />
+			<Realm_header org_slug={org} slug={slug} data={data} reload={() => inbox.reload()} realm={sidebar_realm} />
 			<div className="px-7 py-6">
 				{created ? (
 					<div className="mb-4 flex flex-col gap-2.5" data-testid="realm-created">
@@ -414,7 +257,7 @@ export function Component() {
 				{inbox.status === 'error' && !data ? (
 					<Blocking_error http_status={inbox.http_status} code={inbox.code} error={inbox.error} on_retry={() => void inbox.reload()} what="realm" />
 				) : null}
-				{data ? <Realm_summary_view data={data} org_slug={org} slug={slug} reload={() => inbox.reload()} /> : null}
+				{data ? <Realm_summary_view data={data} org_slug={org} slug={slug} /> : null}
 			</div>
 		</Graphite_shell>
 	);

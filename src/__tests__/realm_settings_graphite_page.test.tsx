@@ -65,7 +65,7 @@ describe('Realm settings page', () => {
 		const calls = route_fetch();
 		render_page();
 		const lena = await screen.findByTestId('member-u2');
-		expect(calls[0]).toEqual({ url: '/v1/realm_settings/get', body: { org_slug: 'measureone', slug: 'prod-us' } });
+		expect(calls.find((c) => c.url === '/v1/realm_settings/get')).toEqual({ url: '/v1/realm_settings/get', body: { org_slug: 'measureone', slug: 'prod-us' } });
 		expect(within(screen.getByTestId('member-u1')).getByText('you')).toBeInTheDocument();
 		fireEvent.change(within(lena).getByLabelText('Role for lena'), { target: { value: 'operator' } });
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_member', body: { realm_id: 'r-prod', member_type: 'user', member_id: 'u2', role: 'operator' } }));

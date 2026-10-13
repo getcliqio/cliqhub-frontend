@@ -104,6 +104,7 @@ function render_at(path: string) {
 			<Routes>
 				<Route path="/teams" element={<><ListPage /><Loc /></>} />
 				<Route path="/teams/:scope/:name" element={<><TeamPage /><Loc /></>} />
+				<Route path="/o/:org/realms/:slug/teams/:scope/:name" element={<><TeamPage /><Loc /></>} />
 				<Route path="/builder" element={<Loc />} />
 			</Routes>
 		</MemoryRouter>,
@@ -411,19 +412,29 @@ describe('Team page', () => {
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
 	});
 
-	it('the ✎ opens the Team details panel: rename there (one write) moves the URL; description and tags point to the Builder', async () => {
-		const calls = route_fetch();
+	it('opened from a realm: the realm header stays on top, Teams (current) goes back to the realm’s teams', async () => {
+		route_fetch();
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js');
+		await screen.findByTestId('workflow');
+		const header = screen.getByTestId('realm-header');
+		expect(within(header).getByTestId('go-teams')).toHaveAttribute('aria-current', 'page');
+		expect(within(header).getByTestId('go-teams')).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams');
+		expect(screen.getAllByRole('navigation', { name: 'Breadcrumb' })).toHaveLength(1); // the top bar's only
+	});
+
+	it('opened from the Teams list: no realm header', async () => {
+		route_fetch();
 		render_at('/teams/measureone/feature-dev-js');
-		fireEvent.click(await screen.findByRole('button', { name: 'Edit team details' }));
-		const panel = screen.getByRole('dialog', { name: 'Team details' });
-		expect(within(panel).getByRole('button', { name: 'Change them in the Builder' })).toBeInTheDocument();
-		const box = screen.getByLabelText('Team name');
-		fireEvent.change(box, { target: { value: 'Bad Name' } });
-		expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
-		fireEvent.change(box, { target: { value: 'feature-dev' } });
-		fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/rename')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone', new_name: 'feature-dev' }));
-		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/measureone/feature-dev'));
+		await screen.findByTestId('workflow');
+		expect(screen.queryByTestId('realm-header')).toBeNull();
+	});
+
+	it('no pencil and no rename on the team page (Edit, in the Builder, covers it)', async () => {
+		route_fetch();
+		render_at('/teams/measureone/feature-dev-js');
+		await screen.findByTestId('workflow');
+		expect(screen.queryByRole('button', { name: /Edit team details|Rename/ })).toBeNull();
+		expect(screen.getByRole('button', { name: /^Edit$/ })).toBeInTheDocument();
 	});
 
 	it('Unpublish refused by Core (a realm you can’t remove it from): the reason shows, nothing else happens', async () => {
@@ -462,7 +473,6 @@ describe('Team page', () => {
 		render_at('/teams/measureone/feature-dev-js');
 		await screen.findByTestId('workflow');
 		expect(screen.queryByRole('button', { name: /^Edit$/ })).toBeNull();
-		expect(screen.queryByRole('button', { name: 'Edit team details' })).toBeNull();
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
 		expect(screen.getByRole('button', { name: /Fork/ })).toBeInTheDocument();
 	});

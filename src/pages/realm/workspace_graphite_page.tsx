@@ -48,7 +48,7 @@ export function Component() {
 						{running && w.daemon_id ? <Run_here teams={d.teams} daemon_id={w.daemon_id} workspace_id={String(w.id ?? workspace_id)} workspace_path={w.path ?? ''} base={base} on_done={reload} on_cancel={() => set_running(false)} /> : null}
 						<section aria-label="Teams" className="flex flex-col gap-2">
 							<h2 className="text-[14px] font-semibold">Teams set up here</h2>
-							{d.teams.length ? <div className="flex flex-wrap gap-2">{d.teams.map((t) => <Link key={`${t.scope}/${t.slug}`} to={`/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="g-mono rounded-full border border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-1 text-[12px] hover:border-[var(--g-acc-line)]">{team_label(t)}</Link>)}</div> : <p className="text-[12.5px] text-[var(--g-ink-3)]">None yet — a team is assembled here the first time it runs.</p>}
+							{d.teams.length ? <div className="flex flex-wrap gap-2">{d.teams.map((t) => <Link key={`${t.scope}/${t.slug}`} to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="g-mono rounded-full border border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-1 text-[12px] hover:border-[var(--g-acc-line)]">{team_label(t)}</Link>)}</div> : <p className="text-[12.5px] text-[var(--g-ink-3)]">None yet — a team is assembled here the first time it runs.</p>}
 						</section>
 						<Host_runs runs={d.runs} total={d.runs_total} base={base} on_changed={reload} empty="No runs in this workspace yet." />
 					</>

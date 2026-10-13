@@ -84,7 +84,7 @@ describe('Graphite run detail', () => {
 		render_page();
 		expect(await ready()).toHaveTextContent('Nightly reconcile');
 		expect(calls(spy, '/v1/run_detail/get')).toEqual([{ run_id: 'run-77' }]);
-		const other = spy.mock.calls.map(([u]) => String(u)).filter((u) => !['/v1/run_detail/get', '/v1/run_telemetry/get', '/v1/overview/get', '/v1/getting_started/get'].includes(u));
+		const other = spy.mock.calls.map(([u]) => String(u)).filter((u) => !['/v1/run_detail/get', '/v1/run_telemetry/get', '/v1/overview/get', '/v1/getting_started/get', '/v1/realm_inbox/get' /* realm header */].includes(u));
 		expect(other).toEqual([]);
 	});
 

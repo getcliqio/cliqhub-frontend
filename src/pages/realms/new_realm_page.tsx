@@ -1,20 +1,17 @@
 /**
- * Realms › New realm (Graphite) — /realms/new[?org=slug] — its own screen, because a realm is a
- * major resource. Four steps — Details (name, slug, description) · People (search the org, or an
- * email; at least one operator) · Enrollment (token name) · Review — and nothing is saved until
- * Create realm: one `realms/create` (Core) saves the realm, its people, its invites, hello-world and
- * the enrollment token together, or none of it. Then the realm's page opens with the token shown
- * once (passed in navigation state, never in the URL). Reads: `users/get { org_id, query }`.
+ * Realms › New realm (Graphite) — a side panel over the Realms list (/realms?new=1; /realms/new
+ * redirects there). Four steps with Next / Back — Details (name, slug, description) · People (search
+ * the org, or an email; at least one operator) · Enrollment (token name) · Review — and nothing is
+ * saved until Create realm: one `realms/create` (Core) saves the realm, its people, its invites,
+ * hello-world and the enrollment token together, or none of it. Then the realm's page opens with the
+ * token shown once (passed in navigation state, never in the URL). Reads: `users/get { org_id, query }`.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Navigate, useNavigate, useSearchParams } from 'react-router';
 import { ArrowLeft, Check, X } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
-import { use_overview } from '@/lib/overview';
+import type { Overview_org } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
-import { use_view_scope } from '@/lib/view_scope';
-import { Graphite_shell } from '@/components/graphite/graphite_shell';
-import { Banner } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { slugify } from '@/pages/realms/realms_page';
 
@@ -38,10 +35,15 @@ const LABEL = 'mb-1 block text-[12.5px] text-[var(--g-ink-2)]';
 const TH = 'border-b border-[var(--g-line)] bg-[var(--g-soft)] px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]';
 const TD = 'border-b border-[var(--g-line-2)] px-3 py-2 text-[12.5px]';
 
+/** Old /realms/new links open the panel on the Realms list. */
 export function Component() {
-	const overview = use_overview();
-	const scope = use_view_scope(overview.data);
-	const org = scope.org;
+	const [sp] = useSearchParams();
+	const org = sp.get('org');
+	return <Navigate to={`/realms?${org ? `org=${encodeURIComponent(org)}&` : ''}new=1`} replace />;
+}
+
+/** New realm, in a side panel; `on_close` leaves without saving anything. */
+export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close: () => void }) {
 	const { user } = useAuth();
 	const auth_fetch = useAuthFetch();
 	const post = use_post();
@@ -63,7 +65,6 @@ export function Component() {
 
 	const eff_slug = slug_touched ? slug : slugify(name);
 	const eff_token = token_touched ? token_name : (eff_slug ? `${eff_slug}-enroll` : '');
-	const back_to = org ? `/realms?org=${encodeURIComponent(org.slug)}` : '/realms';
 	const has_operator = people.some((p) => p.role === 'operator');
 	const me = user?.id ?? null;
 
@@ -106,7 +107,6 @@ export function Component() {
 	}
 
 	async function create() {
-		if (!org) return;
 		for (let i = 0; i < 3; i++) { const e = check(i); if (e) { set_step(i); set_err(e); return; } }
 		set_busy(true); set_err(null);
 		const r = await post('/v1/realms/create', {
@@ -143,7 +143,7 @@ export function Component() {
 
 	const step_body = [
 		// Details
-		<div key="d" className="flex max-w-[560px] flex-col gap-3">
+		<div key="d" className="flex flex-col gap-3">
 			<label><span className={LABEL}>Name</span><input aria-label="Realm name" autoFocus value={name} onChange={(e) => { set_name(e.target.value); set_err(null); }} placeholder="Production US" className={`${G_INPUT} w-full`} /></label>
 			<label><span className={LABEL}>Slug <span className="text-[var(--g-ink-3)]">· used in URLs and the CLI; it can’t change later</span></span>
 				<span className="flex items-center gap-1.5"><span className="g-mono text-[12.5px] text-[var(--g-ink-3)]">{org?.slug ?? ''}.</span><input aria-label="Realm slug" value={eff_slug} onChange={(e) => { set_slug_touched(true); set_slug(slugify(e.target.value)); set_err(null); }} className={`${G_INPUT} g-mono flex-1`} /></span>
@@ -170,7 +170,7 @@ export function Component() {
 				) : null}
 			</div>
 			<table className="w-full overflow-hidden rounded-[10px] border border-[var(--g-line)]" data-testid="people">
-				<thead><tr><th className={TH}>Person</th><th className={`${TH} w-[140px]`}>Role</th><th className={`${TH} w-[140px]`}>When created</th><th className={`${TH} w-[44px]`} /></tr></thead>
+				<thead><tr><th className={TH}>Person</th><th className={`${TH} w-[120px]`}>Role</th><th className={`${TH} w-[100px]`}>On create</th><th className={`${TH} w-[44px]`} /></tr></thead>
 				<tbody>
 					<tr><td className={TD}>{user?.display_name || user?.username} <span className="text-[var(--g-ink-3)]">· you</span></td><td className={TD}>admin</td><td className={`${TD} text-[var(--g-ink-3)]`}>owner</td><td className={TD} /></tr>
 					{people.map((p, i) => (
@@ -185,7 +185,7 @@ export function Component() {
 			</table>
 		</div>,
 		// Enrollment
-		<div key="e" className="flex max-w-[560px] flex-col gap-3">
+		<div key="e" className="flex flex-col gap-3">
 			<p className="text-[12.5px] text-[var(--g-ink-3)]">A daemon joins the realm with an enrollment token. It’s made with the realm and shown once, right after. You can revoke it, or make more, from the realm’s Access tokens.</p>
 			<label><span className={LABEL}>Token name</span><input aria-label="Token name" value={eff_token} onChange={(e) => { set_token_touched(true); set_token_name(e.target.value); set_err(null); }} className={`${G_INPUT} g-mono w-full`} /></label>
 		</div>,
@@ -205,33 +205,35 @@ export function Component() {
 	];
 
 	return (
-		<Graphite_shell data={overview.data} title="New realm">
-			<div className="flex flex-col gap-4 px-7 py-6">
-				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={back_to} className="hover:text-[var(--g-ink)]">Realms</Link> › <span className="text-[var(--g-ink-2)]">New realm</span></nav>
-				<header className="flex items-center gap-3">
-					<div className="min-w-0 flex-1"><h1 className="text-[22px] font-semibold tracking-tight">New realm</h1><p className="mt-1 text-[13px] text-[var(--g-ink-3)]">in {org?.display_name || org?.slug || '…'} · nothing is saved until you create it</p></div>
-					<button type="button" disabled={busy} onClick={() => navigate(back_to)} className={G_BTN}>Cancel</button>
-				</header>
-				{!org ? <Banner tone="bad">Pick an organization first.</Banner> : (
-					<div className="grid grid-cols-[180px_minmax(0,1fr)] gap-6">
-						<ol aria-label="Steps" className="flex flex-col gap-0.5">
-							{STEPS.map((s, i) => (
-								<li key={s} aria-current={i === step ? 'step' : undefined} className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] ${i === step ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : i < step ? 'text-[var(--g-ink)]' : 'text-[var(--g-ink-3)]'}`}>
-									<span className={`grid h-5 w-5 place-items-center rounded-full text-[11px] ${i < step ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : i === step ? 'bg-[var(--g-acc)] text-[var(--g-on-acc)]' : 'border border-[var(--g-line-strong)]'}`}>{i < step ? <Check aria-hidden className="h-3 w-3" /> : i + 1}</span>{s}
-								</li>
-							))}
-						</ol>
-						<section aria-label={STEPS[step]} className="flex min-w-0 flex-col gap-4">
-							{step_body[step]}
-							{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
-							<div className="flex items-center gap-2 border-t border-[var(--g-line)] pt-3">
-								{step > 0 ? <button type="button" disabled={busy} onClick={() => { set_err(null); set_step(step - 1); }} className={`${G_BTN} inline-flex items-center gap-1.5`}><ArrowLeft aria-hidden className="h-3.5 w-3.5" />Back</button> : null}
-								<button type="button" disabled={busy} onClick={next} className={`${G_PRIMARY} ml-auto`}>{step === STEPS.length - 1 ? (busy ? 'Creating…' : 'Create realm') : 'Next'}</button>
-							</div>
-						</section>
+		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label="New realm" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) on_close(); }} onKeyDown={(e) => { if (e.key === 'Escape' && !busy) on_close(); }}>
+			<div className="flex h-full w-[600px] max-w-full flex-col border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] shadow-[var(--g-drawer-shadow)]">
+				<header className="flex items-start gap-3 border-b border-[var(--g-line)] px-6 pb-3 pt-5">
+					<div className="min-w-0 flex-1">
+						<h2 className="text-[17px] font-semibold">New realm</h2>
+						<p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">in {org.display_name || org.slug} · nothing is saved until you create it</p>
 					</div>
-				)}
+					<button type="button" disabled={busy} onClick={on_close} aria-label="Close" className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X aria-hidden className="h-4 w-4" /></button>
+				</header>
+				<ol aria-label="Steps" className="flex items-center gap-1 border-b border-[var(--g-line)] px-6 py-2.5">
+					{STEPS.map((s, i) => (
+						<li key={s} aria-current={i === step ? 'step' : undefined} className={`flex items-center gap-1.5 text-[12.5px] ${i === step ? 'font-semibold text-[var(--g-ink)]' : i < step ? 'text-[var(--g-ink)]' : 'text-[var(--g-ink-3)]'}`}>
+							<span className={`grid h-5 w-5 place-items-center rounded-full text-[11px] ${i < step ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : i === step ? 'bg-[var(--g-acc)] text-[var(--g-on-acc)]' : 'border border-[var(--g-line-strong)]'}`}>{i < step ? <Check aria-hidden className="h-3 w-3" /> : i + 1}</span>{s}
+							{i < STEPS.length - 1 ? <span aria-hidden className="mx-1.5 h-px w-5 bg-[var(--g-line-strong)]" /> : null}
+						</li>
+					))}
+				</ol>
+				<section aria-label={STEPS[step]} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+					{step_body[step]}
+				</section>
+				<footer className="flex flex-col gap-2 border-t border-[var(--g-line)] px-6 py-3">
+					{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
+					<div className="flex items-center gap-2">
+						<button type="button" disabled={busy} onClick={on_close} className={G_BTN}>Cancel</button>
+						{step > 0 ? <button type="button" disabled={busy} onClick={() => { set_err(null); set_step(step - 1); }} className={`${G_BTN} ml-auto inline-flex items-center gap-1.5`}><ArrowLeft aria-hidden className="h-3.5 w-3.5" />Back</button> : null}
+						<button type="button" disabled={busy} onClick={next} className={`${G_PRIMARY} ${step > 0 ? '' : 'ml-auto'}`}>{step === STEPS.length - 1 ? (busy ? 'Creating…' : 'Create realm') : 'Next'}</button>
+					</div>
+				</footer>
 			</div>
-		</Graphite_shell>
+		</div>
 	);
 }

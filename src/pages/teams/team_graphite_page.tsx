@@ -1,7 +1,7 @@
 /**
  * Build › Teams › one team (Graphite). One page, no tabs:
- *   header   — the name (✎ opens the Team details panel, for editors) · Fork · Edit · Install (the main action)
- *   header   — name (✎) · status, description, then version · @scope · author · tags; actions right
+ *   header   — name · status, description, then version · @scope · author · tags; actions right:
+ *              Fork · Download · Edit (the Builder — everything about the team changes there) · Install
  *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
  *              the selected phase described under it; Versions (5 a page, full notes on "more");
  *              the Danger zone, folded (Unpublish, Delete a version, Delete team), for editors
@@ -9,7 +9,7 @@
  *              Run); always listed, the selected phase's highlighted
  * Read: one `POST /v1/team_page/get` (view `overview`, which carries team.yml too). Writes are
  * single existing routes (realms/add_team via the Install dialog, teams/create with `forked_from`,
- * teams/rename, teams/unpublish, teams/delete_version, teams/delete).
+ * teams/unpublish, teams/delete_version, teams/delete).
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
@@ -21,6 +21,7 @@ import { use_view_scope } from '@/lib/view_scope';
 import { phase_kind, phase_subtitle, team_href, type Team_input, type Team_page_data, type Team_phase } from '@/lib/team_page';
 import { Yaml_view, find_item, yaml_outline } from '@/components/graphite/g_yaml_view';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
+import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -36,7 +37,6 @@ type Workflow_mode = 'diagram' | 'yaml';
 /** Remembers Diagram / YAML across teams (per browser). */
 export const WORKFLOW_MODE_KEY = 'cliqhub.team_workflow_mode';
 /** A team name: lowercase letters, numbers and hyphens, starting with a letter. */
-const NAME_OK = /^[a-z][a-z0-9-]*$/;
 /** Versions shown per page in the Versions card. */
 export const VERSIONS_PAGE_SIZE = 5;
 /** Names tried for a fork, in order. */
@@ -92,12 +92,15 @@ function use_post() {
 // ── page ─────────────────────────────────────────────────────────────────
 
 export function Component() {
-	const { scope: scope_param = '', name = '' } = useParams();
+	// Opened from a realm (/o/:org/realms/:slug/teams/:scope/:name): the realm header stays on top.
+	const { scope: scope_param = '', name = '', org: realm_org = '', slug: realm_slug = '' } = useParams();
+	const in_realm = Boolean(realm_org && realm_slug);
 	const team_scope = scope_param === '_' ? '' : scope_param;
 	const navigate = useNavigate();
 	const { pathname } = useLocation();
 	const { user, scopes } = useAuth();
 	const overview = use_overview();
+	const sidebar_realm = in_realm ? overview.data?.orgs.find((o) => o.slug === realm_org)?.realms.find((r) => r.slug === realm_slug) ?? null : null;
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
 	const post = use_post();
@@ -113,12 +116,10 @@ export function Component() {
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm, set_confirm] = useState<string | null>(null);
 	const [del_version, set_del_version] = useState('');
-	const [renaming, set_renaming] = useState(false);
 	/** Versions card page; null = the page holding the version being viewed. */
 	const [ver_page_pick, set_ver_page] = useState<number | null>(null);
 	/** Versions whose full release notes are shown. */
 	const [notes_open, set_notes_open] = useState<Set<string>>(new Set());
-	const [new_name, set_new_name] = useState(name);
 
 	const set_params = (patch: Record<string, string | null>, replace = true) => set_search((prev) => {
 		const p = new URLSearchParams(prev);
@@ -230,35 +231,6 @@ export function Component() {
 		if (after) after(); else await read.reload();
 	}
 
-	// ── team details panel (✎): the name renames now; description and tags come with the next version ──
-	const details_panel = renaming && team?.scope ? (
-		<div className="fixed inset-0 z-50 flex justify-end bg-[var(--g-backdrop)]" role="dialog" aria-label="Team details" onMouseDown={(e) => { if (e.target === e.currentTarget) set_renaming(false); }} onKeyDown={(e) => { if (e.key === 'Escape') set_renaming(false); }}>
-			<div className="flex h-full w-[440px] max-w-full flex-col gap-5 overflow-y-auto border-l border-[var(--g-line-strong)] bg-[var(--g-panel)] px-6 py-5 shadow-[var(--g-drawer-shadow)]" data-testid="details-panel">
-				<div className="flex items-center">
-					<h2 className="text-[16px] font-semibold">Team details</h2>
-					<button type="button" onClick={() => set_renaming(false)} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">✕</button>
-				</div>
-				<form className="flex flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); if (NAME_OK.test(new_name) && new_name !== team.name) void act('rename', '/v1/teams/rename', { name: team.name, scope: team.scope, new_name }, `Renamed to ${new_name}.`, () => { set_renaming(false); navigate(team_href(team.scope, new_name), { replace: true }); }); }}>
-					<label htmlFor="team-name" className="text-[12px] font-semibold text-[var(--g-ink-2)]">Name</label>
-					<div className="flex items-center gap-1.5">
-						<input id="team-name" aria-label="Team name" autoFocus value={new_name} onChange={(e) => set_new_name(e.target.value.trim())} className={`${INPUT} g-mono h-8 flex-1 text-[13px]`} />
-						<button type="submit" disabled={busy !== null || !NAME_OK.test(new_name) || new_name === team.name} className={PRIMARY}>{busy === 'rename' ? 'Renaming…' : 'Rename'}</button>
-					</div>
-					{new_name && !NAME_OK.test(new_name)
-						? <span className="text-[12px] text-[var(--g-bad)]">Lowercase letters, numbers and hyphens, starting with a letter.</span>
-						: <span className="text-[12px] text-[var(--g-ink-3)]">Takes effect right away; links to <span className="g-mono">{team.scope}/{team.name}</span> stop working.</span>}
-				</form>
-				<div className="flex flex-col gap-1.5">
-					<span className="text-[12px] font-semibold text-[var(--g-ink-2)]">Description</span>
-					<p className="text-[13px] text-[var(--g-ink-2)]">{team.description || <span className="text-[var(--g-ink-3)]">None yet.</span>}</p>
-					<span className="mt-2 text-[12px] font-semibold text-[var(--g-ink-2)]">Tags</span>
-					<p className="text-[13px] text-[var(--g-ink-2)]">{team.tags.length ? team.tags.join(' · ') : <span className="text-[var(--g-ink-3)]">None.</span>}</p>
-					<p className="mt-2 text-[12px] text-[var(--g-ink-3)]">Description, tags and inputs are part of team.yml, so they change with the next version you publish.</p>
-					<button type="button" onClick={() => { set_renaming(false); edit(); }} className={`${ROW_ACTION_CLS} self-start`}>Change them in the Builder</button>
-				</div>
-			</div>
-		</div>
-	) : null;
 
 	// ── header ──
 	const header = (
@@ -267,7 +239,6 @@ export function Component() {
 			<div className="min-w-0 flex-1">
 				<div className="flex flex-wrap items-center gap-2.5">
 					<h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>
-					{team?.can_edit && team.scope ? <button type="button" aria-label="Edit team details" title="Name, description and tags" onClick={() => { set_new_name(team.name); set_renaming(true); }} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]"><Pencil aria-hidden className="h-3.5 w-3.5" /></button> : null}
 					{team ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>
@@ -523,15 +494,16 @@ export function Component() {
 	) : null;
 
 	return (
-		<Graphite_shell data={overview.data} title={team?.name ?? name}>
+		<Graphite_shell data={overview.data} title={team?.name ?? name} current_realm_id={sidebar_realm?.id ?? null}>
+			{in_realm ? <Realm_nav org_slug={realm_org} slug={realm_slug} realm={sidebar_realm} /> : null}
 			<div className="flex flex-col gap-3.5 px-7 py-6">
-				<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>
+				{/* In a realm the realm header's Teams button leads back; no second breadcrumb. */}
+				{in_realm ? null : <nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>}
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="team" />
 				) : (
 					<>
 						{header}
-						{details_panel}
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						{data?.partial ? <p className="text-[11.5px] text-[var(--g-ink-3)]">Some of this couldn’t be loaded — what’s shown may be incomplete.</p> : null}
 						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (

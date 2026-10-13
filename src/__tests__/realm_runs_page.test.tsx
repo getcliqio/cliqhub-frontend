@@ -72,7 +72,7 @@ describe('Realm runs page', () => {
 		expect(within(screen.getByTestId('run-run-2')).getByText('LedgerTimeout')).toBeInTheDocument();
 		expect(screen.getByTestId('runs-range')).toHaveTextContent('1–25 of 60');
 		const nav = screen.getByRole('navigation', { name: 'Realm sections' });
-		expect(within(nav).getByRole('link', { name: 'Runs' })).toHaveAttribute('aria-current', 'page');
+		expect(within(nav).getByRole('link', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('sub-team runs sit under their main run (foldable); one whose main run is elsewhere links to it', async () => {

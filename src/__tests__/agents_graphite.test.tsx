@@ -292,7 +292,8 @@ describe('Realm › Agents', () => {
 		expect(screen.getByTestId('attention')).toHaveTextContent('cursor is missing keys here');
 		fireEvent.click(screen.getByRole('button', { name: /All agents/ }));
 		expect(await screen.findByTestId('ragent-exec')).toBeInTheDocument();
-		expect(screen.getByRole('navigation', { name: 'Realm sections' })).toHaveTextContent('Agents');
+		// Agents sits under Settings in the realm header.
+		expect(screen.getByTestId('go-settings')).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('agent in realm: inherited keys dashed + Override here; Use org value clears the override', async () => {

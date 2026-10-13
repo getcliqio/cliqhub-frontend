@@ -51,15 +51,6 @@ function Realm_settings_redirect({ to }: { to: 'members' | 'tokens' | 'a2a' | 'd
   return <Navigate to={`/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/settings${q}`} replace />;
 }
 
-function Realm_team_redirect() {
-  const { org = '', slug = '', scope = '_', name = '' } = useParams();
-  const overview = use_overview(0);
-  if (!overview.data && overview.status !== 'error') return null;
-  const realm = overview.data?.orgs.find((o) => o.slug === org)?.realms.find((r) => r.slug === slug);
-  const q = realm ? `?tab=runs&realm=${encodeURIComponent(realm.id)}` : '';
-  return <Navigate to={`/teams/${encodeURIComponent(scope)}/${encodeURIComponent(name)}${q}`} replace />;
-}
-
 function Draft_redirect() {
   const { id = '' } = useParams();
   return <Navigate to={`/builder?draft=${encodeURIComponent(id)}`} replace />;
@@ -248,9 +239,9 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/builder/builder_graphite_page')),
           },
           {
-            // A team in a realm → the Graphite team page, runs filtered to that realm.
+            // A team in a realm: the team page under the realm header (every realm page keeps it).
             path: 'o/:org/realms/:slug/teams/:scope/:name',
-            element: <Realm_team_redirect />,
+            lazy: lazy_route(() => import('@/pages/teams/team_graphite_page')),
           },
           {
             // Realm › Daemon: installed teams, workspaces, runs.

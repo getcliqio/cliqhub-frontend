@@ -57,7 +57,8 @@ describe('Realm teams page', () => {
 		const calls = route_fetch();
 		render_page();
 		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
-		expect(calls).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
+		// The realm header's own read aside, one page read.
+		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get')).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
 		expect(within(fd).getByTestId('update-badge')).toHaveTextContent('↑ 2.5.0');
 		expect(within(fd).getByText('3/3')).toBeInTheDocument();
 		const recon = screen.getByTestId('team-@measureone/recon');
@@ -65,7 +66,7 @@ describe('Realm teams page', () => {
 		expect(within(recon).getByText(/needs agents: matcher/)).toBeInTheDocument();
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText(/not on the realm’s team list/)).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: /On some daemons\s*2/ })).toBeInTheDocument();
-		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: 'Teams' })).toHaveAttribute('aria-current', 'page');
+		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Teams/ })).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('a row opens its team: the name is the link, Open leads the row\'s buttons, other buttons do only their own thing', async () => {
@@ -86,9 +87,9 @@ describe('Realm teams page', () => {
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		fireEvent.click(screen.getByRole('button', { name: /On some daemons/ }));
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ coverage: 'partial' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ coverage: 'partial' }));
 		fireEvent.change(screen.getByLabelText('Search teams'), { target: { value: 'rec' } });
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ q: 'rec', coverage: 'partial' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ q: 'rec', coverage: 'partial' }));
 	});
 
 	it('update, remove (confirmed) and add are single Core writes', async () => {

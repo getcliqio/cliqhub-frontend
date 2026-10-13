@@ -94,7 +94,7 @@ describe('Realm inbox page', () => {
 		expect(others).toEqual([]);
 	});
 
-	it('header: name, status, description, slug · creator · updated; no tabs; no Needs attention or Running now', async () => {
+	it('header: name, status, description, slug · creator · updated; no Needs attention or Running now', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
 		await screen.findByRole('heading', { name: 'Prod US' });
@@ -102,7 +102,6 @@ describe('Realm inbox page', () => {
 		expect(screen.getByText('Production delivery for the US')).toBeInTheDocument();
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('measureone.prod-us');
 		expect(screen.getByTestId('realm-meta')).toHaveTextContent('created by sapan');
-		expect(screen.queryByRole('navigation', { name: 'Realm sections' })).toBeNull();
 		expect(screen.queryByText('Needs attention')).toBeNull();
 		expect(screen.queryByText('Running now')).toBeNull();
 	});
@@ -116,16 +115,18 @@ describe('Realm inbox page', () => {
 		expect(await screen.findByTestId('realm-status')).toHaveTextContent(label);
 	});
 
-	it('the four buttons: Runs (running · need you), Teams (· missing agent), Daemons (N online, count only), Members', async () => {
+	it('header buttons, in order: Teams (· missing agent), Runs (running · need you), Settings, Daemons (N online); no More, no Run…', async () => {
 		route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		const runs = await screen.findByTestId('go-runs');
-		expect(runs).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
-		expect(runs).toHaveTextContent('1running2 need you');
-		expect(screen.getByTestId('go-teams')).toHaveTextContent('21 missing agent');
-		expect(screen.getByTestId('go-daemons')).toHaveTextContent('2online');
-		expect(screen.getByTestId('go-daemons')).not.toHaveTextContent('/');
-		expect(screen.getByTestId('go-members')).toHaveTextContent('31 pending');
+		const nav = await screen.findByRole('navigation', { name: 'Realm sections' });
+		expect(within(nav).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-settings', 'go-daemons']);
+		expect(screen.getByTestId('go-teams')).toHaveTextContent('Teams21 missing agent');
+		expect(screen.getByTestId('go-runs')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs');
+		expect(screen.getByTestId('go-runs')).toHaveTextContent('Runs1 running2 need you');
+		expect(screen.getByTestId('go-settings')).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings');
+		expect(screen.getByTestId('go-daemons')).toHaveTextContent('Daemons2 online');
+		expect(screen.queryByRole('button', { name: /More/ })).toBeNull();
+		expect(screen.queryByRole('button', { name: /Run…/ })).toBeNull();
 	});
 
 	it('cards: team chips with Ready / Missing agent, daemon lights, people by role; setup list only for what’s missing', async () => {
@@ -141,28 +142,16 @@ describe('Realm inbox page', () => {
 		expect(screen.getByRole('link', { name: /Install a team/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams?install=1');
 	});
 
-	it('More ▾ lists the rest of the realm; Run… lists teams, a team missing an agent can’t be picked', async () => {
-		route_fetch({ body: { ok: true, data: inbox() } });
-		render_page();
-		await screen.findByRole('heading', { name: 'Prod US' });
-		fireEvent.click(screen.getByRole('button', { name: /More/ }));
-		expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual(['Agents', 'Notifications', 'A2A & mesh', 'Access tokens', 'Settings']);
-		fireEvent.click(screen.getByRole('button', { name: /Run…/ }));
-		expect(screen.getByRole('menuitem', { name: '@cliq/hello-world' })).toBeEnabled();
-		expect(screen.getByRole('menuitem', { name: /income-verify/ })).toBeDisabled();
-	});
-
-	it('Run… is off when no daemon is online', async () => {
+	it('no daemon online: the setup list says so', async () => {
 		route_fetch({ body: { ok: true, data: inbox({}, { daemons: { ...SUMMARY.daemons!, online: 0 } }) } });
 		render_page();
-		expect(await screen.findByRole('button', { name: /Run…/ })).toBeDisabled();
-		expect(screen.getByTestId('setup')).toHaveTextContent('No daemon is online');
+		expect(await screen.findByTestId('setup')).toHaveTextContent('No daemon is online');
 	});
 
-	it('✎ opens the Realm details panel: name and description saved together in one realms/update', async () => {
+	it('Edit realm opens the Realm details side panel: name and description saved together in one realms/update', async () => {
 		const spy = route_fetch({ body: { ok: true, data: inbox() } });
 		render_page();
-		fireEvent.click(await screen.findByRole('button', { name: 'Edit realm details' }));
+		fireEvent.click(await screen.findByRole('button', { name: 'Edit realm' }));
 		const panel = screen.getByRole('dialog', { name: 'Realm details' });
 		fireEvent.change(within(panel).getByLabelText('Name'), { target: { value: 'Production US' } });
 		fireEvent.change(within(panel).getByLabelText('Description'), { target: { value: 'US delivery' } });
@@ -173,11 +162,11 @@ describe('Realm inbox page', () => {
 		expect(JSON.parse(String((writes[0][1] as RequestInit).body))).toEqual({ realm_id: 'r-prod', name: 'Production US', description: 'US delivery' });
 	});
 
-	it('not an admin: no ✎, no Invite, no Danger zone', async () => {
+	it('not an admin: no Edit realm, no Invite, no Danger zone', async () => {
 		route_fetch({ body: { ok: true, data: inbox({}, { you: { role: 'member', is_admin: false } }) } });
 		render_page();
 		await screen.findByRole('heading', { name: 'Prod US' });
-		expect(screen.queryByRole('button', { name: 'Edit realm details' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Edit realm' })).toBeNull();
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
 		expect(within(screen.getByTestId('members-card')).queryByRole('link', { name: 'Invite' })).toBeNull();
 	});

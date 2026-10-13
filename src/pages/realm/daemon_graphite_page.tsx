@@ -25,7 +25,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 	return <div className="min-w-0"><div className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{label}</div><div className="mt-0.5 truncate text-[13px]">{children}</div></div>;
 }
 
-function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise<void> }) {
+function Teams({ data, base, reload }: { data: Daemon_page_data; base: string; reload: () => Promise<void> }) {
 	const row = use_row_open();
 	const post = use_post();
 	const daemon_id = String(data.daemon.id ?? '');
@@ -69,11 +69,11 @@ function Teams({ data, reload }: { data: Daemon_page_data; reload: () => Promise
 								const key = `${t.scope}/${t.slug}`;
 								return (
 									<tr key={key} {...row({ to: `/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`installed-${t.slug}`}>
-										<td className="g-mono px-4 py-2.5"><Link to={`/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="hover:underline">{team_label(t)}</Link></td>
+										<td className="g-mono px-4 py-2.5"><Link to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="hover:underline">{team_label(t)}</Link></td>
 										<td className="g-mono px-4 text-[var(--g-ink-2)]">{t.version ?? '—'}</td>
 										<td className="px-4 text-right">{confirm === key
 											? <span className="inline-flex gap-2"><button type="button" disabled={busy} onClick={() => void uninstall(t)} className={G_DANGER}>Uninstall</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
-											: <span className="inline-flex items-center gap-2"><Row_open to={`/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} label={`Open ${team_label(t)}`} /><button type="button" onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Uninstall…</button></span>}</td>
+											: <span className="inline-flex items-center gap-2"><Row_open to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} label={`Open ${team_label(t)}`} /><button type="button" onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Uninstall…</button></span>}</td>
 									</tr>
 								);
 							})}
@@ -181,7 +181,7 @@ export function Component() {
 							<Fact label="Owner">{dm.user_email ?? '—'}</Fact>
 							<Fact label="Id"><span className="g-mono text-[12px]">{dm.id}</span></Fact>
 						</div>
-						<Teams data={d} reload={reload} />
+						<Teams data={d} base={base} reload={reload} />
 						<Workspaces data={d} base={base} reload={reload} />
 						<Host_runs runs={d.runs} total={d.runs_total} base={base} on_changed={reload} empty="No runs on this daemon yet." />
 					</>

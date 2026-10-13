@@ -1,6 +1,6 @@
 /** Realms list + New realm wizard (Graphite). */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
 
@@ -86,11 +86,16 @@ describe('Realms page', () => {
 		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/get').at(-1)!.body).toMatchObject({ offset: 25, limit: 25 }));
 	});
 
-	it('New realm is its own screen; ?new=1 opens it', async () => {
+	it('New realm is a side panel over the list (the button, ?new=1, or an old /realms/new link)', async () => {
 		route_fetch();
-		open('/realms?new=1');
-		expect(await screen.findByRole('heading', { name: 'New realm' })).toBeInTheDocument();
-		expect(screen.getByRole('list', { name: 'Steps' }).textContent).toMatch(/Details.*People.*Enrollment.*Review/);
+		open('/realms');
+		fireEvent.click(await screen.findByRole('button', { name: /New realm/ }));
+		const panel = await screen.findByRole('dialog', { name: 'New realm' });
+		expect(within(panel).getByRole('list', { name: 'Steps' }).textContent).toMatch(/Details.*People.*Enrollment.*Review/);
+		expect(screen.getByRole('heading', { name: 'Realms' })).toBeInTheDocument();
+		cleanup();
+		open('/realms/new');
+		expect(await screen.findByRole('dialog', { name: 'New realm' })).toBeInTheDocument();
 	});
 
 	it('nothing is saved until Create realm; then one call carries everything and the realm opens with the token', async () => {
@@ -98,7 +103,7 @@ describe('Realms page', () => {
 			'/v1/users/get': () => ({ data: { users: [{ id: 'u-bob', username: 'bob', display_name: 'Bob Builder', email: 'bob@x.com' }] } }),
 			'/v1/realms/create': () => ({ realm: { id: 'r-new', slug: 'prod-us', name: 'Production US', org_slug: 'measureone', qualified_slug: 'measureone.prod-us', description: 'US delivery', members_added: [{ user_id: 'u-bob', role: 'operator' }], invites: [{ email: 'kim@x.com', role: 'member', email_sent: true, invite_url: null }], enroll_token: { id: 't1', name: 'prod-us-enroll', token: 'cliq_rt_abc' } } }),
 		});
-		open('/realms/new');
+		open('/realms?new=1');
 		// Details
 		fireEvent.change(await screen.findByLabelText('Realm name'), { target: { value: 'Production US' } });
 		expect(screen.getByLabelText('Realm slug')).toHaveValue('production-us');
@@ -136,13 +141,13 @@ describe('Realms page', () => {
 
 	it('Back keeps what was entered; Cancel leaves without saving', async () => {
 		const calls = route_fetch();
-		open('/realms/new');
+		open('/realms?new=1');
 		fireEvent.change(await screen.findByLabelText('Realm name'), { target: { value: 'QA' } });
 		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Back' }));
 		expect(screen.getByLabelText('Realm name')).toHaveValue('QA');
 		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-		await waitFor(() => expect(screen.queryByRole('heading', { name: 'New realm' })).toBeNull());
+		await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New realm' })).toBeNull());
 		expect(calls.some((c) => c.url === '/v1/realms/create')).toBe(false);
 	});
 
@@ -152,7 +157,7 @@ describe('Realms page', () => {
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => (String(url) === '/v1/realms/create'
 			? new Response(JSON.stringify({ ok: false, error: { code: 'conflict', message: "Realm slug 'qa' already exists in this org" } }), { status: 409 })
 			: base(url, init)));
-		open('/realms/new');
+		open('/realms?new=1');
 		fireEvent.change(await screen.findByLabelText('Realm name'), { target: { value: 'QA' } });
 		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
 		fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'kim@x.com' } });

@@ -52,13 +52,14 @@ describe('Realm daemons page', () => {
 		const calls = route_fetch();
 		render_page();
 		const mbp = await screen.findByTestId('daemon-d-mbp');
-		expect(calls).toEqual([{ url: '/v1/realm_daemons/get', body: { org_slug: 'measureone', slug: 'prod-us' } }]);
+		// The realm header's own read aside, one page read.
+		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get')).toEqual([{ url: '/v1/realm_daemons/get', body: { org_slug: 'measureone', slug: 'prod-us' } }]);
 		expect(within(mbp).getByRole('link', { name: 'mbp-sapan-01' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d-mbp');
 		expect(within(mbp).getByText('3/3')).toBeInTheDocument();
 		expect(within(screen.getByTestId('daemon-d-gpu')).getByText('1/3')).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: /Stale\s*1/ })).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Settings › Access tokens' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings?section=tokens');
-		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: 'Daemons' })).toHaveAttribute('aria-current', 'page');
+		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Daemons/ })).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('status chip and search go to the BFF; remove is confirmed and one Core call', async () => {
@@ -66,9 +67,9 @@ describe('Realm daemons page', () => {
 		render_page();
 		await screen.findByTestId('daemon-d-mbp');
 		fireEvent.click(screen.getByRole('button', { name: /Online/ }));
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ status: 'online' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ status: 'online' }));
 		fireEvent.change(screen.getByLabelText('Search daemons'), { target: { value: 'gpu' } });
-		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ q: 'gpu', status: 'online' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ q: 'gpu', status: 'online' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Remove d-gpu' }));
 		fireEvent.click(within(screen.getByTestId('daemon-d-gpu')).getByRole('button', { name: 'Remove' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/daemons/remove', body: { daemon_id: 'd-gpu' } }));
