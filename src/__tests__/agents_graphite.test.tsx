@@ -296,18 +296,23 @@ describe('Realm › Agents', () => {
 		expect(screen.getByTestId('go-settings')).toHaveAttribute('aria-current', 'page');
 	});
 
-	it('agent in realm: a key is empty (the org value shows as a hint) or typed to override; emptying an override removes it', async () => {
+	it('agent in realm: a key it hasn\'t set shows the org\'s value with Replace; emptying its own value removes it', async () => {
 		const calls = route_fetch();
 		render_at(`/o/measureone/realms/prod-us/agents/${JIRA}`);
 		const form = await screen.findByTestId('settings-form');
 		expect(calls.find((c) => c.url === '/v1/agent_page/get')!.body).toEqual({ org_id: ORG_A, id: JIRA, realm: { org_slug: 'measureone', slug: 'prod-us' } });
 		expect(within(form).getByText('Values in prod-us')).toBeInTheDocument();
 		// No Override here / Use org value: an inherited key is an empty box with the org's value as the hint.
-		expect(within(form).queryByText('Override here')).toBeNull();
+		expect(within(form).queryByText(/override here/i)).toBeNull();
 		expect(within(form).queryByText('Use org value')).toBeNull();
+		const inherited = screen.getByTestId('inherited-base_url');
+		expect(inherited).toHaveTextContent('https://m1.atlassian.net');
+		expect(within(screen.getByTestId('field-base_url')).getByText('from the org')).toBeInTheDocument(); // once, beside the key
+		expect(within(screen.getByTestId('field-base_url')).queryByLabelText('base_url')).toBeNull();
+		fireEvent.click(within(inherited).getByRole('button', { name: 'Replace' }));
 		const base_url = within(screen.getByTestId('field-base_url')).getByLabelText('base_url') as HTMLInputElement;
 		expect(base_url.value).toBe('');
-		expect(base_url.placeholder).toContain('org: https://m1.atlassian.net');
+		expect(base_url.placeholder).toContain('https://m1.atlassian.net');
 		fireEvent.change(base_url, { target: { value: 'https://prod.atlassian.net' } });
 		// A realm-set secret: Replace, leave it empty → the override goes, the org value applies again.
 		fireEvent.click(within(screen.getByTestId('field-api_token')).getByText('Replace'));

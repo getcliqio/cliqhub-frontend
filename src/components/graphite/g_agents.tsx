@@ -76,8 +76,8 @@ function Source_tag({ f, mode, realm }: { f: Agent_field; mode: 'org' | 'realm';
 /**
  * One form for both scopes.
  *   org   — edit the org defaults every realm inherits.
- *   realm — per key: empty uses the org value (shown as the hint); a value overrides it here;
- *           emptying an override removes it.
+ *   realm — per key: the org's value (or the default) shown with Replace to set this realm's own;
+ *           emptying the realm's value removes it.
  * Secret values arrive masked; they can be replaced, never read back.
  */
 export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agent_settings_view; org_id: string; agent_id: string; on_saved: (msg: string) => void }) {
@@ -136,6 +136,14 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 						<button type="button" onClick={() => set_edits((e) => ({ ...e, [f.key]: '' }))} className="ml-auto text-[12px] font-semibold text-[var(--g-acc)]">Replace</button></div>
 				</>
 			);
+		} else if (from_org && !editing && (f.org_value || f.default)) {
+			// A realm key it hasn't set: the org's value (or the default) applies — Replace to set this realm's own.
+			control = (
+				<div className="flex flex-1 items-center rounded-lg border border-[var(--g-line)] px-3 py-1.5 text-[13px]" data-testid={`inherited-${f.key}`}>
+					<span className={`${f.secret ? '' : 'g-mono'} truncate text-[var(--g-ink-3)]`}>{f.org_value ?? f.default}</span>
+					<button type="button" onClick={() => set_edits((e) => ({ ...e, [f.key]: '' }))} className="ml-auto pl-3 text-[12px] font-semibold text-[var(--g-acc)]">Replace</button>
+				</div>
+			);
 		} else if (cleared) {
 			control = (
 				<>
@@ -153,11 +161,11 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 						value={editing ? edits[f.key] : from_org ? '' : (f.value ?? '')}
 						onChange={(e) => set_edits((x) => ({ ...x, [f.key]: e.target.value }))}
 						placeholder={from_org
-							? (f.org_value ? `org: ${f.org_value} — type to override here` : f.default ? `default: ${f.default} — type to override here` : 'not set for the org — type a value for this realm')
+							? (f.org_value ? `the org's: ${f.org_value}` : f.default ? `default: ${f.default}` : 'Not set for the org — enter this realm’s value')
 							: f.secret ? 'Paste value — stored encrypted, never shown again' : f.default ? `default: ${f.default}` : ''}
 						className={`${G_INPUT} flex-1 ${f.secret ? '' : 'g-mono'} ${f.required && !f.set && !editing ? 'border-[rgba(255,178,36,.5)]' : ''} ${mode === 'realm' ? 'border-[rgba(91,157,255,.5)]' : ''}`}
 					/>
-					{editing && f.secret && own_value ? <button type="button" onClick={() => set_edits((e) => { const n = { ...e }; delete n[f.key]; return n; })} className={G_BTN}>Cancel</button> : null}
+					{editing && ((f.secret && own_value) || (from_org && (f.org_value || f.default))) ? <button type="button" onClick={() => set_edits((e) => { const n = { ...e }; delete n[f.key]; return n; })} className={G_BTN}>Cancel</button> : null}
 				</>
 			);
 		}
