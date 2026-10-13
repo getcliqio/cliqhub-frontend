@@ -154,10 +154,13 @@ describe('Realm inbox page', () => {
 		expect(screen.getByRole('link', { name: /Install a team/ })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams?install=1');
 	});
 
-	it('no daemon online: the setup list says so', async () => {
+	it('no daemon online: the status says so; no Connect anywhere on the realm page', async () => {
 		route_fetch({ body: { ok: true, data: inbox({}, { daemons: { ...SUMMARY.daemons!, online: 0 } }) } });
 		render_page();
-		expect(await screen.findByTestId('setup')).toHaveTextContent('No daemon is online');
+		expect(await screen.findByTestId('realm-status')).toHaveTextContent('No daemon available');
+		expect(screen.queryByText(/Connect/)).toBeNull();
+		expect(within(screen.getByTestId('daemons-card')).getByRole('link', { name: 'View all' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons');
+		expect(screen.getByTestId('setup')).not.toHaveTextContent('daemon');
 	});
 
 	it('teams and members page 5 at a time on the server: Next asks for the next offset', async () => {

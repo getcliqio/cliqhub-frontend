@@ -76,7 +76,7 @@ export function Realm_summary_view({ data, org_slug, slug, on_teams_page = () =>
 	const admin = s?.you.is_admin ?? false;
 	const people = s?.people ?? null;
 	const setup: Array<{ key: string; text: string; to: string; action: string }> = [];
-	if (s?.daemons && online === 0) setup.push({ key: 'daemon', text: s.daemons.total ? 'No daemon is online, so nothing can run.' : 'No daemon has joined yet, so nothing can run.', to: `${base}/daemons`, action: 'Connect a daemon' });
+	// No daemon online: the status badge says so; a daemon joins from its own machine, not from here.
 	if (missing > 0) setup.push({ key: 'agents', text: `${missing} team${missing === 1 ? ' is' : 's are'} missing agent config — an agent ${missing === 1 ? 'it uses' : 'they use'} isn’t set up in your org.`, to: `${base}/agents`, action: 'Set up agents' });
 	if (teams.length === 0 && s?.teams) setup.push({ key: 'teams', text: 'No teams installed yet.', to: `${base}/teams?install=1`, action: 'Install a team' });
 	if (people && people.total <= 1 && admin) setup.push({ key: 'people', text: 'You’re the only one here.', to: `${base}/settings?section=members`, action: 'Invite people' });
@@ -154,7 +154,7 @@ export function Realm_summary_view({ data, org_slug, slug, on_teams_page = () =>
 						</>
 					)}
 				</Card>
-				<Card testid="daemons-card" title={<>Daemons <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{s?.daemons ? `${online} online` : ''}</span></>} action={<Link to={`${base}/daemons`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">{online === 0 ? 'Connect' : 'View all'}</Link>}>
+				<Card testid="daemons-card" title={<>Daemons <span className="ml-1 text-[12px] font-normal text-[var(--g-ink-3)]">{s?.daemons ? `${online} online` : ''}</span></>} action={<Link to={`${base}/daemons`} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">View all</Link>}>
 					{!s?.daemons ? <p className="text-[13px] text-[var(--g-ink-3)]">Couldn’t load the daemons.</p> : s.daemons.items.length === 0 ? <p className="text-[13px] text-[var(--g-ink-3)]">None yet. Run <code className="g-mono">cliqd</code> with an enrollment token to add one.</p> : (
 						<ul className="flex flex-wrap gap-1.5" aria-label="Daemons">
 							{s.daemons.items.map((d) => (
