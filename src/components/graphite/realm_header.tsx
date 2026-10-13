@@ -3,7 +3,7 @@
  * a daemon), so it stays put while you move around the realm.
  *
  *   name · status (Ready / Missing agent config / No daemon available); description; org.slug · created by · updated
- *   on the right, buttons (not tabs): Edit realm · Teams (N · missing agent config) · Runs (N running · need you)
+ *   on the right, buttons (not tabs): Edit realm (realm overview only) · Teams (N · missing agent config) · Runs (N running · need you)
  *   · Settings · Daemons (N online)
  *
  * Data: `realm_inbox/get { summary: true }`. The overview page passes what it already read; other
@@ -150,7 +150,8 @@ export function Realm_header({ org_slug, slug, data, reload, realm = null }: {
 				</div>
 				{/* Buttons, not tabs: Edit realm, then a way into each part of the realm. */}
 				<nav aria-label="Realm sections" className="flex flex-wrap items-center justify-end gap-2">
-					{s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className={ROW_ACTION_CLS}>Edit realm</button> : null}
+					{/* Only on the realm's own page: inside a run, a team or a section you're not editing the realm. */}
+					{data !== undefined && s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className={ROW_ACTION_CLS}>Edit realm</button> : null}
 					{button('teams', `${base}/teams`, 'Teams', <>{count(s?.teams?.total)}{missing ? <Chip tone="warn">{missing} missing agent config</Chip> : null}</>)}
 					{button('runs', `${base}/runs`, 'Runs', <>{count(running, ' running')}{need_you ? <Chip tone="warn">{need_you} need you</Chip> : null}</>)}
 					{button('settings', `${base}/settings`, 'Settings')}

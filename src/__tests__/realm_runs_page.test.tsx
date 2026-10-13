@@ -73,6 +73,8 @@ describe('Realm runs page', () => {
 		expect(screen.getByTestId('runs-range')).toHaveTextContent('1–25 of 60');
 		const nav = screen.getByRole('navigation', { name: 'Realm sections' });
 		expect(within(nav).getByRole('link', { name: /^Runs/ })).toHaveAttribute('aria-current', 'page');
+		// Inside a section the header doesn't offer Edit realm (only the realm's own page does).
+		expect(screen.queryByRole('button', { name: 'Edit realm' })).toBeNull();
 	});
 
 	it('columns: Run, Team (with version), State (Needs you from the BFF), Started, Daemon (its name)', async () => {
