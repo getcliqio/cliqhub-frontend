@@ -529,7 +529,7 @@ export function PhaseEditor() {
 		</div>
 		)}
 
-			{/* Add to Team / Discard — pending phases only */}
+			{/* Add to Team / Cancel — pending phases only */}
 			{phase.pending && (
 				<div className="mt-4 space-y-2">
 					{submit_errors.length > 0 && (
@@ -562,7 +562,7 @@ export function PhaseEditor() {
 						}}
 						className="w-full rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
 					>
-						Discard
+						Cancel
 					</button>
 				</div>
 			)}

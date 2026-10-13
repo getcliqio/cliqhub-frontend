@@ -208,7 +208,7 @@ describe('Agent page (org)', () => {
 		fireEvent.change(within(form).getByLabelText('email'), { target: { value: 'bot@m1.com' } });
 		fireEvent.change(within(form).getByLabelText('api_token'), { target: { value: 'ATATT-secret-value-123' } });
 		expect((within(form).getByLabelText('api_token') as HTMLInputElement).type).toBe('password');
-		fireEvent.click(within(form).getByText('Save for org'));
+		fireEvent.click(within(form).getByText('Save'));
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/agents/update_settings')).toBe(true));
 		expect(calls.find((c) => c.url === '/v1/agents/update_settings')!.body).toEqual({ org_id: ORG_A, id: JIRA, settings: { values: { email: 'bot@m1.com', api_token: 'ATATT-secret-value-123' } } });
 		expect(await screen.findByText('Saved for the org.')).toBeInTheDocument();
@@ -229,7 +229,7 @@ describe('Agent page (org)', () => {
 		render_at(`/agents/${JIRA}`);
 		const form = await screen.findByTestId('settings-form');
 		fireEvent.change(within(form).getByLabelText('email'), { target: { value: 'x@y.z' } });
-		fireEvent.click(within(form).getByText('Save for org'));
+		fireEvent.click(within(form).getByText('Save'));
 		expect(await within(form).findByRole('alert')).toHaveTextContent("Permission 'agents.manage' is required");
 	});
 
@@ -311,7 +311,7 @@ describe('Realm › Agents', () => {
 		fireEvent.change(base_url, { target: { value: 'https://prod.atlassian.net' } });
 		// A realm-set secret: Replace, leave it empty → the override goes, the org value applies again.
 		fireEvent.click(within(screen.getByTestId('field-api_token')).getByText('Replace'));
-		fireEvent.click(within(form).getByText('Save for prod-us'));
+		fireEvent.click(within(form).getByText('Save'));
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/agents/update_settings')).toBe(true));
 		expect(calls.find((c) => c.url === '/v1/agents/update_settings')!.body).toEqual({ org_id: ORG_A, id: JIRA, realm_id: 'r-prod', settings: { values: { base_url: 'https://prod.atlassian.net' }, clear: ['api_token'] } });
 		expect(screen.getByText(`Org settings for jira →`)).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe('Agent page — MCP servers', () => {
 		expect(within(section).getByText('Linear personal API key')).toBeInTheDocument();
 		fireEvent.change(within(section).getByLabelText('mcp.secrets.LINEAR_API_KEY'), { target: { value: 'lin_api_123' } });
 		expect(within(section).getByTestId('mcp-server-linear')).toHaveTextContent('secrets set');
-		fireEvent.click(screen.getByText('Save for org'));
+		fireEvent.click(screen.getByText('Save'));
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/agents/update_settings')).toBe(true));
 		const values = (calls.find((c) => c.url === '/v1/agents/update_settings')!.body.settings as { values: Record<string, string> }).values;
 		expect(JSON.parse(values['mcp.servers']!)).toEqual({ linear: { url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer ${LINEAR_API_KEY}' } } });

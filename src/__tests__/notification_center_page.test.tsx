@@ -187,7 +187,7 @@ describe('Notifications page', () => {
 		// Several events in one go → one BFF request, one rule per event.
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: 'Run completed' }));
 		expect(within(dlg).getByLabelText('Chosen events')).toHaveTextContent('Run failed');
-		fireEvent.click(within(dlg).getByRole('button', { name: 'Save 2 rules' }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Save' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_center/set_rules', body: { org_id: ORG_A, events: ['run.failed', 'run.completed'], channel_id: 'ch-oncall' } }));
 		await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 	});
@@ -218,7 +218,7 @@ describe('Notifications page', () => {
 		expect(within(dlg).getByRole('button', { name: 'Realm' })).toHaveTextContent('prod-us');
 		// Realm-owned channels are offered for realm rules.
 		pick_channel(dlg, 'prod-alerts');
-		fireEvent.click(within(dlg).getByRole('button', { name: 'Save rule' }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Save' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_center/set_rules', body: { realm_id: 'r-prod', events: ['run.failed'], channel_id: 'ch-prod' } }));
 	});
 
@@ -228,9 +228,9 @@ describe('Notifications page', () => {
 		await screen.findByTestId('rule-rl-org');
 		fireEvent.click(screen.getByRole('button', { name: 'New rule' }));
 		const dlg = screen.getByRole('dialog', { name: 'New rule' });
-		expect(within(dlg).getByRole('button', { name: 'Save rule' })).toBeDisabled();
+		expect(within(dlg).getByRole('button', { name: 'Save' })).toBeDisabled();
 		pick_channel(dlg, 'oncall');
-		expect(within(dlg).getByRole('button', { name: 'Save rule' })).toBeEnabled();
+		expect(within(dlg).getByRole('button', { name: 'Save' })).toBeEnabled();
 	});
 });
 
@@ -484,7 +484,7 @@ describe('Notifications — pickers', () => {
 		expect(within(dlg).getByLabelText('Chosen events')).not.toHaveTextContent('Run failed');
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: 'Review requested' }));
 		pick_channel(dlg, 'oncall');
-		fireEvent.click(within(dlg).getByRole('button', { name: 'Save 2 rules' }));
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Save' }));
 		expect(await within(dlg).findByRole('alert')).toHaveTextContent('Saved 1. Couldn’t save: Review requested (Nope)');
 		expect(calls.filter((c) => c.url === '/v1/notification_center/set_rules')[0].body).toMatchObject({ events: ['run.*', 'hug.review_requested'] });
 		expect(within(dlg).getByLabelText('Chosen events')).toHaveTextContent('Review requested');

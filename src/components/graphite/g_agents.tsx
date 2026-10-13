@@ -203,8 +203,8 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 				<div className="flex items-center gap-2 border-t border-[var(--g-line)] py-3">
 					<span className={`text-[12.5px] ${missing.length ? 'text-[var(--g-warn-text)]' : 'text-[var(--g-ink-3)]'}`}>{missing.length ? `${missing.length} required key${missing.length === 1 ? '' : 's'} still missing` : dirty ? 'Unsaved changes' : 'No unsaved changes'}</span>
 					{error ? <span role="alert" className="text-[12.5px] text-[var(--g-bad)]">{error}</span> : null}
-					<button type="button" disabled={!dirty || busy} onClick={() => { set_edits({}); set_clears(new Set()); }} className={`${G_BTN} ml-auto`}>Discard</button>
-					<button type="button" disabled={!dirty || busy} onClick={() => void save()} className={G_PRIMARY}>{busy ? 'Saving…' : mode === 'realm' ? `Save for ${realm_slug}` : 'Save for org'}</button>
+					<button type="button" disabled={!dirty || busy} onClick={() => { set_edits({}); set_clears(new Set()); }} className={`${G_BTN} ml-auto`}>Cancel</button>
+					<button type="button" disabled={!dirty || busy} onClick={() => void save()} className={G_PRIMARY}>{busy ? 'Saving…' : 'Save'}</button>
 				</div>
 			) : null}
 		</div>

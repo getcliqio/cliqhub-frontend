@@ -98,7 +98,7 @@ export function Org_mesh_panel({ org_id, can_edit }: { org_id: string; can_edit:
 				{adapter ? (
 					<>
 						<Provider_fields adapter={adapter} form={form} set_form={set_form} secrets_set={s.providers[adapter.id]} disabled={!can_edit || busy} />
-						{can_edit ? <div><button type="button" disabled={busy} onClick={() => void save({ provider_id: adapter.id, provider_settings: form }, 'Provider settings saved.')} className={G_PRIMARY}>Save provider settings</button></div> : null}
+						{can_edit ? <div><button type="button" disabled={busy} onClick={() => void save({ provider_id: adapter.id, provider_settings: form }, 'Provider settings saved.')} className={G_PRIMARY}>Save</button></div> : null}
 					</>
 				) : null}
 			</section>
@@ -183,7 +183,7 @@ export function Realm_a2a_panel({ realm_id, can_edit }: { realm_id: string; can_
 					</select>
 				) : null}
 				{adapter ? <Provider_fields adapter={adapter} form={form} set_form={set_form} secrets_set={s.providers[adapter.id]} disabled={!can_edit || busy || s.mesh_provider_mode === 'inherit'} /> : null}
-				{adapter && s.mesh_provider_mode === 'override' && can_edit ? <div><button type="button" disabled={busy} onClick={() => void act({ action: 'update', provider_id: provider, provider_settings: form }, 'Provider settings saved.')} className={G_PRIMARY}>Save provider settings</button></div> : null}
+				{adapter && s.mesh_provider_mode === 'override' && can_edit ? <div><button type="button" disabled={busy} onClick={() => void act({ action: 'update', provider_id: provider, provider_settings: form }, 'Provider settings saved.')} className={G_PRIMARY}>Save</button></div> : null}
 				{provider ? (
 					<div className="flex flex-wrap items-center gap-2 border-t border-[var(--g-line)] pt-3 text-[12.5px]">
 						<span className={`rounded-full px-2 py-0.5 font-semibold ${connected ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : 'bg-[var(--g-soft)] text-[var(--g-ink-3)]'}`}>● {connected ? 'Connected' : status ? String(status.status ?? 'Not connected') : 'Not connected'}</span>

@@ -507,7 +507,7 @@ function New_rule_drawer({ data, scope, on_close, on_saved, on_channel_created }
 
 			{error ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{error}</p> : null}
 			<div className="flex gap-2">
-				<button type="button" disabled={!ready || busy} onClick={() => void save()} className={PRIMARY}>{busy ? 'Saving…' : events.length > 1 ? `Save ${events.length} rules` : 'Save rule'}</button>
+				<button type="button" disabled={!ready || busy} onClick={() => void save()} className={PRIMARY}>{busy ? 'Saving…' : 'Save'}</button>
 				<button type="button" onClick={on_close} className={ROW_ACTION_CLS}>Cancel</button>
 			</div>
 			{making_channel ? (
