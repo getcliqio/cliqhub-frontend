@@ -148,6 +148,7 @@ export function Realm_a2a_panel({ realm_id, can_edit }: { realm_id: string; can_
 	if (!s) return msg ? <Banner tone="bad">{msg.text}</Banner> : <div className="h-[200px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" />;
 	const status = s.mesh_status;
 	const connected = status && (status.connected === true || status.status === 'connected');
+	const off = !s.a2a_enabled;
 	return (
 		<div className="flex max-w-[760px] flex-col gap-4" data-testid="realm-a2a">
 			{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
@@ -156,6 +157,9 @@ export function Realm_a2a_panel({ realm_id, can_edit }: { realm_id: string; can_
 				<div className="flex items-center gap-2"><b className="text-[14px]">Agent-to-agent surface</b>
 					<label className="ml-auto flex items-center gap-2 text-[12.5px]"><input type="checkbox" aria-label="A2A enabled" disabled={!can_edit || busy} checked={s.a2a_enabled} onChange={(e) => void act({ action: 'update', a2a_enabled: e.target.checked }, e.target.checked ? 'A2A turned on.' : 'A2A turned off.')} />{s.a2a_enabled ? 'On' : 'Off'}</label>
 				</div>
+				{/* Off (the default): nothing here can be changed until A2A is turned on. */}
+				{off ? <p className="text-[12.5px] text-[var(--g-ink-3)]" data-testid="a2a-off">A2A is off, so other agents can’t reach this realm. Turn it on to get an agent card, a send endpoint and mesh settings.</p> : null}
+				<fieldset disabled={off} aria-disabled={off} className={`flex min-w-0 flex-col gap-3 ${off ? 'pointer-events-none select-none opacity-45' : ''}`} data-testid="a2a-surface">
 				{s.card_url ? <label className="flex flex-col gap-1 text-[12.5px] text-[var(--g-ink-2)]">Agent card<input readOnly value={s.card_url} className={`${G_INPUT} g-mono w-full`} /></label> : null}
 				{s.send_url ? <label className="flex flex-col gap-1 text-[12.5px] text-[var(--g-ink-2)]">Send endpoint<input readOnly value={s.send_url} className={`${G_INPUT} g-mono w-full`} /></label> : null}
 				<div className="flex flex-wrap items-center gap-2">
@@ -163,8 +167,9 @@ export function Realm_a2a_panel({ realm_id, can_edit }: { realm_id: string; can_
 					{can_edit ? <button type="button" disabled={busy} onClick={() => void rotate()} className={G_BTN}>{s.has_bearer ? 'Rotate bearer token…' : 'Create bearer token'}</button> : null}
 					{s.has_bearer && s.bearer_prefix ? <span className="g-mono text-[12px] text-[var(--g-ink-3)]">current: {s.bearer_prefix}…</span> : null}
 				</div>
+				</fieldset>
 			</section>
-			<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4" aria-label="Mesh">
+			<fieldset disabled={off} aria-disabled={off} aria-label="Mesh" className={`flex min-w-0 flex-col gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4 ${off ? 'pointer-events-none select-none opacity-45' : ''}`} data-testid="a2a-mesh">
 				<b className="text-[14px]">Mesh</b>
 				<div role="radiogroup" aria-label="Mesh provider mode" className="flex flex-wrap gap-2">
 					{([['inherit', `Use org default${s.effective_provider_id && s.mesh_provider_mode === 'inherit' ? ` (${s.effective_provider_id})` : ''}`], ['override', 'Override for this realm'], ['none', 'None (A2A only)']] as const).map(([k, l]) => (
@@ -186,7 +191,7 @@ export function Realm_a2a_panel({ realm_id, can_edit }: { realm_id: string; can_
 					</div>
 				) : null}
 				{typeof status?.dispatch_secret_once === 'string' ? <Secret_reveal title="Mesh dispatch secret" secret={String(status.dispatch_secret_once)} on_done={() => void load()} /> : null}
-			</section>
+			</fieldset>
 		</div>
 	);
 }

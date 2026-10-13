@@ -3,6 +3,9 @@
  * resolves the realm, asks Core for one filtered page and the chip counts.
  * Filters live in the URL (?state=&range=&q=&page=; ?team= from team pages)
  * so links and refresh keep them.
+ *
+ * Columns: Run · Team (with the version it ran) · State (a run waiting for input or with a review
+ * pending shows "Needs you", from the BFF) · Started (· took) · Daemon (its name, from the BFF).
  */
 import { useEffect, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -15,7 +18,6 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
-import { Origin_badge } from '@/components/graphite/g_origin_badge';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
@@ -50,6 +52,15 @@ function parse_range(v: string | null): Run_range | null {
 /** Parse ?origin= into a valid Origin_filter or null (= show all). */
 function parse_origin(v: string | null): Origin_filter | null {
 	return v === 'cli' || v === 'hub' ? v : null;
+}
+
+/** A run that needs a person: waiting for input, or a review pending. */
+function Needs_you_pill({ why }: { why: 'input' | 'review' }) {
+	return (
+		<span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" data-testid="needs-you">
+			<span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Needs you · {why === 'input' ? 'input' : 'review'}
+		</span>
+	);
 }
 
 export function Component() {
@@ -158,11 +169,7 @@ export function Component() {
 											<Sort_th sort={cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th>
 											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<Sort_th sort={cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th>
-											<th className="px-4 py-2.5 font-semibold">Origin</th>
-											<th className="px-4 py-2.5 font-semibold">Version</th>
-											<th className="px-4 py-2.5 font-semibold">Phase</th>
 											<Sort_th sort={cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th>
-											<th className="px-4 py-2.5 font-semibold">Took</th>
 											<th className="px-4 py-2.5 font-semibold">Daemon</th>
 										</tr>
 									</thead>
@@ -189,14 +196,18 @@ export function Component() {
 															</span>
 														) : r.error && (r.state === 'failed' || r.state === 'crashed') ? <span className="g-mono block truncate text-[11px] text-[var(--g-bad)]">{r.error}</span> : <span className="g-mono block truncate text-[11px] text-[var(--g-ink-3)]">{r.run_id}</span>}
 													</td>
-													<td className="g-mono max-w-[200px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{r.team ?? '—'}</td>
-													<td className="px-4 py-2.5"><State_pill state={r.state} /></td>
-													<td className="px-4 py-2.5"><Origin_badge origin={r.origin} /></td>
-													<td className="g-mono max-w-[120px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]">{r.version ?? '—'}</td>
-													<td className="max-w-[160px] truncate px-4 py-2.5 text-[var(--g-ink-2)]">{r.current_phase ?? '—'}</td>
-													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]" title={r.started_at ? new Date(r.started_at).toLocaleString() : undefined}>{relative_time(r.started_at)}</td>
-													<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[12px]">{duration(r.started_at, r.state === 'running' || r.state === 'awaiting_input' ? null : r.completed_at ?? r.updated_at)}</td>
-													<td className="g-mono max-w-[160px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">{r.daemon_id ?? '—'}</td>
+													{/* Team with the version it ran, e.g. @cliq/hello-world · 2.0.0 */}
+													<td className="g-mono max-w-[240px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]" data-testid="cell-team">{r.team ?? '—'}{r.version ? <span className="text-[var(--g-ink-3)]"> · {r.version}</span> : null}</td>
+													{/* Needing a person is a state of its own: waiting for input, or a review pending. */}
+													<td className="px-4 py-2.5" data-testid="cell-state">
+														{r.needs_you ? <Needs_you_pill why={r.needs_you} /> : <State_pill state={r.state} />}
+														{(r.needs_you || r.state === 'running') && r.current_phase ? <span className="g-mono mt-0.5 block truncate text-[11px] text-[var(--g-ink-3)]">at {r.current_phase}</span> : null}
+													</td>
+													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]" title={r.started_at ? new Date(r.started_at).toLocaleString() : undefined}>
+														{relative_time(r.started_at)}
+														{r.state === 'running' || r.state === 'awaiting_input' ? null : <span className="g-mono block text-[11px] text-[var(--g-ink-3)]">took {duration(r.started_at, r.completed_at ?? r.updated_at)}</span>}
+													</td>
+													<td className="max-w-[180px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]" title={r.daemon_id ?? undefined} data-testid="cell-daemon">{r.daemon_name ?? (r.daemon_id ? <span className="g-mono text-[var(--g-ink-3)]">{r.daemon_id.slice(0, 8)}</span> : '—')}</td>
 												</tr>
 											);
 										})}

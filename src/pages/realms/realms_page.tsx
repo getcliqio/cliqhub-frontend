@@ -104,7 +104,6 @@ function Realms_table({ org_id, realms_by_id, q, page, set }: {
 										<span className="inline-flex items-center gap-2">
 											<i aria-hidden className={`h-2 w-2 rounded-full ${online ? 'animate-pulse bg-[var(--g-ok)]' : no_daemon ? 'bg-[var(--g-line-strong)]' : 'bg-[var(--g-bad)]'}`} />
 											<b className="g-mono text-[13px]">{online}</b>
-											{no_daemon ? <span className="text-[11.5px] text-[var(--g-ink-3)]">no daemon yet</span> : null}
 										</span>
 									</td>
 									<td className="px-4 py-2.5">

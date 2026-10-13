@@ -60,6 +60,8 @@ describe('Realm teams page', () => {
 		// The realm header's own read aside, one page read.
 		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get')).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
 		expect(within(fd).getByTestId('update-badge')).toHaveTextContent('↑ 2.5.0');
+		expect(screen.queryByRole('columnheader', { name: /Version/ })).toBeNull();
+		expect(within(screen.getByTestId('team-@measureone/recon')).getByTestId('team-version')).toHaveTextContent('· 0.8.3');
 		expect(within(fd).getByText('3/3')).toBeInTheDocument();
 		const recon = screen.getByTestId('team-@measureone/recon');
 		expect(within(recon).getByText('1/3')).toBeInTheDocument();
@@ -78,7 +80,7 @@ describe('Realm teams page', () => {
 		expect(within(rowel).getByTestId('row-open')).toHaveAttribute('href', href);
 		fireEvent.click(within(rowel).getByRole('button', { name: /More for/ }));
 		expect(screen.queryByTestId('where')).toBeNull();
-		fireEvent.click(within(rowel).getByText('0.8.3'));
+		fireEvent.click(within(rowel).getByTestId('team-version')); // the version now sits with the team name
 		expect(await screen.findByTestId('where')).toHaveTextContent(href);
 	});
 

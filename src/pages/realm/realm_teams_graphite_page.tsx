@@ -258,7 +258,6 @@ export function Component() {
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
-											<th className="px-4 py-2.5 font-semibold">Version</th>
 											<Sort_th sort={cols} k="coverage" className="px-4 py-2.5 font-semibold" title="Online daemons in this realm that have the team installed">Daemons ready</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Last run</th>
 											<th className="w-[230px] px-4 py-2.5" />
@@ -270,16 +269,17 @@ export function Component() {
 											return (
 												<tr key={r.label} {...row({ to: r.scope ? `${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${r.scope ? ROW_OPENS : ''}`} data-testid={`team-${r.label}`}>
 													<td className="max-w-[360px] px-4 py-2.5">
-														{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} className="block truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="block truncate text-[13px] font-semibold">{r.label}</span>}
+														{/* The team with its version, e.g. @cliq/hello-world · 2.0.0 (↑ newer published). */}
+														<span className="flex min-w-0 items-center gap-1.5">
+															{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}`} className="truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="truncate text-[13px] font-semibold">{r.label}</span>}
+															{r.version ? <span className="g-mono shrink-0 text-[12px] text-[var(--g-ink-3)]" data-testid="team-version">· {r.version}</span> : null}
+															{r.update_available ? <span className="shrink-0 rounded-full bg-[var(--g-acc-soft)] px-2 py-0.5 text-[11px] text-[var(--g-acc)]" data-testid="update-badge">↑ {r.latest_version}</span> : null}
+														</span>
 														<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
 															{r.origin === 'cli' ? <span>local install (not on Hub)</span> : null}
 															{!r.in_team_list ? <span>on a daemon, not on the realm’s team list</span> : null}
 															{r.missing_agents.length ? <span className="inline-flex items-center gap-1 text-[var(--g-warn-text)]"><AlertTriangle aria-hidden className="h-3 w-3" />needs agents: {r.missing_agents.join(', ')}</span> : null}
 														</span>
-													</td>
-													<td className="g-mono whitespace-nowrap px-4 py-2.5 text-[12px]">
-														{r.version ?? '—'}
-														{r.update_available ? <span className="ml-2 rounded-full bg-[var(--g-acc-soft)] px-2 py-0.5 text-[11px] text-[var(--g-acc)]" data-testid="update-badge">↑ {r.latest_version}</span> : null}
 													</td>
 													<td className={`g-mono whitespace-nowrap px-4 py-2.5 text-[12px] ${full ? 'text-[var(--g-ink-2)]' : 'text-[var(--g-warn-text)]'}`}>{coverage_text(r)}</td>
 													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]">{r.last_run_at ? relative_time(r.last_run_at) : 'never'}</td>

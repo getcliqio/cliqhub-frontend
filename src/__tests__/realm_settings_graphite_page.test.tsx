@@ -128,6 +128,22 @@ describe('Realm settings page', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/a2a', body: { action: 'get', realm_id: 'r-prod' } }));
 	});
 
+	it.each([false, true])('A2A off by default locks everything but the switch (a2a_enabled=%s)', async (on) => {
+		route_fetch();
+		const base = (globalThis.fetch as unknown as { getMockImplementation: () => (u: unknown, i?: RequestInit) => Promise<Response> }).getMockImplementation();
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => (String(url) === '/v1/realms/a2a'
+			? new Response(JSON.stringify({ ok: true, data: { a2a_enabled: on, has_bearer: false, bearer_prefix: null, mesh_provider_mode: 'inherit', active_provider_id: null, effective_provider_id: null, providers: {}, mesh_status: null, card_url: 'https://x.test/card', send_url: 'https://x.test/send' } }))
+			: base(url, init)));
+		render_page('/o/measureone/realms/prod-us/settings?section=a2a');
+		const sw = await screen.findByRole('checkbox', { name: 'A2A enabled' });
+		if (on) expect(sw).toBeChecked(); else expect(sw).not.toBeChecked();
+		expect(sw).toBeEnabled();
+		expect(screen.getByTestId('a2a-surface')).toHaveProperty('disabled', !on);
+		expect(screen.getByTestId('a2a-mesh')).toHaveProperty('disabled', !on);
+		if (on) expect(screen.queryByTestId('a2a-off')).toBeNull();
+		else expect(screen.getByTestId('a2a-off')).toHaveTextContent('A2A is off');
+	});
+
 	it('tokens: create shows the value once; revoke is confirmed', async () => {
 		const calls = route_fetch();
 		render_page('/o/measureone/realms/prod-us/settings?section=tokens');
