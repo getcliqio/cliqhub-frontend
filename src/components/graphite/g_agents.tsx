@@ -90,7 +90,8 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 	// Current values (as far as visibility of `when` keys goes).
 	const current = useMemo(() => {
 		const v: Record<string, string> = {};
-		for (const f of view.fields) { const x = f.key in edits ? edits[f.key] : (f.secret ? (f.set ? 'set' : '') : f.value ?? f.org_value ?? ''); if (x) v[f.key] = x; }
+		// A key with nothing set falls back to its manifest default (git: provider → github), as the daemon does.
+		for (const f of view.fields) { const x = f.key in edits ? edits[f.key] : (f.secret ? (f.set ? 'set' : '') : f.value ?? f.org_value ?? ''); if (x) v[f.key] = x; else if (f.default) v[f.key] = f.default; }
 		return v;
 	}, [view.fields, edits]);
 	const visible = view.fields.filter((f) => setting_applies({ when: f.when ?? undefined }, current));
@@ -102,6 +103,8 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 	const patch = settings_patch(view.fields, edits, clears, mode);
 	const dirty = Object.keys(patch.values).length + patch.clear.length > 0;
 	const missing = required_all.filter((f) => {
+		// A manifest default satisfies a required key (the daemon's rule).
+		if (f.default) return false;
 		if (clears.has(f.key)) return !(mode === 'realm' && f.org_value);
 		if (f.key in edits) return !edits[f.key].trim() && !(mode === 'realm' && f.org_value);
 		return !(f.set || (mode === 'realm' && f.org_value));

@@ -106,17 +106,19 @@ export function Agent_detail({ org_id, org_slug, id, realm }: { org_id: string; 
 			</div>
 		);
 	} else if (tab === 'realms') {
+		// Only keys some realm actually needs (the BFF leaves out keys whose `when` doesn't apply, or that are defaulted).
+		const key_cols = d.required_keys.filter((k) => (d.realms ?? []).some((r) => k in r.keys));
 		body = (
 			<>
 				<div className={CARD} data-testid="realms-grid">
 					{!d.realms?.length ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">This org has no realms yet.</p> : (
 						<table className="w-full text-[12.5px]">
-							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={realm_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={realm_sort} k="used" className="px-4 font-semibold">Used here</Sort_th>{d.required_keys.map((k) => <th key={k} className="g-mono px-4 font-normal normal-case">{k}</th>)}<Sort_th sort={realm_sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th /></tr></thead>
+							<thead><tr className="border-b border-[var(--g-line)] text-left text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]"><Sort_th sort={realm_sort} k="realm" className="px-4 py-2.5 font-semibold">Realm</Sort_th><Sort_th sort={realm_sort} k="used" className="px-4 font-semibold">Used here</Sort_th>{key_cols.map((k) => <th key={k} className="g-mono px-4 font-normal normal-case">{k}</th>)}<Sort_th sort={realm_sort} k="ready" className="px-4 font-semibold">Ready?</Sort_th><th /></tr></thead>
 							<tbody>{realm_rows.map((r) => (
 								<tr key={r.realm.id} {...row({ to: org_slug ? `${realm_path(org_slug, r.realm.slug)}/agents/${a.id}` : null })} className={`border-b border-[var(--g-line-2,var(--g-line))] last:border-b-0 ${org_slug ? ROW_OPENS : ''}`} data-testid={`realm-${r.realm.slug}`}>
 									<td className="px-4 py-2.5 font-semibold">{r.realm.slug}</td>
 									<td className="px-4">{d.used_by === null ? '?' : r.used_here.length ? <><span>{r.used_here.length} team{r.used_here.length === 1 ? '' : 's'}</span><div className="g-mono text-[11px] text-[var(--g-ink-3)]">{r.used_here.map((t) => t.split('/')[1]).join(' · ')}</div></> : <span className="text-[var(--g-ink-3)]">not used</span>}</td>
-									{d.required_keys.map((k) => <td key={k} className="px-4"><Key_cell v={r.keys[k] ?? 'missing'} /></td>)}
+									{key_cols.map((k) => <td key={k} className="px-4">{r.keys[k] ? <Key_cell v={r.keys[k]} /> : <span className="text-[var(--g-ink-4,var(--g-ink-3))]" title="Doesn’t apply in this realm, or has a default">—</span>}</td>)}
 									<td className="px-4">{r.ready ? <span className="rounded-full bg-[var(--g-ok-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-ok)]">✓ Ready</span> : r.used_here.length ? <span className="rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]">! Not ready — runs will stop</span> : <span className="rounded-full bg-[var(--g-soft)] px-2 py-0.5 text-[11.5px] text-[var(--g-ink-3)]">Not ready</span>}</td>
 									<td className="px-4 text-right">{org_slug ? <Link to={`${realm_path(org_slug, r.realm.slug)}/agents/${a.id}`} className="text-[12.5px] font-semibold text-[var(--g-acc)]">Open in {r.realm.slug} →</Link> : null}</td>
 								</tr>
