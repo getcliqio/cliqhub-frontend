@@ -138,7 +138,7 @@ export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close
 				invites: out.invites ?? [], members_added: out.members_added?.length ?? 0,
 			},
 		};
-		navigate(`${realm_path(out.org_slug ?? org.slug, out.slug)}/inbox`, { replace: true, state });
+		navigate(`${realm_path(out.org_slug ?? org.slug, out.slug)}/teams`, { replace: true, state });
 	}
 
 	const step_body = [

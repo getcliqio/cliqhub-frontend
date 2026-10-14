@@ -96,8 +96,8 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title="Daemons" />
-			<div className="flex flex-col gap-4 px-7 py-6">
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>
+			<div className="flex flex-col gap-4">
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" />
 				) : (
@@ -173,6 +173,7 @@ export function Component() {
 					</>
 				)}
 			</div>
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }

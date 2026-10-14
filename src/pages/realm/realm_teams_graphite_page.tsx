@@ -227,8 +227,8 @@ export function Component() {
 				</button>
 			}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title="Teams" />
-			<div className="flex flex-col gap-4 px-7 py-6">
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>
+			<div className="flex flex-col gap-4">
 				{read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" />
 				) : (
@@ -322,6 +322,7 @@ export function Component() {
 			{running && running.scope && data ? (
 				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }} on_close={() => set_running(null)} />
 			) : null}
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }

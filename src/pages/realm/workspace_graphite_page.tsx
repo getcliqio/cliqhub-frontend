@@ -34,15 +34,15 @@ export function Component() {
 			title="Workspace"
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title={w ? w.name || (w.path ?? '').split('/').pop() || w.id : 'Workspace'} />
-			<div className="flex flex-col gap-5 px-7 py-6">
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} item={w ? w.name || (w.path ?? '').split('/').pop() || w.id : null}>
+			<div className="flex flex-col gap-5">
 				{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="workspace" /> : null}
 				{!d && read.status !== 'error' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading workspace" /> : null}
 				{d && w ? (
 					<>
-						{/* The workspace's name is the realm header's title; here, where it is and on which daemon. */}
+						<nav aria-label="Back to daemons" className="-mb-3 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`${base}/daemons`} className="hover:text-[var(--g-ink)]">All daemons</Link> ›</nav>
 						<header className="flex flex-wrap items-center gap-3">
-							<div className="min-w-0"><p className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{w.path}{created ? ` · since ${relative_time(created)}` : ''}</p>{w.daemon_id ? <p className="text-[12px] text-[var(--g-ink-3)]">on <Link to={`${base}/daemons/${encodeURIComponent(w.daemon_id)}`} className="hover:text-[var(--g-ink)] hover:underline">{w.daemon_hostname || w.daemon_id}</Link></p> : null}</div>
+							<div className="min-w-0"><h2 className="g-mono text-[16px] font-semibold" data-testid="workspace-title">{w.name || (w.path ?? '').split('/').pop() || w.id}</h2><p className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{w.path}{created ? ` · since ${relative_time(created)}` : ''}</p>{w.daemon_id ? <p className="text-[12px] text-[var(--g-ink-3)]">on <Link to={`${base}/daemons/${encodeURIComponent(w.daemon_id)}`} className="hover:text-[var(--g-ink)] hover:underline">{w.daemon_hostname || w.daemon_id}</Link></p> : null}</div>
 							{w.daemon_id ? <button type="button" onClick={() => set_running((v) => !v)} className={`${G_PRIMARY} ml-auto`}>Run a team here</button> : null}
 						</header>
 						{running && w.daemon_id ? <Run_here teams={d.teams} daemon_id={w.daemon_id} workspace_id={String(w.id ?? workspace_id)} workspace_path={w.path ?? ''} base={base} on_done={reload} on_cancel={() => set_running(false)} /> : null}
@@ -54,6 +54,7 @@ export function Component() {
 					</>
 				) : null}
 			</div>
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }

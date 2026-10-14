@@ -413,13 +413,16 @@ describe('Team page', () => {
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams'));
 	});
 
-	it('opened from a realm: the realm header stays on top, Teams (current) goes back to the realm’s teams', async () => {
+	it('opened from a realm: the realm header stays on top; the team sits under Teams in the left nav, with a crumb back', async () => {
 		route_fetch();
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js');
 		await screen.findByTestId('workflow');
-		const header = screen.getByTestId('realm-header');
-		expect(within(header).getByTestId('go-teams')).toHaveAttribute('aria-current', 'page');
-		expect(within(header).getByTestId('go-teams')).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams');
+		expect(screen.getByTestId('realm-header')).toBeInTheDocument();
+		const nav = screen.getByTestId('realm-nav');
+		expect(within(nav).getByTestId('go-teams')).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams');
+		expect(within(nav).getByTestId('nav-item')).toHaveTextContent('feature-dev-js');
+		expect(within(nav).getByTestId('nav-item')).toHaveAttribute('aria-current', 'page');
+		expect(within(screen.getByRole('navigation', { name: 'Back to teams' })).getByRole('link')).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams');
 		expect(screen.getAllByRole('navigation', { name: 'Breadcrumb' })).toHaveLength(1); // the top bar's only
 	});
 
@@ -427,8 +430,8 @@ describe('Team page', () => {
 		route_fetch();
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
 		await screen.findByTestId('workflow');
-		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-		expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^feature-dev-js\s*in\s*measureone\.prod-us$/);
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1); // the realm's
+		expect(screen.getByTestId('team-title')).toHaveTextContent('feature-dev-js');
 		expect(screen.getByTestId('installed-version')).toHaveTextContent('v1.4.2 installed here');
 		expect(screen.queryByRole('combobox', { name: 'Version' })).toBeNull();
 		for (const name of [/Fork/, /^Download$/, /^Edit$/, /Install/]) expect(screen.queryByRole('button', { name })).toBeNull();

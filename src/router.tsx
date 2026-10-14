@@ -282,7 +282,7 @@ export const router = createBrowserRouter([
             children: [
               {
                 index: true,
-                element: <Navigate to="inbox" replace />,
+                element: <Navigate to="teams" replace />,
               },
               // Old realm settings URLs → the Graphite settings page (or Notifications).
               { path: 'channels', element: <Realm_settings_redirect to="notifications" /> },

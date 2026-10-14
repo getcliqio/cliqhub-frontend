@@ -69,9 +69,16 @@ function render_page(path = '/o/measureone/realms/prod-us/runs/run-77') {
 	);
 }
 
+/** The run's title: a small one under the realm header (the realm's name is the page's big title). */
 async function ready() {
-	return screen.findByRole('heading', { level: 1 });
+	return screen.findByTestId('run-title');
 }
+/** A phase's Output opens under its row: its output, then its artifacts. */
+function open_output(phase: string) {
+	fireEvent.click(screen.getByRole('button', { name: `Show output of ${phase}` }));
+	return screen.getAllByTestId('phase-open').find((el) => el.closest('[data-phase-row]')?.getAttribute('data-phase-row') === phase)!;
+}
+const show_details = () => fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
 
 describe('Graphite run detail', () => {
 	afterEach(() => {
@@ -88,15 +95,14 @@ describe('Graphite run detail', () => {
 		expect(other).toEqual([]);
 	});
 
-	it('the selected phase shows its artifacts; the failed phase is selected first; none → says so', async () => {
+	it('the failed phase is selected first; a phase with nothing to show has no Output; no separate Files section', async () => {
 		route_fetch(run_detail());
 		render_page();
 		await ready();
-		const panel = screen.getByTestId('phase-panel');
-		expect(panel).toHaveTextContent('match');
-		expect(within(panel).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
-		// No separate Files section any more.
-		expect(screen.getAllByTestId('run-artifacts')).toHaveLength(1);
+		const rows = screen.getAllByTestId('phase-row');
+		expect(rows.map((r) => r.getAttribute('aria-current'))).toEqual([null, 'true']);
+		expect(screen.queryByRole('button', { name: /output of/ })).toBeNull();
+		expect(screen.queryByTestId('run-artifacts')).toBeNull();
 	});
 	it('a phase’s stored artifacts download through artifacts/get_by_id', async () => {
 		const open = vi.spyOn(window, 'open').mockReturnValue(null);
@@ -106,9 +112,8 @@ describe('Graphite run detail', () => {
 		);
 		render_page();
 		await ready();
-		expect(screen.queryByTestId('artifact-row')).toBeNull(); // match is selected; the file is fetch's
-		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
-		const row = within(screen.getByTestId('phase-panel')).getByTestId('artifact-row');
+		expect(screen.queryByTestId('artifact-row')).toBeNull(); // closed until asked for
+		const row = within(open_output('fetch')).getByTestId('artifact-row');
 		expect(row).toHaveTextContent('report.pdf');
 		expect(row).toHaveTextContent('File · 2.0 KB · Weekly');
 		fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }));
@@ -127,15 +132,14 @@ describe('Graphite run detail', () => {
 		);
 		render_page();
 		await ready();
-		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
-		const panel = screen.getByTestId('phase-panel');
+		const panel = open_output('fetch');
 		expect(within(panel).getAllByTestId('artifact-row')).toHaveLength(2);
 		expect(within(panel).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
 		fireEvent.click(within(panel).getByRole('button', { name: 'Read transcript' }));
 		await waitFor(() => expect(within(panel).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
 	});
-	it('a phase’s output: one line on its row; the formatted output (and raw) on the right when it’s selected', async () => {
+	it('a phase’s output: one line on its row; Output opens the formatted output (and raw) under it', async () => {
 		const raw = JSON.stringify({ text: '## Exec Results\n\nFAIL fetch (exit 1)', data: { total: '1', failed: '1', results: [{ name: 'fetch', pass: 'false', exit_code: '1', duration_ms: '20' }] } });
 		route_fetch(run_detail({
 			phase_outputs: [{
@@ -150,15 +154,17 @@ describe('Graphite run detail', () => {
 		render_page();
 		await ready();
 		expect(screen.getByTestId('phase-output-summary')).toHaveTextContent('1 of 1 command failed');
-		expect(screen.queryByTestId('phase-output')).toBeNull(); // match is selected
-		fireEvent.click(within(screen.getAllByTestId('phase-row').find((r) => r.querySelector('.g-mono')?.textContent === 'fetch')!).getByText('fetch'));
-		const panel = screen.getByTestId('phase-output');
+		expect(screen.queryByTestId('phase-output')).toBeNull(); // closed until asked for
+		const open = open_output('fetch');
+		const panel = within(open).getByTestId('phase-output');
 		expect(within(panel).getByTestId('output-commands')).toHaveTextContent('exit 1');
 		expect(within(panel).getByTestId('output-handoffs')).toHaveTextContent('use the cached ledger');
 		fireEvent.click(within(panel).getByRole('button', { name: 'Raw' }));
 		expect(within(panel).getByTestId('output-raw')).toHaveTextContent('"exit_code": "1"');
 		// The handoff is part of the output, not listed again as an artifact.
-		expect(within(screen.getByTestId('phase-panel')).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
+		expect(within(open).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
+		fireEvent.click(screen.getByRole('button', { name: 'Hide output of fetch' }));
+		expect(screen.queryByTestId('phase-open')).toBeNull();
 	});
 	it('links a sub-team phase to its sub-run', async () => {
 		route_fetch(run_detail({
@@ -172,7 +178,7 @@ describe('Graphite run detail', () => {
 		}));
 		render_page();
 		await ready();
-		expect(screen.getByRole('link', { name: 'open the sub-run' })).toHaveAttribute('href', expect.stringContaining('/runs/run-sub'));
+		expect(within(open_output('match')).getByRole('link', { name: 'open the sub-run' })).toHaveAttribute('href', expect.stringContaining('/runs/run-sub'));
 	});
 	it('says when artifacts could not be loaded', async () => {
 		const d = run_detail({ partial: true });
@@ -180,7 +186,7 @@ describe('Graphite run detail', () => {
 		route_fetch(d);
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-artifacts')).toHaveTextContent('Couldn’t load artifacts: storage down.');
+		expect(screen.getByTestId('artifacts-error')).toHaveTextContent('Couldn’t load artifacts: storage down.');
 	});
 	it('renders phases in workflow order with errors, the run error and details', async () => {
 		route_fetch(run_detail());
@@ -189,8 +195,8 @@ describe('Graphite run detail', () => {
 		const rows = screen.getAllByTestId('phase-row');
 		expect(rows.map((r) => r.querySelector('.g-mono')?.textContent)).toEqual(['fetch', 'match']);
 		expect(within(rows[1]).getByText('ledger timeout')).toBeInTheDocument();
-		expect(within(screen.getByTestId('phase-panel')).getByText('ledger timeout')).toBeInTheDocument(); // the failed phase is selected
 		expect(screen.getByTestId('run-error')).toHaveTextContent('Timeout talking to ledger');
+		show_details();
 		expect(screen.getByRole('link', { name: 'ledger' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/workspaces/ws-1');
 		expect(screen.getByRole('link', { name: 'd-1' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d-1');
 		expect(screen.getByText('month')).toBeInTheDocument();
@@ -305,8 +311,9 @@ describe('Graphite run detail', () => {
 		route_fetch(run_detail({ parent: { run_id: 'run-main', run_name: 'easy-carmine-spruce', phase: 'design', state: 'failed', realm_slug: null, org_slug: null } },
 			{ run_id: 'run-77', run_name: 'solar-lilac-fox', team_label: '@measureone/design-lld' }));
 		const { unmount: unmount2 } = render_page();
-		// One title bar: the sub-team run's team, in the realm header.
-		expect(await screen.findByRole('heading', { level: 1, name: /^design-lld\s*in\s*measureone\.prod-us$/ })).toBeInTheDocument();
+		// One big title (the realm's); the run's small title leads with the sub-team.
+		expect(await ready()).toHaveTextContent(/^design-lld$/);
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
 		const crumb = screen.getByTestId('parent-crumb');
 		expect(crumb).toHaveTextContent('easy-carmine-spruce›design›this sub-team run');
 		unmount2();
@@ -319,7 +326,7 @@ describe('Graphite run detail', () => {
 			],
 		}, { run_id: 'run-77', run_name: 'small-lint', team_label: '@measureone/lint-lld' }));
 		render_page();
-		await screen.findByRole('heading', { level: 1, name: /^lint-lld\s*in/ });
+		expect(await ready()).toHaveTextContent(/^lint-lld$/);
 		expect(screen.getByTestId('parent-crumb')).toHaveTextContent('peaceful-rust-cliff›design›brave-rust-anchor›assemble›this sub-team run');
 		expect(within(crumb).getByRole('link', { name: 'easy-carmine-spruce' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-main');
 	});
@@ -435,7 +442,7 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/runs/get_logs')[0]).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], offset: 0 });
 		fireEvent.click(screen.getByRole('button', { name: 'error' }));
 		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ levels: ['error'] }));
-		fireEvent.click(screen.getByRole('tab', { name: 'List' }));
+		fireEvent.click(screen.getByRole('tab', { name: 'Phases' }));
 		expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs');
 	});
 
@@ -540,6 +547,7 @@ describe('Graphite run detail — run history', () => {
 		route_fetch(run_detail({}, { daemon_id: null, started_at: Date.now() - H }));
 		render_page();
 		await ready();
+		show_details();
 		expect(screen.getByText('daemon no longer registered')).toBeInTheDocument();
 		expect(screen.queryByText('no daemon assigned')).toBeNull();
 	});
@@ -562,6 +570,7 @@ describe('Graphite run detail — run history', () => {
 		route_fetch(run_detail({ parent: { run_id: 'run-kf', run_name: 'kind-fern', phase: 'design', state: 'failed', realm_slug: 'prod-us', org_slug: 'measureone' } }));
 		render_page();
 		await ready();
+		show_details();
 		const parent = screen.getByTestId('parent-run');
 		expect(parent).toHaveTextContent('kind-fern›design');
 		expect(within(parent).getByRole('link', { name: 'kind-fern' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-kf');

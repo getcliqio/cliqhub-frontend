@@ -242,9 +242,10 @@ export function Component() {
 		<div className="flex items-start gap-4">
 			{in_realm ? null : <Team_avatar name={name} size={48} />}
 			<div className="min-w-0 flex-1">
+				{in_realm ? <nav aria-label="Back to teams" className="mb-0.5 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`/o/${realm_org}/realms/${realm_slug}/teams`} className="hover:text-[var(--g-ink)]">All teams</Link> ›</nav> : null}
 				<div className="flex flex-wrap items-center gap-2.5">
-					{/* In a realm the team's name is the realm header's title. */}
-					{in_realm ? null : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
+					{/* In a realm the realm's name is the page title; the team gets a small one under "All teams". */}
+					{in_realm ? <h2 className="g-mono text-[16px] font-semibold" data-testid="team-title">{team?.name ?? name}</h2> : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
 					{team && !in_realm ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at && !in_realm ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>
@@ -518,8 +519,8 @@ export function Component() {
 
 	return (
 		<Graphite_shell data={overview.data} title={team?.name ?? name} current_realm_id={sidebar_realm?.id ?? null}>
-			{in_realm ? <Realm_nav org_slug={realm_org} slug={realm_slug} realm={sidebar_realm} title={team?.name ?? name} /> : null}
-			<div className="flex flex-col gap-3.5 px-7 py-6">
+			<Realm_nav off={!in_realm} org_slug={realm_org} slug={realm_slug} realm={sidebar_realm} item={team?.name ?? name}>
+			<div className={`flex flex-col gap-3.5 ${in_realm ? '' : 'px-7 py-6'}`}>
 				{/* In a realm the realm header's Teams button leads back; no second breadcrumb. */}
 				{in_realm ? null : <nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]"><Link to={view_org ? `/teams?org=${encodeURIComponent(view_org.slug)}` : '/teams'} className="hover:text-[var(--g-ink)]">Teams</Link> › <span className="text-[var(--g-ink-2)]">{label}</span></nav>}
 				{read.status === 'error' && !data ? (
@@ -541,6 +542,7 @@ export function Component() {
 					</>
 				)}
 			</div>
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }

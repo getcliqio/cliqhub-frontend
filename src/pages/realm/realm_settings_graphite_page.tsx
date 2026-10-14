@@ -6,12 +6,11 @@
  * auth/revoke_token, realms/delete. Agents and Notifications live in Manage.
  */
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
-import { ArrowUpRight, Check, Copy, Lock, RefreshCw } from 'lucide-react';
+import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { Check, Copy, Lock, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
-import { realm_path } from '@/lib/realm_url';
 import { Realm_a2a_panel } from '@/components/graphite/g_mesh';
 import { handle, person_name } from '@/lib/admin';
 import { REALM_ROLES, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
@@ -318,18 +317,12 @@ function Danger({ data, admin, post }: { data: Realm_settings_data; admin: boole
 
 /* ------------------------------------------------------------------ */
 
-const SECTIONS: Array<{ id: Settings_section; label: string }> = [
-	{ id: 'general', label: 'General' },
-	{ id: 'members', label: 'Members' },
-	{ id: 'tokens', label: 'Access tokens' },
-	{ id: 'a2a', label: 'A2A' },
-];
 
 export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const overview = use_overview();
 	const post = use_post();
-	const [search, set_search] = useSearchParams();
+	const [search] = useSearchParams();
 	const raw = search.get('section');
 	const section: Settings_section = raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'danger' ? raw : 'members';
 	const read = use_bff_read<Realm_settings_data>('/v1/realm_settings/get', org && slug ? { org_slug: org, slug } : null, { fallback_error: 'Could not load settings.' });
@@ -339,10 +332,6 @@ export function Component() {
 	const org_role = overview.data?.orgs.find((o) => o.slug === org)?.role ?? null;
 	// Realm admins, org owners/admins and site admins can change settings (Core enforces on write).
 	const admin = Boolean(data?.you.is_admin || org_role === 'owner' || org_role === 'admin');
-	const base = realm_path(org, slug);
-	const go = (s: Settings_section) => set_search((prev) => { const p = new URLSearchParams(prev); if (s === 'members') p.delete('section'); else p.set('section', s); return p; }, { replace: true });
-	const link = (on: boolean) => `flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] ${on ? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`;
-	const head = 'px-2.5 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]';
 
 	return (
 		<Graphite_shell
@@ -351,26 +340,13 @@ export function Component() {
 			title="Settings"
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm} title="Settings" />
-			<div className="px-7 py-6">
+			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>
+			<div className="min-w-0">
 				{read.status === 'loading' ? <div className="h-[360px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading settings" /> : null}
 				{read.status === 'error' && !data ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" /> : null}
 				{data ? (
 					<div className="flex gap-6">
-						<nav aria-label="Settings sections" className="flex w-[210px] shrink-0 flex-col gap-0.5">
-							<div className={head}>Realm</div>
-							{SECTIONS.map((s) => (
-								<button key={s.id} type="button" aria-current={section === s.id ? 'page' : undefined} onClick={() => go(s.id)} className={link(section === s.id)}>
-									{s.label}
-									{s.id === 'members' ? <span className="g-mono ml-auto text-[11px] text-[var(--g-ink-3)]">{data.members.length}</span> : null}
-								</button>
-							))}
-							<div className={head}>Set up in Manage</div>
-							<Link to={`${base}/agents`} className={link(false)}>Agents</Link>
-							<Link to={`/notifications?org=${encodeURIComponent(org)}&realm=${encodeURIComponent(data.realm.id)}`} className={link(false)}>Notifications <ArrowUpRight aria-hidden className="ml-auto h-3 w-3 opacity-60" /></Link>
-							<div className="mt-3" />
-							<button type="button" aria-current={section === 'danger' ? 'page' : undefined} onClick={() => go('danger')} className={`flex items-center gap-2 rounded-lg px-2.5 py-[7px] text-left text-[13px] text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] ${section === 'danger' ? 'bg-[var(--g-bad-soft)] shadow-[inset_2px_0_0_var(--g-bad)]' : ''}`}>Danger zone</button>
-						</nav>
+						{/* Settings' parts are listed under Settings in the realm's left nav. */}
 						<div className="min-w-0 flex-1">
 							{section === 'general' ? <General data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'members' ? <Members data={data} admin={admin} post={post} reload={read.reload} /> : null}
@@ -381,6 +357,7 @@ export function Component() {
 					</div>
 				) : null}
 			</div>
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }

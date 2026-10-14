@@ -117,7 +117,7 @@ describe('Timeline history', () => {
 });
 
 describe('Run page telemetry', () => {
-	it('the run line carries cost and tokens; each phase its cost; views are List, Workflow, Usage, Logs', async () => {
+	it('the run line carries cost and tokens; each phase its cost; views are Phases, Usage, Logs, Details', async () => {
 		const calls = route_fetch();
 		open();
 		const meta = await screen.findByTestId('run-meta');
@@ -126,7 +126,7 @@ describe('Run page telemetry', () => {
 		expect(screen.queryByTestId('run-summary')).toBeNull();
 		expect(calls.find((c) => c.url === '/v1/run_telemetry/get')?.body).toEqual({ run_id: 'run-77' });
 		expect(screen.getAllByTestId('phase-cost').map((e) => e.textContent)).toContain('$1.25');
-		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['List', 'Workflow', 'Usage', 'Logs']);
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases', 'Usage', 'Logs', 'Details']);
 	});
 
 	it('phases: a team phase opens into its sub-team\'s steps, at any depth; a step opens its details beside', async () => {
@@ -170,10 +170,10 @@ describe('Run page telemetry', () => {
 		expect(within(screen.getByTestId('clock-fetch')).getAllByTestId('clock-seg')).toHaveLength(1);
 		expect(within(match).getAllByTestId('clock-gap').length).toBeGreaterThan(0);
 		expect(screen.getByTestId('clock-legend')).toHaveTextContent('long wait folded');
-		// Old ?tab=timeline links land on the list.
+		// Old ?tab=timeline links land on the phases.
 		cleanup_and_open('?tab=timeline');
 		expect(await screen.findByTestId('clock-match')).toBeInTheDocument();
-		expect(screen.getByRole('tab', { name: 'List' })).toHaveAttribute('aria-selected', 'true');
+		expect(screen.getByRole('tab', { name: 'Phases' })).toHaveAttribute('aria-selected', 'true');
 	});
 	it('list clock: a run that is mostly waiting isn\'t folded (a 0s script doesn\'t fill the bar)', async () => {
 		const base = telemetry();
@@ -186,15 +186,19 @@ describe('Run page telemetry', () => {
 		expect(screen.queryAllByTestId('clock-gap')).toHaveLength(0);
 	});
 
-	it('Workflow: the run\'s phases on the team\'s graph; clicking a phase shows its output on the right', async () => {
+	it('phases: the workflow graph on top, the table below — picking a phase in one marks it in the other', async () => {
 		route_fetch();
-		open('/o/measureone/realms/prod-us/runs/run-77?tab=workflow');
+		open();
 		const graph = await screen.findByTestId('run-workflow');
 		expect(graph).toHaveTextContent('fetch');
 		expect(graph).toHaveTextContent('match');
-		expect(screen.getByTestId('phase-panel')).toHaveTextContent('match'); // the failed phase is picked first
+		const row = (name: string) => screen.getAllByTestId('phase-row').find((r) => r.getAttribute('data-phase-row') === name)!;
+		expect(row('match')).toHaveAttribute('aria-current', 'true'); // the failed phase is picked first
 		fireEvent.click(within(graph).getAllByText('fetch')[0]);
-		await waitFor(() => expect(screen.getByTestId('phase-panel')).toHaveTextContent('fetch'));
+		await waitFor(() => expect(row('fetch')).toHaveAttribute('aria-current', 'true'));
+		expect(row('match')).not.toHaveAttribute('aria-current');
+		fireEvent.click(within(row('match')).getByText('match'));
+		await waitFor(() => expect(row('match')).toHaveAttribute('aria-current', 'true'));
 	});
 	it('usage: cost by phase, time, models and agents', async () => {
 		route_fetch();
@@ -206,11 +210,11 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('agent-matcher')).toHaveTextContent('1 failed → success');
 	});
 
-	it('old ?tab=dag links open the Workflow view', async () => {
+	it('old ?tab=dag / ?tab=workflow links open the phases (graph on top)', async () => {
 		route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=dag');
 		expect(await screen.findByTestId('run-workflow')).toBeInTheDocument();
-		expect(screen.getByRole('tab', { name: 'Workflow' })).toHaveAttribute('aria-selected', 'true');
+		expect(screen.getByRole('tab', { name: 'Phases' })).toHaveAttribute('aria-selected', 'true');
 	});
 	it('no telemetry yet / read fails: page still works', async () => {
 		route_fetch(telemetry({ bars: [], by_model: [], by_agent: [], totals: { ...telemetry().totals, cost_usd: null, tokens_in: null, tokens_out: null, cached_in: null, model_calls: null, agent_runs: 0, reworks: 0 }, sections: { usage: 'empty', spans: 'empty', phases: 'ok', workflow: 'ok' } }));

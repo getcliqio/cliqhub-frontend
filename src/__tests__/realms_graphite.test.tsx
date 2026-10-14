@@ -134,8 +134,8 @@ describe('Realms page', () => {
 			members: [{ user_id: 'u-bob', role: 'operator' }], invites: [{ email: 'kim@x.com', role: 'member' }], enroll_token: { name: 'prod-us-enroll' },
 		});
 		expect(calls.some((c) => c.url === '/v1/invitations/create' || c.url === '/v1/auth/generate_token' || c.url === '/v1/realms/add_team')).toBe(false);
-		// The realm's page opens, carrying the token once.
-		await waitFor(() => expect(screen.getByTestId('where').textContent).toContain('/o/measureone/realms/prod-us/inbox'));
+		// The realm opens (on its teams), carrying the token once.
+		await waitFor(() => expect(screen.getByTestId('where').textContent).toContain('/o/measureone/realms/prod-us/teams'));
 		expect(screen.getByTestId('state').textContent).toContain('cliq_rt_abc');
 	});
 

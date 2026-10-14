@@ -64,8 +64,11 @@ describe('Daemon page', () => {
 	it('shows facts, teams, workspaces and runs from one BFF read', async () => {
 		const calls = route_fetch({ '/v1/daemon_page/get': () => daemon_data() });
 		open('/o/measureone/realms/prod-us/daemons/d1');
-		// One title bar: the daemon's name in the realm header.
-		expect(await screen.findByRole('heading', { level: 1, name: /^mac-studio\s*in\s*measureone\.prod-us$/ })).toBeInTheDocument();
+		// One big title (the realm's); the daemon's is small, with a crumb back and its place in the nav.
+		expect(await screen.findByTestId('daemon-title')).toHaveTextContent(/^mac-studio$/);
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+		expect(within(screen.getByRole('navigation', { name: 'Back to daemons' })).getByRole('link')).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons');
+		expect(screen.getByTestId('nav-item')).toHaveTextContent('mac-studio');
 		expect(screen.getByText('mac.local')).toBeInTheDocument();
 		expect(screen.getByTestId('installed-feature-dev')).toBeInTheDocument();
 		expect(screen.getByTestId('workspace-w1')).toBeInTheDocument();
@@ -123,7 +126,8 @@ describe('Workspace page', () => {
 			'/v1/workspace_page/get': () => ({ realm, workspace: { id: 'w1', name: 'api', path: '/src/api', daemon_id: 'd1', daemon_hostname: 'mac.local' }, teams: [{ team_id: 't1', scope: 'measureone', slug: 'feature-dev', version: null }], runs: [], runs_total: 0, partial: false }),
 		});
 		open('/o/measureone/realms/prod-us/workspaces/w1');
-		expect(await screen.findByRole('heading', { level: 1, name: /^api\s*in\s*measureone\.prod-us$/ })).toBeInTheDocument();
+		expect(await screen.findByTestId('workspace-title')).toHaveTextContent(/^api$/);
+		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
 		expect(screen.getByRole('link', { name: 'mac.local' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/daemons/d1');
 		expect(screen.getByText('No runs in this workspace yet.')).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: 'Run a team here' }));

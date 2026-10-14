@@ -1,27 +1,33 @@
 /**
- * The realm header. On the overview: name, status, description, meta, Edit realm and the section
- * buttons. On every page below it (a section, a run, a team…): one compact title bar —
- * "{title} in org.realm" — with the same section buttons, so there's never a second title.
+ * The realm layout: every page inside a realm sits in it.
  *
- *   name · status (Ready / Missing agent config / No daemon available); description; org.slug · created by · updated
- *   on the right, buttons (not tabs): Edit realm (realm overview only) · Teams (N · missing agent config) · Runs (N running · need you)
- *   · Settings · Daemons (N online)
+ *   header    — the realm's name (the page's one big title), description (or "Add a description"),
+ *               org.slug · created by · updated, Edit realm
+ *   left nav  — Teams · Runs · Daemons · Settings, each with a signal instead of a count:
+ *               ⚠ when something there needs you (Teams: a team missing agent config; Runs: a run
+ *               waiting on you or failed in the last 24h; Settings: you're the only member),
+ *               otherwise a green dot when runs are going / a daemon is online (grey: none online).
+ *               The open run / team / daemon is nested under its section; Settings lists its parts.
+ *   content   — the page; a section's "needs attention" line sits at its top.
  *
- * Data: `realm_inbox/get { summary: true }`. The overview page passes what it already read; other
- * pages read it here (last result kept per realm so moving between pages doesn't flash). Edit realm
- * is a side panel that saves name and description together in one `realms/update`.
+ * Data: `realm_inbox/get { summary: true }` (last result kept per realm so moving between pages
+ * doesn't flash). Edit realm is a side panel that saves name and description in one `realms/update`.
+ * Right after New realm, the token is shown once here (navigation state only).
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Link, useLocation } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { CheckCircle2 } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { relative_time } from '@/lib/overview';
 import type { Overview_realm } from '@/lib/overview';
-import { REALM_HEALTH_LABEL, realm_health, type Realm_health, type Realm_inbox_data } from '@/lib/realm_inbox';
+import { REALM_HEALTH_LABEL, type Realm_health, type Realm_inbox_data } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
 import { G_PRIMARY } from '@/components/graphite/g_agents';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
+import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Team_avatar } from '@/pages/teams/teams_graphite_page';
+import type { Realm_created_state } from '@/pages/realms/new_realm_page';
 
 const INPUT = 'w-full rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 py-1.5 text-[13px] outline-none focus:border-[var(--g-acc-line)]';
 
@@ -37,11 +43,6 @@ export function Health_badge({ health }: { health: Realm_health }) {
 			<i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />{REALM_HEALTH_LABEL[health]}
 		</span>
 	);
-}
-
-function Chip({ tone, children }: { tone: 'warn' | 'muted'; children: ReactNode }) {
-	const cls = tone === 'warn' ? 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]' : 'bg-[var(--g-soft)] text-[var(--g-ink-3)]';
-	return <span className={`rounded-full px-1.5 py-px text-[11px] font-semibold ${cls}`}>{children}</span>;
 }
 
 /** Edit realm: name and description, saved together in one realms/update. */
@@ -90,98 +91,136 @@ function Details_panel({ realm_id, name, description, on_close, on_saved }: { re
 /** Last summary per realm, so the header doesn't flash empty between realm pages. */
 const LAST = new Map<string, Realm_inbox_data>();
 
-/** Which header button a realm path belongs to. */
-const SECTION_OF: Record<string, 'teams' | 'runs' | 'settings' | 'daemons'> = {
+type Section = 'teams' | 'runs' | 'daemons' | 'settings';
+/** Which section a realm path belongs to. */
+const SECTION_OF: Record<string, Section> = {
 	teams: 'teams', runs: 'runs', settings: 'settings', agents: 'settings', daemons: 'daemons', workspaces: 'daemons',
 };
+/** Settings' parts, listed under Settings while you're in it. */
+const SETTINGS_PARTS: Array<{ id: string; label: string }> = [
+	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Access tokens' }, { id: 'a2a', label: 'A2A' },
+	{ id: 'agents', label: 'Agents' }, { id: 'notifications', label: 'Notifications' }, { id: 'general', label: 'General' }, { id: 'danger', label: 'Danger zone' },
+];
+
+function Attention({ count, title }: { count: boolean; title: string }) {
+	if (!count) return null;
+	return <span role="img" aria-label={title} title={title} className="ml-auto grid h-4 w-4 shrink-0 place-items-center rounded-full bg-[var(--g-warn)] text-[11px] font-extrabold text-[#2a1d00]" data-testid="nav-attention">!</span>;
+}
+function Dot({ tone, title }: { tone: 'ok' | 'off'; title: string }) {
+	return <span role="img" aria-label={title} title={title} className="ml-auto h-2 w-2 shrink-0 rounded-full" style={{ background: tone === 'ok' ? 'var(--g-ok)' : 'var(--g-ink-3)' }} data-testid={`nav-dot-${tone}`} />;
+}
 
 /**
- * @param data - The overview page's own read (skips the header's read). Given → the full header.
- * @param title - Below the overview (a section, a run, a team…): the page's one title, shown as
- *   "{title} in org.realm" in a single compact row with the section buttons.
+ * @param item - The open run / team / daemon / workspace: nested under its section in the left nav.
  * @param realm - The sidebar's realm (name / daemons online) while nothing has loaded yet.
  */
-export function Realm_header({ org_slug, slug, data, reload, realm = null, title = null }: {
-	org_slug: string; slug: string; data?: Realm_inbox_data | null; reload?: () => Promise<void>; realm?: Overview_realm | null; title?: ReactNode;
+export function Realm_header({ org_slug, slug, realm = null, item = null, children = null }: {
+	org_slug: string; slug: string; realm?: Overview_realm | null; item?: ReactNode; children?: ReactNode;
 }) {
 	const key = `${org_slug}/${slug}`;
-	const own = use_bff_read<Realm_inbox_data>('/v1/realm_inbox/get', data === undefined && org_slug && slug ? { org_slug, slug, summary: true } : null, { refresh_ms: 60_000, fallback_error: 'Could not load this realm.' });
+	const own = use_bff_read<Realm_inbox_data>('/v1/realm_inbox/get', org_slug && slug ? { org_slug, slug, summary: true } : null, { refresh_ms: 60_000, fallback_error: 'Could not load this realm.' });
 	// Only a realm read counts (anything else — an older BFF, an error body — is ignored).
 	const fetched = own.data?.realm ? own.data : null;
-	const d = data ?? fetched ?? LAST.get(key) ?? null;
+	const d = fetched ?? LAST.get(key) ?? null;
 	useEffect(() => { if (d) LAST.set(key, d); }, [key, d]);
 	const [editing, set_editing] = useState(false);
-	const { pathname } = useLocation();
+	const location = useLocation();
+	const navigate = useNavigate();
+	const { pathname, search } = location;
 	const base = realm_path(org_slug, slug);
 	const sub = pathname.startsWith(`${base}/`) ? pathname.slice(base.length + 1).split('/')[0] : '';
-	const current = SECTION_OF[sub] ?? null;
+	const current: Section | null = SECTION_OF[sub] ?? null;
+	const at_list = Boolean(current) && !item;
+	const settings_part = sub === 'agents' ? 'agents' : (new URLSearchParams(search).get('section') ?? 'members');
+	// Right after New realm: what was set up and the enrollment token — shown once.
+	const created = (location.state as Realm_created_state | null)?.created ?? null;
+	const dismiss_created = () => navigate(`${pathname}${search}`, { replace: true, state: null });
 
 	const s = d?.summary ?? null;
 	const name = d?.realm.name || realm?.name || slug;
 	const online = s?.daemons?.online ?? realm?.daemons.online ?? null;
 	const missing = s?.teams?.missing_agents ?? 0;
-	const health = online === null ? null : realm_health(online, missing);
 	const need_you = d ? d.counts.reviews + d.counts.awaiting_input : (realm?.needs_you ?? 0);
-	const running = d?.counts.running ?? realm?.active_runs ?? null;
+	const failed = d?.counts.failed_24h ?? 0;
+	const running = d?.counts.running ?? realm?.active_runs ?? 0;
+	const only_member = Boolean(s?.you.is_admin && s?.people && s.people.total <= 1);
+	// Notifications is keyed by the realm's id (not its slug).
+	const realm_id = d?.realm.id ?? realm?.id ?? null;
 
-	const button = (k: 'teams' | 'runs' | 'settings' | 'daemons', to: string, label: string, extra?: ReactNode) => (
-		<Link to={to} data-testid={`go-${k}`} aria-current={current === k ? 'page' : undefined}
-			className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}>
-			{label}{extra}
-		</Link>
-	);
-	const count = (n: number | null | undefined, suffix = '') => (n === null || n === undefined ? null : <span className="g-mono font-normal text-[var(--g-ink-3)]">{n}{suffix}</span>);
-
-	const sections = (
-		<>
-			{button('teams', `${base}/teams`, 'Teams', <>{count(s?.teams?.total)}{missing ? <Chip tone="warn">{missing} missing agent config</Chip> : null}</>)}
-			{button('runs', `${base}/runs`, 'Runs', <>{count(running, ' running')}{need_you ? <Chip tone="warn">{need_you} need you</Chip> : null}</>)}
-			{button('settings', `${base}/settings`, 'Settings')}
-			{button('daemons', `${base}/daemons`, 'Daemons', count(online, ' online'))}
-		</>
-	);
-
-	// Below the overview: one title bar — "{title} in org.realm" — and the section buttons.
-	if (data === undefined) {
-		return (
-			<header className="flex flex-wrap items-center gap-3 border-b border-[var(--g-line)] px-7 py-3" data-testid="realm-header">
-				<Link to={`${base}/inbox`} aria-label={`${name} overview`} className="shrink-0"><Team_avatar name={name} size={30} /></Link>
-				<h1 className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 text-[18px] font-semibold tracking-tight">
-					{title ? <span className="min-w-0 truncate">{title}</span> : null}
-					{title ? <span className="text-[14px] font-normal text-[var(--g-ink-3)]">in</span> : null}
-					<Link to={`${base}/inbox`} className={`g-mono hover:underline ${title ? 'text-[14px] font-medium text-[var(--g-ink-2)]' : ''}`} data-testid="realm-name">{org_slug}.{slug}</Link>
-				</h1>
-				{health ? <Health_badge health={health} /> : null}
-				<nav aria-label="Realm sections" className="ml-auto flex flex-wrap items-center justify-end gap-2">{sections}</nav>
-			</header>
-		);
-	}
+	const link = (on: boolean, nested = false) => `flex items-center gap-2 rounded-lg px-2.5 py-[6px] text-[13px] ${nested ? 'pl-6 text-[12.5px]' : ''} ${on ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`;
+	const nested = (sec: Section) => (item && current === sec ? <span aria-current="page" className={`${link(true, true)} g-mono truncate`} data-testid="nav-item">{item}</span> : null);
 
 	return (
-		<header className="border-b border-[var(--g-line)] px-7 pb-4 pt-5" data-testid="realm-header">
-			<div className="flex flex-wrap items-start gap-4">
-				<Team_avatar name={name} size={44} />
-				<div className="min-w-0 flex-1">
-					<div className="flex flex-wrap items-center gap-2.5">
-						<h1 className="text-[22px] font-semibold tracking-tight">{name}</h1>
-						{health ? <Health_badge health={health} /> : null}
+		<>
+			<header className="border-b border-[var(--g-line)] px-7 py-4" data-testid="realm-header">
+				<div className="flex flex-wrap items-start gap-4">
+					<Team_avatar name={name} size={40} />
+					<div className="min-w-0 flex-1">
+						<h1 className="text-[20px] font-semibold tracking-tight">{name}</h1>
+						{s?.realm.description
+							? <p className="mt-0.5 max-w-[780px] text-[13px] text-[var(--g-ink-2)]" data-testid="realm-description">{s.realm.description}</p>
+							: s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className="mt-0.5 text-[13px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)] hover:underline" data-testid="add-description">Add a description</button> : null}
+						<p className="mt-0.5 flex flex-wrap gap-x-2 text-[12px] text-[var(--g-ink-3)]" data-testid="realm-meta">
+							<span className="g-mono text-[var(--g-ink-2)]">{org_slug}.{slug}</span>
+							{s?.realm.created_by_username ? <span>· created by {s.realm.created_by_username}{s.realm.created_at ? ` ${relative_time(s.realm.created_at)}` : ''}</span> : null}
+							{s?.realm.updated_at ? <span>· updated {relative_time(s.realm.updated_at)}</span> : null}
+						</p>
 					</div>
-					{s?.realm.description
-						? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]" data-testid="realm-description">{s.realm.description}</p>
-						: s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className="mt-1 text-[13px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)] hover:underline" data-testid="add-description">Add a description</button> : null}
-					<p className="mt-1 flex flex-wrap gap-x-2 text-[12px] text-[var(--g-ink-3)]" data-testid="realm-meta">
-						<span className="g-mono text-[var(--g-ink-2)]">{org_slug}.{slug}</span>
-						{s?.realm.created_by_username ? <span>· created by {s.realm.created_by_username}{s.realm.created_at ? ` ${relative_time(s.realm.created_at)}` : ''}</span> : null}
-						{s?.realm.updated_at ? <span>· updated {relative_time(s.realm.updated_at)}</span> : null}
-					</p>
-				</div>
-				{/* Buttons, not tabs: Edit realm, then a way into each part of the realm. */}
-				<nav aria-label="Realm sections" className="flex flex-wrap items-center justify-end gap-2">
 					{s?.you.is_admin && d ? <button type="button" onClick={() => set_editing(true)} className={ROW_ACTION_CLS}>Edit realm</button> : null}
-					{sections}
+				</div>
+				{editing && d ? <Details_panel realm_id={d.realm.id} name={d.realm.name} description={s?.realm.description ?? null} on_close={() => set_editing(false)} on_saved={async () => { await own.reload(); }} /> : null}
+			</header>
+			<div className="grid gap-6 px-7 py-6 lg:grid-cols-[190px_minmax(0,1fr)]">
+				<nav aria-label="Realm sections" className="flex flex-col gap-0.5 self-start" data-testid="realm-nav">
+					<Link to={`${base}/teams`} aria-current={current === 'teams' && !item ? 'page' : undefined} className={link(current === 'teams' && !item)} data-testid="go-teams">Teams<Attention count={missing > 0} title={`${missing} team${missing === 1 ? ' is' : 's are'} missing agent config`} /></Link>
+					{nested('teams')}
+					<Link to={`${base}/runs`} aria-current={current === 'runs' && !item ? 'page' : undefined} className={link(current === 'runs' && !item)} data-testid="go-runs">Runs{need_you + failed > 0 ? <Attention count title={[need_you ? `${need_you} need${need_you === 1 ? 's' : ''} you` : null, failed ? `${failed} failed in the last 24h` : null].filter(Boolean).join(' · ')} /> : running > 0 ? <Dot tone="ok" title={`${running} running`} /> : null}</Link>
+					{nested('runs')}
+					<Link to={`${base}/daemons`} aria-current={current === 'daemons' && !item ? 'page' : undefined} className={link(current === 'daemons' && !item)} data-testid="go-daemons">Daemons{online === null ? null : online > 0 ? <Dot tone="ok" title={`${online} online`} /> : <Dot tone="off" title="No daemon online" />}</Link>
+					{nested('daemons')}
+					{/* In Settings, the part you're on is the one marked (they're listed below). */}
+					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
+					{current === 'settings' ? SETTINGS_PARTS.map((p) => {
+						const to = p.id === 'agents' ? `${base}/agents` : p.id === 'notifications' ? `/notifications?org=${encodeURIComponent(org_slug)}${realm_id ? `&realm=${encodeURIComponent(realm_id)}` : ''}` : `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
+						const on = settings_part === p.id;
+						return <Link key={p.id} to={to} aria-current={on ? 'page' : undefined} className={`${link(on, true)} ${p.id === 'danger' ? 'text-[var(--g-bad)]' : ''}`} data-testid={`settings-${p.id}`}>{p.label}</Link>;
+					}) : null}
 				</nav>
+				<div className="min-w-0">
+					{created ? (
+						<div className="mb-4 flex flex-col gap-2.5" data-testid="realm-created">
+							<p className="flex flex-wrap items-center gap-2 text-[13.5px]">
+								<CheckCircle2 aria-hidden className="h-4 w-4 text-[var(--g-ok)]" />
+								<b>{created.name} is ready.</b>
+								<span className="text-[var(--g-ink-3)]">{[created.members_added ? `${created.members_added} added` : null, created.invites.length ? `${created.invites.length} invite${created.invites.length === 1 ? '' : 's'} sent` : null, 'hello-world installed'].filter(Boolean).join(' · ')}</span>
+							</p>
+							{created.invites.filter((i) => !i.email_sent && i.invite_url).map((i) => (
+								<p key={i.email} className="text-[12.5px] text-[var(--g-ink-2)]">Email isn’t set up, so share this link with {i.email}: <code className="g-mono text-[12px]">{i.invite_url}</code></p>
+							))}
+							{created.token ? (
+								<Secret_reveal title={`Enrollment token ${created.token_name ?? ''}`.trim()} secret={created.token} env_name="CLIQ_DAEMON_TOKEN"
+									note={`Set CLIQ_DAEMON_TOKEN on the machine that runs cliqd; it joins ${created.qualified_slug}. Make more tokens from the realm’s Access tokens.`} on_done={dismiss_created} />
+							) : <button type="button" onClick={dismiss_created} className={`${ROW_ACTION_CLS} w-fit`}>Dismiss</button>}
+						</div>
+					) : null}
+					{/* What needs you in this section, with a way to fix it. */}
+					{at_list && current === 'teams' && missing > 0 ? (
+						<Attention_line text={`${missing} team${missing === 1 ? ' is' : 's are'} missing agent config — an agent ${missing === 1 ? 'it uses' : 'they use'} isn’t set up in your org.`} to={`${base}/agents`} action="Set up agents" />
+					) : null}
+					{current === 'settings' && only_member ? <Attention_line text="You’re the only member." to={`${base}/settings`} action="Invite people" /> : null}
+					{children}
+				</div>
 			</div>
-			{editing && d ? <Details_panel realm_id={d.realm.id} name={d.realm.name} description={s?.realm.description ?? null} on_close={() => set_editing(false)} on_saved={async () => { await (reload ? reload() : own.reload()); }} /> : null}
-		</header>
+		</>
+	);
+}
+
+function Attention_line({ text, to, action }: { text: string; to: string; action: string }) {
+	return (
+		<div className="mb-4 flex flex-wrap items-center gap-3 rounded-[10px] border border-[var(--g-warn-line,var(--g-line))] bg-[var(--g-warn-soft)] px-4 py-2.5 text-[13px]" role="status" data-testid="attention">
+			<span aria-hidden className="text-[var(--g-warn-text)]">⚠</span>
+			<span className="flex-1">{text}</span>
+			<Link to={to} className={ROW_ACTION_CLS}>{action}</Link>
+		</div>
 	);
 }

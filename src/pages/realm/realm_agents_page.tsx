@@ -68,8 +68,8 @@ export function Component() {
 			title="Agents"
 			actions={!id ? <button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button> : null}
 		>
-			<Realm_nav org_slug={org} slug={slug} realm={realm_ov} title="Agents" />
-			<div className="flex flex-col gap-4 px-7 py-6">
+			<Realm_nav org_slug={org} slug={slug} realm={realm_ov}>
+			<div className="flex flex-col gap-4">
 				{!org_id && overview.status !== 'loading' ? <p className="text-[13px] text-[var(--g-ink-3)]">Realm not found.</p> : null}
 				{id && org_id ? (
 					<>
@@ -118,6 +118,7 @@ export function Component() {
 					</>
 				) : null}
 			</div>
+			</Realm_nav>
 		</Graphite_shell>
 	);
 }
