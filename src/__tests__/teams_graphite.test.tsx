@@ -237,9 +237,9 @@ describe('Team page', () => {
 		// The first phase is selected to begin with: fetch-ticket uses {{inputs.ticket}}.
 		const line = await screen.findByTestId('selected-phase');
 		expect(line).toHaveTextContent('fetch-ticket');
-		// The phase is described under the diagram; its inputs are highlighted in "What it needs".
+		// The phase is described under the diagram; its inputs are highlighted in Run inputs (left).
 		expect(within(screen.getByTestId('workflow')).getByTestId('selected-phase')).toBe(line);
-		expect(within(screen.getByTestId('needs')).getByTestId('inputs')).toHaveTextContent('fetch-ticket uses 1');
+		expect(screen.getByTestId('inputs')).toHaveTextContent('fetch-ticket uses 1');
 		expect(within(screen.getByTestId('inputs')).getAllByTestId(/^input-/).map((e) => e.dataset.testid)).toEqual(['input-ticket', 'input-reviewers']);
 		expect(screen.getByTestId('input-ticket')).toHaveAttribute('data-used', 'true');
 		expect(screen.getByTestId('input-reviewers')).not.toHaveAttribute('data-used');
@@ -339,35 +339,25 @@ describe('Team page', () => {
 		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/team_page/get').at(-1)!.body).toMatchObject({ version: '1.3.0', view: 'overview' }));
 	});
 
-	it('What it needs: every input and agent always listed; the selected phase’s highlighted; Versions under the workflow', async () => {
+	it('Run inputs on the left (required/optional, description, used by — a click picks that phase); no Agents card; Versions under the workflow', async () => {
 		route_fetch();
 		render_at('/teams/measureone/feature-dev-js?phase=implement');
-		const needs = await screen.findByTestId('needs');
-		const agents = within(needs).getByTestId('agents');
-		// PHASES: claude-code on architect + security-scan (+ the support phase), cursor on tests + implement.
-		expect(within(agents).getByTestId('agent-claude-code')).toHaveTextContent('3 phases');
-		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('2 phases');
-		expect(within(agents).getByTestId('agent-cursor')).toHaveAttribute('data-selected', 'true');
-		expect(within(agents).getByTestId('agent-claude-code')).not.toHaveAttribute('data-selected');
-		expect(within(needs).getAllByTestId(/^input-/)).toHaveLength(2);
-		// Agents come first, as its own card with a full heading; then Inputs.
-		expect(within(agents).getByRole('heading', { name: /^Agents/ })).toBeTruthy();
-		expect(within(needs).getByTestId('inputs').querySelector('h3')!.textContent).toMatch(/^Inputs/);
-		expect(agents.compareDocumentPosition(within(needs).getByTestId('inputs')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		const inputs = await screen.findByTestId('inputs');
+		expect(screen.queryByTestId('agents')).toBeNull();
+		expect(screen.queryByTestId('needs')).toBeNull();
+		expect(within(inputs).getByRole('heading', { name: /^Run inputs/ })).toBeTruthy();
+		// Left of the workflow.
+		expect(inputs.compareDocumentPosition(screen.getByTestId('workflow')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(within(inputs).getByTestId('input-ticket')).toHaveTextContent('ticketrequiredJira keyused by fetch-ticket');
+		expect(within(inputs).getByTestId('input-reviewers')).toHaveTextContent('optional');
+		expect(within(inputs).getByTestId('input-reviewers')).toHaveTextContent('used by architect');
+		fireEvent.click(within(within(inputs).getByTestId('input-reviewers')).getByRole('button', { name: 'architect' }));
+		await waitFor(() => expect(screen.getByTestId('selected-phase')).toHaveTextContent('architect'));
+		expect(within(inputs).getByTestId('input-reviewers')).toHaveAttribute('data-used', 'true');
 		const [wf, ver] = [screen.getByTestId('workflow'), screen.getByTestId('versions')];
 		expect(wf.compareDocumentPosition(ver) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		// The danger zone is folded until opened.
 		expect(screen.getByTestId('danger-zone')).not.toHaveAttribute('open');
-	});
-
-	it('agents the team defines (team.yml agents:) show their command and the env they need', async () => {
-		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, agent_defs: [{ name: 'cursor', entry: 'cursor-agent run', env: ['CURSOR_KEY'] }, { name: 'pdf-parser', entry: null, env: [] }] } } : {}));
-		render_at('/teams/measureone/feature-dev-js');
-		const agents = await screen.findByTestId('agents');
-		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('this team’s');
-		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('cursor-agent run');
-		expect(within(agents).getByTestId('agent-cursor')).toHaveTextContent('needs CURSOR_KEY');
-		expect(within(agents).getByTestId('agent-pdf-parser')).toHaveTextContent('no phase');
 	});
 
 	it('Versions: full release notes behind “more”', async () => {

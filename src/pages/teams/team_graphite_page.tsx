@@ -7,11 +7,11 @@
  * from this realm (`realms/remove_team`).
  *   header   — name · status, description, then version · @scope · author · tags; actions right:
  *              Fork · Download · Edit (the Builder — everything about the team changes there) · Install
- *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
+ *   left     — Run inputs (asked on Run): required/optional, description, default and the phases
+ *              that use them; the selected phase's highlighted
+ *   right    — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
  *              the selected phase described under it; Versions (5 a page, full notes on "more");
  *              the Danger zone, folded (Unpublish, Delete a version, Delete team), for editors
- *   right    — Agents (needed on the daemon, incl. ones the team defines), then Inputs (asked on
- *              Run); always listed, the selected phase's highlighted
  * Read: one `POST /v1/team_page/get` (view `overview`, which carries team.yml too). Writes are
  * single existing routes (realms/add_team via the Install dialog, teams/create with `forked_from`,
  * teams/unpublish, teams/delete_version, teams/delete).
@@ -459,75 +459,36 @@ export function Component() {
 		</section>
 	) : null;
 
-	// Agents the team uses (phases and support phases), with how many phases use each.
-	const agent_rows = useMemo(() => {
-		const n = new Map<string, number>();
-		for (const p of all_phases) if (p.agent) n.set(p.agent, (n.get(p.agent) ?? 0) + 1);
-		return [...n.entries()].map(([agent, count]) => ({ agent, count }));
-	}, [all_phases]);
-	const defs = o?.agent_defs ?? [];
-	const RAIL_ROW = (on: boolean) => `border-b border-[var(--g-line-2)] px-4 py-2 last:border-b-0 ${on ? 'bg-[var(--g-acc-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`;
-	const agent_def_lines = (d: { entry: string | null; env: string[] }) => (
-		<>
-			{d.entry ? <p className="g-mono mt-0.5 truncate text-[11.5px] text-[var(--g-ink-3)]" title={d.entry}>{d.entry}</p> : null}
-			{d.env.length ? <p className="mt-0.5 text-[11.5px] text-[var(--g-ink-3)]">needs <span className="g-mono">{d.env.join(', ')}</span></p> : null}
-		</>
-	);
 	/**
-	 * Right 30%: what the team needs to run — Agents first (on the daemon, including ones the team
-	 * defines), then Inputs (asked on Run); always listed, the selected phase's highlighted.
+	 * Left: the Run inputs (asked on Run), like the Builder's Run inputs card — each with
+	 * required/optional, description, default and the phases that use it; the picked phase's are
+	 * highlighted. The workflow gets the rest of the width.
 	 */
-	const needs = o ? (
-		<div className="flex flex-col gap-3.5 self-start xl:sticky xl:top-4" data-testid="needs">
-			<section className={`${CARD} overflow-hidden`}>
-				<div data-testid="agents">
-					<h3 className={H3}>Agents <span className="text-[12px] font-normal text-[var(--g-ink-3)]">needed on the daemon to run{sel?.agent ? ` · ${sel.name} uses ${sel.agent}` : ''}</span></h3>
-					{agent_rows.length === 0 && defs.length === 0 ? <p className="px-4 pb-3 text-[12.5px] text-[var(--g-ink-3)]">This team’s phases don’t name an agent.</p> : null}
-					{agent_rows.map(({ agent, count }) => {
-						const here = sel?.agent === agent;
-						const def = defs.find((x) => x.name === agent);
-						return (
-							<div key={agent} data-testid={`agent-${agent}`} data-selected={here ? 'true' : undefined} className={RAIL_ROW(here)}>
-								<div className="flex items-center gap-2">
-									<span className="g-mono min-w-0 flex-1 truncate text-[12.5px]">{agent}</span>
-									{def ? <span className="rounded bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]" title="Defined in this team’s team.yml">this team’s</span> : null}
-									<span className="text-[11px] text-[var(--g-ink-3)]">{count} phase{count === 1 ? '' : 's'}</span>
-								</div>
-								{def ? agent_def_lines(def) : null}
-							</div>
-						);
-					})}
-					{defs.filter((x) => !agent_rows.some((r) => r.agent === x.name)).map((x) => (
-						<div key={x.name} data-testid={`agent-${x.name}`} className={RAIL_ROW(false)}>
-							<div className="flex items-center gap-2">
-								<span className="g-mono min-w-0 flex-1 truncate text-[12.5px] text-[var(--g-ink-2)]">{x.name}</span>
-								<span className="rounded bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)]">this team’s</span>
-								<span className="text-[11px] text-[var(--g-ink-3)]">no phase</span>
-							</div>
-							{agent_def_lines(x)}
+	const input_users = useMemo(() => new Map((o?.inputs ?? []).map((i) => [i.name, all_phases.filter((p) => inputs_used(p, team_yml, o?.inputs ?? []).includes(i.name)).map((p) => p.name)])), [o, all_phases, team_yml]);
+	const run_inputs = o ? (
+		<section className={`${CARD} self-start overflow-hidden lg:sticky lg:top-4`} aria-label="Run inputs" data-testid="inputs">
+			<h3 className={H3}>
+				<span aria-hidden className="grid h-4 w-4 place-items-center rounded-full border-2 border-[var(--g-acc)]"><i className="block h-1.5 w-1.5 rounded-full bg-[var(--g-acc)]" /></span>
+				Run inputs<span className="ml-auto text-[12px] font-normal text-[var(--g-ink-3)]">{sel ? `${sel.name} uses ${used.length || 'none'}` : 'asked on Run'}</span>
+			</h3>
+			{o.inputs.length === 0 ? <p className="px-4 py-3 text-[12.5px] text-[var(--g-ink-3)]">None — runs start straight away.</p> : null}
+			{o.inputs.map((i) => {
+				const on = used.includes(i.name);
+				const users = input_users.get(i.name) ?? [];
+				return (
+					<div key={i.name} data-testid={`input-${i.name}`} data-used={on ? 'true' : undefined} className={`border-b border-[var(--g-line-2)] px-4 py-2.5 last:border-b-0 ${on ? 'bg-[var(--g-acc-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`}>
+						<div className="flex items-center gap-2">
+							<span className="g-mono min-w-0 flex-1 truncate text-[12.5px] font-semibold">{i.name}</span>
+							<span className={`rounded border px-1.5 text-[10.5px] ${i.required ? 'border-[var(--g-acc-line)] text-[var(--g-acc)]' : 'border-[var(--g-line-2)] text-[var(--g-ink-3)]'}`}>{i.required ? 'required' : 'optional'}</span>
 						</div>
-					))}
-				</div>
-			</section>
-			<section className={`${CARD} overflow-hidden`}>
-				<div data-testid="inputs">
-					<h3 className={H3}>Inputs <span className="text-[12px] font-normal text-[var(--g-ink-3)]">asked on Run{sel ? ` · ${sel.name} uses ${used.length || 'none'}` : ''}</span></h3>
-					{o.inputs.length === 0 ? <p className="px-4 pb-3 text-[12.5px] text-[var(--g-ink-3)]">No inputs — runs start straight away.</p> : null}
-					{o.inputs.map((i) => {
-						const on = used.includes(i.name);
-						return (
-							<div key={i.name} data-testid={`input-${i.name}`} data-used={on ? 'true' : undefined} className={RAIL_ROW(on)}>
-								<div className="flex items-center gap-2">
-									<span className={`g-mono min-w-0 flex-1 truncate text-[12.5px] ${on ? '' : 'text-[var(--g-ink-2)]'}`}>{i.name}</span>
-									<span className={`g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] ${i.required ? 'text-[var(--g-acc)]' : 'text-[var(--g-ink-2)]'}`}>{i.required ? 'required' : 'optional'}</span>
-								</div>
-								{i.description || i.default ? <p className="mt-0.5 truncate text-[12px] text-[var(--g-ink-3)]">{i.description ?? `default: ${i.default}`}</p> : null}
-							</div>
-						);
-					})}
-				</div>
-			</section>
-		</div>
+						{i.description || i.default ? <p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">{i.description}{i.description && i.default ? ' · ' : ''}{i.default ? <>default <span className="g-mono">{i.default}</span></> : null}</p> : null}
+						<p className="mt-1 flex flex-wrap items-center gap-1 text-[12px] text-[var(--g-ink-3)]">
+							{users.length ? <>used by {users.map((n) => <button key={n} type="button" onClick={() => set_params({ phase: n })} className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 text-[11px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">{n}</button>)}</> : 'not referenced by a phase'}
+						</p>
+					</div>
+				);
+			})}
+		</section>
 	) : null;
 
 	const ver_total = team?.versions.length ?? 0;
@@ -647,10 +608,10 @@ export function Component() {
 						{data?.partial ? <p className="text-[11.5px] text-[var(--g-ink-3)]">Some of this couldn’t be loaded — what’s shown may be incomplete.</p> : null}
 						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (
 							<>
-								<div className={`grid grid-cols-1 items-start gap-3.5 ${in_realm ? '' : 'xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]'}`}>
+								<div className={`grid grid-cols-1 items-start gap-3.5 ${in_realm ? '' : 'lg:grid-cols-[250px_minmax(0,1fr)]'}`}>
+									{in_realm ? null : run_inputs}
 									{/* In a realm: only the installed version — no version history; its danger zone is uninstalling from the realm. */}
 								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
-									{in_realm ? null : needs}
 								</div>
 								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name }} on_close={() => set_run_open(false)} /> : null}
 							</>
