@@ -723,7 +723,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 						</nav>
 					) : null}
 					<div className="flex flex-wrap items-center gap-2.5">
-						<h2 className="g-mono min-w-0 truncate text-[16px] font-semibold" data-testid="run-title">{run_title(run, Boolean(data.parent))}</h2>
+						<h2 className="g-mono min-w-0 truncate text-[14px] font-semibold" data-testid="run-title">{run_title(run, Boolean(data.parent))}</h2>
 						{sub_team_name && run.run_name ? <span className="g-mono text-[13px] text-[var(--g-ink-3)]">{run.run_name}</span> : null}
 						<State_pill state={run.state} />
 						<Origin_badge origin={run.origin} />
@@ -824,7 +824,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 
 			<section className="min-w-0 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Run">
 				<div className="flex flex-wrap items-center gap-2 border-b border-[var(--g-line)] px-4 py-2">
-					<h3 className="text-[14px] font-semibold">Phases <span className="font-normal text-[var(--g-ink-3)]">{phases.length}</span></h3>
+					<h3 className="text-[13px] font-semibold">Phases <span className="font-normal text-[var(--g-ink-3)]">{phases.length}</span></h3>
 					{tab === 'phases' && sub_runs_all.length ? (
 						<span className="flex gap-3 text-[12px] text-[var(--g-ink-3)]">
 							<button type="button" onClick={() => set_tree_open(all_sub_runs(sub_runs_all))} className="hover:text-[var(--g-ink)]">Expand all</button>

@@ -37,7 +37,7 @@ import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 const CARD = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
-const H3 = 'flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3 text-[14px] font-semibold';
+const H3 = 'flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3 text-[13px] font-semibold';
 const DANGER_BTN = 'rounded-md bg-[var(--g-bad)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-on-color)] disabled:opacity-50';
 
 type Workflow_mode = 'diagram' | 'yaml';
@@ -337,7 +337,7 @@ export function Component() {
 				{in_realm ? <nav aria-label="Back to teams" className="mb-0.5 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`/o/${realm_org}/realms/${realm_slug}/teams`} className="hover:text-[var(--g-ink)]">All teams</Link> ›</nav> : null}
 				<div className="flex flex-wrap items-center gap-2.5">
 					{/* In a realm the realm's name is the page title; the team gets a small one under "All teams". */}
-					{in_realm ? <h2 className="g-mono text-[16px] font-semibold" data-testid="team-title">{team?.name ?? name}</h2> : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
+					{in_realm ? <h2 className="g-mono text-[14px] font-semibold" data-testid="team-title">{team?.name ?? name}</h2> : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
 					{team && !in_realm ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at && !in_realm ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>

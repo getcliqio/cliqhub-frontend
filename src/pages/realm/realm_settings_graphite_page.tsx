@@ -65,7 +65,7 @@ function General({ data, admin, post, reload }: { data: Realm_settings_data; adm
 	}
 	return (
 		<div className="flex max-w-[560px] flex-col gap-4">
-			<div><h2 className="text-[16px] font-semibold">General</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">How this realm is shown across CliqHub.</p></div>
+			<div><h2 className="text-[14px] font-semibold">General</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">How this realm is shown across CliqHub.</p></div>
 			<label className="flex flex-col gap-1.5 text-[12.5px] text-[var(--g-ink-3)]">Display name
 				<input aria-label="Display name" value={name} disabled={!admin} onChange={(e) => set_name(e.target.value)} className={`${INPUT} w-full disabled:opacity-60`} />
 			</label>
@@ -156,7 +156,7 @@ function Members({ data, admin, post, reload }: { data: Realm_settings_data; adm
 	}
 	return (
 		<div className="flex flex-col gap-4">
-			<div><h2 className="text-[16px] font-semibold">Members</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">People and service accounts in {data.realm.slug}. Org owners and admins can always manage this realm.</p></div>
+			<div><h2 className="text-[14px] font-semibold">Members</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">People and service accounts in {data.realm.slug}. Org owners and admins can always manage this realm.</p></div>
 			{admin ? <Add_member realm_id={data.realm.id} on_added={reload} /> : <Read_only_note />}
 			<Msg msg={msg} />
 			{data.sections.members.status === 'error' ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{data.sections.members.error}</p> : null}
@@ -237,7 +237,7 @@ function Tokens({ data, admin, post, reload }: { data: Realm_settings_data; admi
 	}
 	return (
 		<div className="flex flex-col gap-4">
-			<div><h2 className="text-[16px] font-semibold">Access tokens</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">Daemon tokens enroll servers into {data.realm.slug} without a personal login: set <code className="g-mono">CLIQ_DAEMON_TOKEN</code> and start <code className="g-mono">cliqd</code>.</p></div>
+			<div><h2 className="text-[14px] font-semibold">Access tokens</h2><p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">Daemon tokens enroll servers into {data.realm.slug} without a personal login: set <code className="g-mono">CLIQ_DAEMON_TOKEN</code> and start <code className="g-mono">cliqd</code>.</p></div>
 			{admin ? (
 				<div className="flex flex-wrap items-center gap-2">
 					<input aria-label="Token name" value={name} onChange={(e) => set_name(e.target.value)} placeholder="e.g. ci-runners" className={`${INPUT} w-[240px]`} />
@@ -299,7 +299,7 @@ function Danger({ data, admin, post }: { data: Realm_settings_data; admin: boole
 	}
 	return (
 		<div className="flex max-w-[600px] flex-col gap-4">
-			<div><h2 className="text-[16px] font-semibold text-[var(--g-bad)]">Danger zone</h2></div>
+			<div><h2 className="text-[14px] font-semibold text-[var(--g-bad)]">Danger zone</h2></div>
 			<div className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-bad-soft)] p-4">
 				<b className="text-[13.5px]">Delete this realm</b>
 				<p className="mt-1 text-[12.5px] text-[var(--g-ink-2)]">Deletes {data.realm.slug} for everyone in it. Only do this when no team, daemon or person still depends on it.</p>

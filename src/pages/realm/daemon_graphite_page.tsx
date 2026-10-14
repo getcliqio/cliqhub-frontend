@@ -57,7 +57,7 @@ function Teams({ data, base, reload }: { data: Daemon_page_data; base: string; r
 	const online = data.daemon.status === 'online';
 	return (
 		<section aria-label="Installed teams" className="flex flex-col gap-2">
-			<h2 className="text-[14px] font-semibold">Installed teams</h2>
+			<h2 className="text-[13px] font-semibold">Installed teams</h2>
 			{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 			{data.installed === null ? <p className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4 text-[12.5px] text-[var(--g-ink-3)]">{online ? 'The daemon didn’t answer the team list request.' : 'The daemon is offline, so its installed teams can’t be read right now.'}</p> : (
 				<div className={TABLE_WRAP}>
@@ -105,7 +105,7 @@ function Workspaces({ data, base, reload }: { data: Daemon_page_data; base: stri
 	const installed = data.installed ?? [];
 	return (
 		<section aria-label="Workspaces" className="flex flex-col gap-2">
-			<h2 className="text-[14px] font-semibold">Workspaces</h2>
+			<h2 className="text-[13px] font-semibold">Workspaces</h2>
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[12.5px]">
 					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={wsort} k="workspace" className={TH}>Workspace</Sort_th><Sort_th sort={wsort} k="teams" className={TH}>Teams</Sort_th><Sort_th sort={wsort} k="last_run_at" className={TH}>Last run</Sort_th><th className={TH} /></tr></thead>
@@ -166,7 +166,7 @@ export function Component() {
 					<>
 						<nav aria-label="Back to daemons" className="-mb-3 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`${base}/daemons`} className="hover:text-[var(--g-ink)]">All daemons</Link> ›</nav>
 						<header className="flex flex-wrap items-center gap-3">
-							<h2 className="g-mono text-[16px] font-semibold" data-testid="daemon-title">{dm.name || dm.id}</h2>
+							<h2 className="g-mono text-[14px] font-semibold" data-testid="daemon-title">{dm.name || dm.id}</h2>
 							<Daemon_status status={dm.status} />
 							<span className="ml-auto">{removing
 								? <span className="inline-flex gap-2"><button type="button" onClick={() => void remove()} className={G_DANGER}>Remove daemon</button><button type="button" onClick={() => set_removing(false)} className={G_BTN}>Keep</button></span>

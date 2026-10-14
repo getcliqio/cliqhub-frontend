@@ -130,7 +130,7 @@ export function Step_details({ step, top, failure, run_href, on_close }: {
 			<div className="flex items-start gap-2">
 				<div className="min-w-0 flex-1">
 					<p className="truncate text-[11.5px] text-[var(--g-ink-3)]" data-testid="step-path">{[top, ...path].join(' › ')} ›</p>
-					<p className="mt-0.5 flex flex-wrap items-center gap-2"><span className="g-mono text-[15px] font-semibold">{p.name}</span><State_pill state={p.status} /></p>
+					<p className="mt-0.5 flex flex-wrap items-center gap-2"><span className="g-mono text-[13px] font-semibold">{p.name}</span><State_pill state={p.status} /></p>
 				</div>
 				<button type="button" onClick={on_close} aria-label="Close step details" className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">✕</button>
 			</div>

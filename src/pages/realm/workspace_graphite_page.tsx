@@ -42,12 +42,12 @@ export function Component() {
 					<>
 						<nav aria-label="Back to daemons" className="-mb-3 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`${base}/daemons`} className="hover:text-[var(--g-ink)]">All daemons</Link> ›</nav>
 						<header className="flex flex-wrap items-center gap-3">
-							<div className="min-w-0"><h2 className="g-mono text-[16px] font-semibold" data-testid="workspace-title">{w.name || (w.path ?? '').split('/').pop() || w.id}</h2><p className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{w.path}{created ? ` · since ${relative_time(created)}` : ''}</p>{w.daemon_id ? <p className="text-[12px] text-[var(--g-ink-3)]">on <Link to={`${base}/daemons/${encodeURIComponent(w.daemon_id)}`} className="hover:text-[var(--g-ink)] hover:underline">{w.daemon_hostname || w.daemon_id}</Link></p> : null}</div>
+							<div className="min-w-0"><h2 className="g-mono text-[14px] font-semibold" data-testid="workspace-title">{w.name || (w.path ?? '').split('/').pop() || w.id}</h2><p className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{w.path}{created ? ` · since ${relative_time(created)}` : ''}</p>{w.daemon_id ? <p className="text-[12px] text-[var(--g-ink-3)]">on <Link to={`${base}/daemons/${encodeURIComponent(w.daemon_id)}`} className="hover:text-[var(--g-ink)] hover:underline">{w.daemon_hostname || w.daemon_id}</Link></p> : null}</div>
 							{w.daemon_id ? <button type="button" onClick={() => set_running((v) => !v)} className={`${G_PRIMARY} ml-auto`}>Run a team here</button> : null}
 						</header>
 						{running && w.daemon_id ? <Run_here teams={d.teams} daemon_id={w.daemon_id} workspace_id={String(w.id ?? workspace_id)} workspace_path={w.path ?? ''} base={base} on_done={reload} on_cancel={() => set_running(false)} /> : null}
 						<section aria-label="Teams" className="flex flex-col gap-2">
-							<h2 className="text-[14px] font-semibold">Teams set up here</h2>
+							<h2 className="text-[13px] font-semibold">Teams set up here</h2>
 							{d.teams.length ? <div className="flex flex-wrap gap-2">{d.teams.map((t) => <Link key={`${t.scope}/${t.slug}`} to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="g-mono rounded-full border border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-1 text-[12px] hover:border-[var(--g-acc-line)]">{team_label(t)}</Link>)}</div> : <p className="text-[12.5px] text-[var(--g-ink-3)]">None yet — a team is assembled here the first time it runs.</p>}
 						</section>
 						<Host_runs runs={d.runs} total={d.runs_total} base={base} on_changed={reload} empty="No runs in this workspace yet." />
