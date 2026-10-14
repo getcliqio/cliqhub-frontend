@@ -3,6 +3,7 @@
  * nodes coloured by phase type, gradient edges with flowing dots, gate
  * loop-backs as dashed arcs, human review as a badge, and an optional run
  * overlay (status dot per phase). Pure SVG; scales to its container.
+ * With `start`, the flow begins at a "Run inputs" node (the inputs Run asks for) instead of a dot.
  */
 import { useId, type KeyboardEvent, type ReactElement } from 'react';
 import {
@@ -23,6 +24,19 @@ function bez(x1: number, y1: number, x2: number, y2: number): string {
 	const dx = Math.max(44, (x2 - x1) * 0.5);
 	return `M${x1} ${y1} C${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
+/** The start node: up to this many inputs by name, then "+N more". */
+const START_LINES = 3;
+const START_W = 132;
+/** Room the start node takes before the first phases. */
+const START_SHIFT = 166;
+
+/** The "Run inputs" node the flow starts at. */
+export interface Workflow_start {
+	inputs: Array<{ name: string; required: boolean }>;
+	selected?: boolean;
+	on_select?: () => void;
+}
+
 const DOT: Record<string, string> = { done: 'var(--g-ok)', running: 'var(--g-run)', waiting: REVIEW_COLOR, failed: 'var(--g-bad)' };
 
 export function Workflow_graph({
@@ -32,6 +46,7 @@ export function Workflow_graph({
 	statuses = null,
 	height = 300,
 	label = 'Team workflow',
+	start = null,
 }: {
 	phases: Team_phase[];
 	selected?: string | null;
@@ -40,6 +55,7 @@ export function Workflow_graph({
 	statuses?: Record<string, string> | null;
 	height?: number;
 	label?: string;
+	start?: Workflow_start | null;
 }) {
 	const uid = useId().replace(/[:]/g, '');
 	const L = layout_phases(phases);
@@ -47,12 +63,13 @@ export function Workflow_graph({
 		return <div className="grid place-items-center text-[12.5px] text-[var(--g-ink-3)]" style={{ height }}>This version has no phases.</div>;
 	}
 	const top_pad = L.loops.length ? 64 : 34;
-	const w = MARGIN_X * 2 + (L.cols - 1) * PITCH_X + W;
+	const shift = start ? START_SHIFT : 0;
+	const w = MARGIN_X * 2 + shift + (L.cols - 1) * PITCH_X + W;
 	const h = Math.max(height, top_pad + L.rows * PITCH_Y + 34);
 	const cy = top_pad + ((h - top_pad - 34) / 2);
 	const at = (n: string) => {
 		const p = L.pos[n];
-		return { x: MARGIN_X + p.col * PITCH_X, y: cy + p.row * PITCH_Y - H / 2 };
+		return { x: MARGIN_X + shift + p.col * PITCH_X, y: cy + p.row * PITCH_Y - H / 2 };
 	};
 	const by_name = new Map(phases.map((p) => [p.name, p]));
 	const roots = phases.filter((p) => !p.depends_on.some((d) => by_name.has(d)));
@@ -99,7 +116,41 @@ export function Workflow_graph({
 			<ellipse cx={w / 2} cy={h / 2} rx={w * 0.45} ry={h * 0.6} fill={`url(#${uid}aura)`} />
 
 			{/* start / end terminals */}
-			{roots.map((r) => { const a = at(r.name); const sx = a.x - 34; const sy = a.y + H / 2; return (
+			{start ? (() => {
+				const shown = start.inputs.slice(0, START_LINES);
+				const more = start.inputs.length - shown.length;
+				const sh = 30 + Math.max(1, shown.length + (more > 0 ? 1 : 0)) * 14;
+				const sx = MARGIN_X - 30; const sy = cy - sh / 2;
+				return (
+					<g data-start="inputs">
+						{roots.map((r) => { const a = at(r.name); const path = bez(sx + START_W, cy, a.x - 2, a.y + H / 2); return (
+							<g key={`start-${r.name}`} aria-hidden>
+								<path d={path} strokeWidth={1.5} strokeDasharray="3 4" fill="none" style={{ stroke: 'var(--g-line-strong)' }} />
+								<path d={`M${a.x - 8} ${a.y + H / 2 - 4} L${a.x - 2} ${a.y + H / 2} L${a.x - 8} ${a.y + H / 2 + 4}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-line-strong)' }} />
+							</g>
+						); })}
+						<g
+							transform={`translate(${sx},${sy})`}
+							role={start.on_select ? 'button' : undefined}
+							tabIndex={start.on_select ? 0 : undefined}
+							aria-label={`Run inputs: ${start.inputs.length ? start.inputs.map((i) => `${i.name}${i.required ? ' (required)' : ''}`).join(', ') : 'none'}`}
+							aria-pressed={start.on_select ? Boolean(start.selected) : undefined}
+							onClick={start.on_select}
+							onKeyDown={start.on_select ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start.on_select?.(); } } : undefined}
+							style={{ cursor: start.on_select ? 'pointer' : 'default', outline: 'none' }}
+						>
+							<rect width={START_W} height={sh} rx={12} strokeWidth={start.selected ? 1.5 : 1.2} strokeDasharray={start.selected ? undefined : '4 3'} style={{ fill: 'var(--g-input)', stroke: start.selected ? 'var(--g-acc)' : 'var(--g-ink-3)' }} />
+							<text x={12} y={18} fontSize={9.5} fontWeight={700} letterSpacing=".06em" style={{ fill: 'var(--g-acc)' }} fontFamily="var(--g-font)">▶ RUN INPUTS</text>
+							{shown.length ? shown.map((i, n) => (
+								<text key={i.name} x={12} y={36 + n * 14} fontSize={11.5} fontFamily="var(--g-mono)" style={{ fill: i.required ? 'var(--g-ink)' : 'var(--g-ink-2)' }} fontWeight={i.required ? 600 : 400}>
+									{i.name.length > 15 ? `${i.name.slice(0, 14)}…` : i.name}{i.required ? <tspan style={{ fill: 'var(--g-bad)' }}>*</tspan> : null}
+								</text>
+							)) : <text x={12} y={36} fontSize={11.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">none</text>}
+							{more > 0 ? <text x={12} y={36 + shown.length * 14} fontSize={11} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">+{more} more</text> : null}
+						</g>
+					</g>
+				);
+			})() : roots.map((r) => { const a = at(r.name); const sx = a.x - 34; const sy = a.y + H / 2; return (
 				<g key={`start-${r.name}`} aria-hidden>
 					<path d={`M${sx + 7} ${sy} H${a.x}`} strokeWidth={1.5} strokeDasharray="3 4" style={{ stroke: 'var(--g-line-strong)' }} />
 					<circle cx={sx} cy={sy} r={7} stroke="var(--g-acc)" style={{ fill: 'var(--g-input)', stroke: 'var(--g-acc)' }} strokeWidth={2} /><circle cx={sx} cy={sy} r={2.5} fill="var(--g-acc)" />

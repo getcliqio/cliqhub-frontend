@@ -1,8 +1,10 @@
 /**
  * Build › Teams › one team (Graphite). One page, no tabs. Opened inside a realm
- * (/o/:org/realms/:slug/teams/:scope/:name?v=…) it's read-only: the version installed there, its
- * name as the realm header's title, no version picker, history or actions; its danger zone is
- * Uninstall from this realm (`realms/remove_team`).
+ * (/o/:org/realms/:slug/teams/:scope/:name?v=…) it can only be run and viewed: the version
+ * installed there, a small title under "All teams ›", Run… and one card — Phases (the graph,
+ * starting at its Run inputs, over a table of the inputs and phases, linked both ways) or YAML;
+ * no version picker, history, Agents/Inputs cards or other actions; its danger zone is Uninstall
+ * from this realm (`realms/remove_team`).
  *   header   — name · status, description, then version · @scope · author · tags; actions right:
  *              Fork · Download · Edit (the Builder — everything about the team changes there) · Install
  *   left     — Workflow in two modes, Diagram (horizontal) or YAML (team.yml and role briefs), with
@@ -14,9 +16,9 @@
  * single existing routes (realms/add_team via the Install dialog, teams/create with `forked_from`,
  * teams/unpublish, teams/delete_version, teams/delete).
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { Code, Download, FileDown, GitFork, Pencil, Route } from 'lucide-react';
+import { Code, Download, FileDown, GitFork, Pencil, Play, Route } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { relative_time, use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
@@ -29,6 +31,7 @@ import { use_access } from '@/lib/access';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
 
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
@@ -45,6 +48,9 @@ export const WORKFLOW_MODE_KEY = 'cliqhub.team_workflow_mode';
 export const VERSIONS_PAGE_SIZE = 5;
 /** Names tried for a fork, in order. */
 const FORK_SUFFIXES = ['-fork', '-fork-2', '-fork-3', '-fork-4', '-fork-5'];
+
+/** `?phase=` value for the Run inputs (the graph's start node / the table's first row). */
+export const INPUTS_SEL = '@inputs';
 
 function read_mode(): Workflow_mode {
 	try { return localStorage.getItem(WORKFLOW_MODE_KEY) === 'yaml' ? 'yaml' : 'diagram'; } catch { return 'diagram'; }
@@ -68,10 +74,15 @@ export function inputs_used(phase: Team_phase, team_yml: string | null, inputs: 
 	return inputs.map((i) => i.name).filter((n) => found.has(n));
 }
 
+/** `{{inputs.NAME}}` said in words ("from input NAME"). */
+function readable_refs(text: string): string {
+	return text.replace(new RegExp(INPUT_REF.source, 'g'), 'from input $1');
+}
+
 /** First line of a phase's role brief, else what kind of step it is. */
 function phase_line(p: Team_phase): string {
 	const brief = (p.role ?? '').split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean);
-	return brief ?? phase_subtitle(p);
+	return readable_refs(brief ?? phase_subtitle(p));
 }
 
 function Kind_tile({ phase, size = 18 }: { phase: Team_phase; size?: number }) {
@@ -93,6 +104,84 @@ function use_post() {
 	};
 }
 
+const ROW = 'grid grid-cols-[minmax(0,1.1fr)_110px_96px_minmax(0,1.7fr)_14px] items-start gap-3 px-4 py-2.5';
+
+/**
+ * The team in a realm: its Run inputs, then its phases (support ones last), one row each. The
+ * picked row (also picked on the graph) opens — inputs: each one's description, default and the
+ * phases that use it; a phase: what it runs after, its agent's brief, commands, review.
+ */
+function Phase_table({ phases, support, inputs, team_yml, selected, on_pick }: {
+	phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; team_yml: string | null;
+	selected: string | null; on_pick: (name: string) => void;
+}) {
+	const all = [...phases, ...support];
+	const users = new Map(inputs.map((i) => [i.name, all.filter((p) => inputs_used(p, team_yml, inputs).includes(i.name)).map((p) => p.name)]));
+	const row_cls = (on: boolean) => `${ROW} cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 ${on ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'hover:bg-[var(--g-soft)]'}`;
+	const open_cls = 'col-span-full mt-1 cursor-default rounded-lg border border-[var(--g-line-2)] bg-[var(--g-bg)] px-3 py-2.5 text-[12.5px]';
+	const key = (n: string) => (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on_pick(n); } };
+	const ins_on = selected === INPUTS_SEL;
+	const required = inputs.filter((i) => i.required).length;
+	return (
+		<div role="table" aria-label="Inputs and phases" data-testid="phase-table">
+			<div role="row" className={`${ROW} border-b border-[var(--g-line)] py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--g-ink-3)]`}>
+				<span role="columnheader">Phase</span><span role="columnheader">Kind</span><span role="columnheader">Agent</span><span role="columnheader">What it does</span><span />
+			</div>
+			<div role="row" tabIndex={0} aria-expanded={ins_on} onClick={() => on_pick(INPUTS_SEL)} onKeyDown={key(INPUTS_SEL)} className={row_cls(ins_on)} data-team-row={INPUTS_SEL} data-testid="inputs-row">
+				<span><b className="text-[13px]">Run inputs</b> <span className="text-[12px] text-[var(--g-ink-3)]">· asked on Run…</span></span>
+				<span className="text-[12.5px] text-[var(--g-ink-2)]">start</span>
+				<span className="text-[var(--g-ink-3)]">—</span>
+				<span className="text-[12.5px] text-[var(--g-ink-3)]">{inputs.length ? `${inputs.length} input${inputs.length === 1 ? '' : 's'}${required ? ` · ${required} required` : ''}` : 'None — runs start straight away.'}</span>
+				<span aria-hidden className="text-[var(--g-ink-3)]">{ins_on ? '⌄' : '›'}</span>
+				{ins_on && inputs.length ? (
+					<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="inputs-open">
+						<table className="w-full text-left">
+							<thead><tr className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--g-ink-3)]"><th className="pb-1 font-semibold">Input</th><th className="pb-1 font-semibold">Required</th><th className="pb-1 font-semibold">Default</th><th className="pb-1 font-semibold">Used by</th></tr></thead>
+							<tbody>
+								{inputs.map((i) => (
+									<tr key={i.name} className="border-t border-[var(--g-line-2)] align-top" data-testid={`input-${i.name}`}>
+										<td className="py-1.5 pr-3"><span className="g-mono">{i.name}</span>{i.description ? <p className="text-[12px] text-[var(--g-ink-3)]">{i.description}</p> : null}</td>
+										<td className="py-1.5 pr-3">{i.required ? 'yes' : 'no'}</td>
+										<td className="g-mono py-1.5 pr-3 text-[var(--g-ink-2)]">{i.default ?? '—'}</td>
+										<td className="g-mono py-1.5 text-[var(--g-ink-2)]">{users.get(i.name)?.join(', ') || <span className="font-sans text-[var(--g-ink-3)]">not referenced</span>}</td>
+									</tr>
+								))}
+							</tbody>
+						</table>
+					</div>
+				) : null}
+			</div>
+			{all.map((p) => {
+				const on = selected === p.name;
+				const k = phase_kind(p);
+				const used = inputs_used(p, team_yml, inputs);
+				return (
+					<div key={p.name} role="row" tabIndex={0} aria-expanded={on} onClick={() => on_pick(p.name)} onKeyDown={key(p.name)} className={row_cls(on)} data-team-row={p.name} data-testid="team-phase-row">
+						<span className="min-w-0"><b className="g-mono text-[13px]">{p.name}</b>{p.support ? <span className="ml-1.5 text-[11.5px] text-[var(--g-ink-3)]">support</span> : null}{p.team ? <span className="ml-1.5 text-[12px] text-[var(--g-ink-3)]">↳ <span className="g-mono">{p.team}</span></span> : null}</span>
+						<span className="flex items-center gap-1.5 text-[12.5px]"><Kind_tile phase={p} size={16} /><span style={{ color: k.color }}>{k.label}</span></span>
+						<span className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{p.agent ?? '—'}</span>
+						<span className="min-w-0 truncate text-[12.5px] text-[var(--g-ink-3)]" title={phase_line(p)}>{phase_line(p)}</span>
+						<span aria-hidden className="text-[var(--g-ink-3)]">{on ? '⌄' : '›'}</span>
+						{on ? (
+							<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="phase-open">
+								<dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1">
+									<dt className="text-[var(--g-ink-3)]">Runs after</dt><dd>{p.depends_on.length ? <span className="g-mono">{p.depends_on.join(', ')}</span> : 'the run inputs'}</dd>
+									{p.team ? <><dt className="text-[var(--g-ink-3)]">Runs team</dt><dd className="g-mono">{p.team}</dd></> : null}
+									{p.review || p.reviewers ? <><dt className="text-[var(--g-ink-3)]">Reviewed by</dt><dd>{p.reviewers ? readable_refs(p.reviewers) : 'a person'}</dd></> : null}
+									{p.max_iterations ? <><dt className="text-[var(--g-ink-3)]">Rounds</dt><dd>up to {p.max_iterations}</dd></> : null}
+									{used.length ? <><dt className="text-[var(--g-ink-3)]">Uses inputs</dt><dd className="g-mono">{used.join(', ')}</dd></> : null}
+									{p.commands.length ? <><dt className="text-[var(--g-ink-3)]">Commands</dt><dd><pre className="g-mono whitespace-pre-wrap text-[12px] text-[var(--g-ink-2)]">{p.commands.join('\n')}</pre></dd></> : null}
+								</dl>
+								{p.role ? <pre className="mt-2 max-h-[240px] overflow-auto whitespace-pre-wrap border-t border-[var(--g-line-2)] pt-2 font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid="phase-brief">{p.role}</pre> : null}
+							</div>
+						) : null}
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
 // ── page ─────────────────────────────────────────────────────────────────
 
 export function Component() {
@@ -106,6 +195,7 @@ export function Component() {
 	const overview = use_overview();
 	const access = use_access(overview.data);
 	const sidebar_realm = in_realm ? overview.data?.orgs.find((o) => o.slug === realm_org)?.realms.find((r) => r.slug === realm_slug) ?? null : null;
+	const runnable = access.realm(sidebar_realm?.id, 'operate', 'teams.run');
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
 	const post = use_post();
@@ -116,6 +206,7 @@ export function Component() {
 	// Old links (?tab=files) open the YAML.
 	const [mode, set_mode_state] = useState<Workflow_mode>(() => (search.get('tab') === 'files' ? 'yaml' : read_mode()));
 	const [install_open, set_install_open] = useState(false);
+	const [run_open, set_run_open] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
 	const [edit_choice, set_edit_choice] = useState(false);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
@@ -153,7 +244,8 @@ export function Component() {
 	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((x) => !view_org || x.id === view_org.id).flatMap((x) => x.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
 	const phases = o?.phases ?? [];
 	const all_phases = useMemo(() => [...phases, ...(o?.support ?? [])], [phases, o?.support]);
-	const sel = all_phases.find((p) => p.name === phase_sel) ?? phases[0] ?? null;
+	const sel = all_phases.find((p) => p.name === phase_sel) ?? (in_realm ? null : phases[0] ?? null);
+	const inputs_sel = in_realm && phase_sel === INPUTS_SEL;
 	const used = useMemo(() => (sel && o ? inputs_used(sel, team_yml, o.inputs) : []), [sel, team_yml, o]);
 	// A different version: any open confirmation was about the old one.
 	useEffect(() => { set_confirm(null); }, [version]);
@@ -263,7 +355,10 @@ export function Component() {
 					{team?.tags.length ? <span>· {team.tags.join(' · ')}</span> : null}
 				</div>
 			</div>
-			{/* In a realm this is what's installed there: no Fork, Download, Edit or Install. */}
+			{/* In a realm a team can only be run (and viewed): no Fork, Download, Edit or Install. */}
+			{in_realm && team?.scope && sidebar_realm ? (
+				<button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_run_open(true)} className={PRIMARY}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button>
+			) : null}
 			{in_realm ? null : <div className="relative flex shrink-0 items-center gap-1.5">
 				{team ? <button type="button" disabled={busy !== null} onClick={() => void fork()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title="Copy this version into your scope and open the copy"><GitFork aria-hidden className="h-3.5 w-3.5" />{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
 				{team && team.versions.length ? <button type="button" disabled={busy !== null} onClick={() => void download()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title={`Download v${team.version} (team.yml and role briefs)`}><FileDown aria-hidden className="h-3.5 w-3.5" />{busy === 'download' ? 'Downloading…' : 'Download'}</button> : null}
@@ -295,6 +390,13 @@ export function Component() {
 		</div>
 	);
 
+	/** Pick a phase (or the Run inputs) — again to let go. The table scrolls to it. */
+	function pick(n: string) {
+		const next = phase_sel === n ? null : n;
+		set_params({ phase: next });
+		if (next) requestAnimationFrame(() => document.querySelector(`[data-team-row="${CSS.escape(next)}"]`)?.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' }));
+	}
+
 	// ── workflow (two modes) ──
 	const mode_btn = (m: Workflow_mode, text: string, Icon: typeof Route) => (
 		<button type="button" role="tab" aria-selected={mode === m} onClick={() => set_mode(m)} className={`inline-flex h-7 items-center gap-1.5 px-2.5 text-[12px] ${mode === m ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
@@ -304,13 +406,26 @@ export function Component() {
 	const workflow = o ? (
 		<section className={CARD} data-testid="workflow">
 			<div className={H3}>
-				Workflow <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{phases.length} phase{phases.length === 1 ? '' : 's'}{team?.version ? ` · v${team.version}` : ''}</span>
+				{in_realm ? 'Phases' : 'Workflow'} <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{in_realm ? `${o.inputs.length} input${o.inputs.length === 1 ? '' : 's'} · ` : ''}{phases.length} phase{phases.length === 1 ? '' : 's'}{team?.version ? ` · v${team.version}` : ''}</span>
 				<div role="tablist" aria-label="Workflow view" className="ml-auto flex overflow-hidden rounded-md border border-[var(--g-line-strong)]">
-					{mode_btn('diagram', 'Diagram', Route)}
+					{mode_btn('diagram', in_realm ? 'Phases' : 'Diagram', Route)}
 					{mode_btn('yaml', 'YAML', Code)}
 				</div>
 			</div>
-			{mode === 'diagram' ? (
+			{mode === 'diagram' && in_realm ? (
+				<>
+					<div className="border-b border-[var(--g-line)] bg-[var(--g-input)]" data-testid="team-graph">
+						<Workflow_graph
+							phases={phases}
+							height={220}
+							selected={sel?.name ?? null}
+							on_select={(p) => pick(p)}
+							start={{ inputs: o.inputs, selected: inputs_sel, on_select: () => pick(INPUTS_SEL) }}
+						/>
+					</div>
+					<Phase_table phases={phases} support={o.support} inputs={o.inputs} team_yml={team_yml} selected={inputs_sel ? INPUTS_SEL : sel?.name ?? null} on_pick={pick} />
+				</>
+			) : mode === 'diagram' ? (
 				<div className="bg-[var(--g-input)]">
 					<Workflow_graph phases={phases} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5">
@@ -331,7 +446,7 @@ export function Component() {
 					/>
 				</div>
 			)}
-			{sel ? (
+			{sel && !in_realm ? (
 				<div className="border-t border-[var(--g-line)] px-4 py-2.5" data-testid="selected-phase">
 					<div className="flex flex-wrap items-center gap-2">
 						<Kind_tile phase={sel} />
@@ -532,11 +647,12 @@ export function Component() {
 						{data?.partial ? <p className="text-[11.5px] text-[var(--g-ink-3)]">Some of this couldn’t be loaded — what’s shown may be incomplete.</p> : null}
 						{!o ? <div className="h-[420px] animate-pulse rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : (
 							<>
-								<div className="grid grid-cols-1 items-start gap-3.5 xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]">
+								<div className={`grid grid-cols-1 items-start gap-3.5 ${in_realm ? '' : 'xl:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]'}`}>
 									{/* In a realm: only the installed version — no version history; its danger zone is uninstalling from the realm. */}
 								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
-									{needs}
+									{in_realm ? null : needs}
 								</div>
+								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name }} on_close={() => set_run_open(false)} /> : null}
 							</>
 						)}
 					</>

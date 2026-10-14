@@ -439,6 +439,55 @@ describe('Team page', () => {
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
 	});
 
+	it('opened from a realm: Phases — the graph starts at the Run inputs; the table lists the inputs, then the phases; picking one picks it in both', async () => {
+		route_fetch();
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const table = await screen.findByTestId('phase-table');
+		// No side cards: inputs and agents are in the table.
+		expect(screen.queryByTestId('needs')).toBeNull();
+		expect(screen.queryByTestId('selected-phase')).toBeNull();
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases', 'YAML']);
+		expect(within(table).getAllByTestId('team-phase-row').map((r) => r.getAttribute('data-team-row'))).toEqual([...PHASES.map((p) => p.name), 'git-resolver']);
+		expect(within(table).getByTestId('inputs-row')).toHaveTextContent('2 inputs · 1 required');
+		// Nothing open until picked.
+		expect(screen.queryByTestId('inputs-open')).toBeNull();
+		expect(screen.queryByTestId('phase-open')).toBeNull();
+
+		// The graph's start node → the inputs row opens: each input, and the phases that use it.
+		const start = screen.getByRole('button', { name: 'Run inputs: ticket (required), reviewers' });
+		fireEvent.click(start);
+		const open = await screen.findByTestId('inputs-open');
+		expect(within(open).getByTestId('input-ticket')).toHaveTextContent('ticketJira keyyes—fetch-ticket');
+		expect(within(open).getByTestId('input-reviewers')).toHaveTextContent('architect');
+		expect(start).toHaveAttribute('aria-pressed', 'true');
+		expect(screen.getByTestId('loc').textContent).toContain('phase=%40inputs');
+
+		// A row → its node is picked, and the row opens.
+		fireEvent.click(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'architect')!);
+		await waitFor(() => expect(document.querySelector('[data-phase="architect"]')).toHaveAttribute('aria-pressed', 'true'));
+		expect(screen.queryByTestId('inputs-open')).toBeNull();
+		const arch = screen.getByTestId('phase-open');
+		expect(arch).toHaveTextContent('Runs afterfetch-ticket');
+		expect(arch).toHaveTextContent('Uses inputsreviewers');
+		expect(within(arch).getByTestId('phase-brief')).toHaveTextContent('You are the architect.');
+		// The architect's line reads the input reference in words.
+		expect(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'architect')).toHaveTextContent('You are the architect.');
+
+		// A node → its row opens.
+		fireEvent.click(document.querySelector('[data-phase="check"]')!);
+		await waitFor(() => expect(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'check')).toHaveAttribute('aria-expanded', 'true'));
+		expect(screen.getByTestId('phase-open')).toHaveTextContent('npm test');
+		expect(screen.getByTestId('phase-open')).toHaveTextContent('up to 3');
+	});
+
+	it('opened from a realm: Run… runs it here', async () => {
+		route_fetch();
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		await screen.findByTestId('phase-table');
+		fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
+		expect(screen.getByRole('dialog', { name: 'Run dialog' })).toHaveTextContent('measureone/feature-dev-js');
+	});
+
 	it('opened from a realm: its danger zone uninstalls it from that realm (one write), then back to the realm\'s teams', async () => {
 		const calls = route_fetch();
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
