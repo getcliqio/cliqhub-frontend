@@ -76,7 +76,7 @@ describe('Realm settings page', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/revoke', body: { invite_id: 'i1' } }));
 		// Settings' parts are listed under it in the realm's left nav.
 		expect(screen.getByTestId('settings-members')).toHaveAttribute('aria-current', 'page');
-		expect(screen.getByTestId('settings-notifications')).toHaveAttribute('href', '/notifications?org=measureone&realm=r-prod');
+		expect(screen.getByTestId('settings-notifications')).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings?section=notifications');
 	});
 
 	it('picking an existing person sends them a realm invite (never a direct add)', async () => {

@@ -1,5 +1,5 @@
 /**
- * Manage › Organization (Graphite) — /orgs/:id?tab=members|roles|scopes|integrations|a2a|settings
+ * Manage › Organization (Graphite) — /orgs/:id?tab=members|roles|scopes|integrations|a2a|notifications|settings
  * For a customer org's owners/admins (members see a read-only view).
  * Read: `POST /v1/org_page/get` (org with member statuses + pending invites + permission catalogue).
  * The header shows a Waiting-for-owner banner (who, when the invite expires) until the owner accepts.
@@ -9,6 +9,7 @@
  *   scopes    orgs/new_scope · delete_scope · assign_scope_member · unassign_scope_member
  *   jira      integrations/jira/get_workspaces · rotate_secret · disconnect_workspace
  *   a2a       orgs/mesh/get|update (Org_mesh_panel)
+ *   notifications  the org's rules (the Default for every realm) and channels (Notifications_panel)
  *   settings  orgs/update · orgs/leave
  */
 import { useMemo, useState, type FormEvent } from 'react';
@@ -24,6 +25,7 @@ import { Avatar, Banner, Chips, Empty_row, Pill, TABLE_WRAP, TH, TR } from '@/co
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
 import { Member_status_pill, Org_invite_form, Org_status_pill, use_invite, Waiting_owner_banner } from '@/components/graphite/g_invites';
 import { Org_mesh_panel } from '@/components/graphite/g_mesh';
+import { Notifications_panel } from '@/components/graphite/g_notifications';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
@@ -31,7 +33,7 @@ import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 /** `org_page/get`: `invites` is null when the caller may not see them; `permissions` is null when the catalogue could not be read. */
 interface Org_page_data { org: Org_detail; invites: Invite_row[] | null; permissions: { all: string[]; owner_only: string[] } | null; partial: boolean }
 
-type Tab = 'members' | 'roles' | 'scopes' | 'integrations' | 'a2a' | 'settings';
+type Tab = 'members' | 'roles' | 'scopes' | 'integrations' | 'a2a' | 'notifications' | 'settings';
 const JIRA_ON = import.meta.env.VITE_ENABLE_JIRA_INTEGRATION === 'true';
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
 type Msg = { tone: 'ok' | 'bad'; text: string } | null;
@@ -441,7 +443,7 @@ export function Component() {
 	const { user } = useAuth();
 	const read = use_bff_read<Org_page_data>('/v1/org_page/get', id ? { org_id: id } : null, { fallback_error: 'Could not load the organization.' });
 	const d = read.data;
-	const tabs: Array<[Tab, string]> = [['members', 'Members'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A'], ['settings', 'Settings']];
+	const tabs: Array<[Tab, string]> = [['members', 'Members'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A'], ['notifications', 'Notifications'], ['settings', 'Settings']];
 	const tab = (tabs.some(([k]) => k === sp.get('tab')) ? sp.get('tab') : 'members') as Tab;
 	const my_role = d?.org.my_role ?? '';
 	const can_manage = my_role === 'owner' || my_role === 'admin' || my_role === 'site_admin' || user?.role === 'admin';
@@ -473,6 +475,7 @@ export function Component() {
 						{tab === 'scopes' ? <Scopes data={d} can_manage={can_manage} reload={reload} /> : null}
 						{tab === 'integrations' ? <Integrations /> : null}
 						{tab === 'a2a' ? <Org_mesh_panel org_id={d.org.id} can_edit={can_manage} /> : null}
+						{tab === 'notifications' ? <Notifications_panel org_id={d.org.id} realm={null} /> : null}
 						{tab === 'settings' ? <Settings data={d} can_manage={can_manage} reload={reload} /> : null}
 					</>
 				) : null}

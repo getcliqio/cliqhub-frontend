@@ -3,7 +3,8 @@
  * (BFF: realm, members, pending invites, access tokens). Every write is one
  * existing route: realms/update, realms/add_member (role changes only),
  * realms/remove_member, invitations/create (adding anyone), invitations/revoke, auth/generate_token,
- * auth/revoke_token, realms/delete. Agents and Notifications live in Manage.
+ * auth/revoke_token, realms/delete. Notifications (?section=notifications) is the shared
+ * Notifications_panel for this realm; Agents is its own page.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
@@ -12,6 +13,7 @@ import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { Realm_a2a_panel } from '@/components/graphite/g_mesh';
+import { Notifications_panel } from '@/components/graphite/g_notifications';
 import { handle, person_name } from '@/lib/admin';
 import { REALM_ROLES, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -324,7 +326,7 @@ export function Component() {
 	const post = use_post();
 	const [search] = useSearchParams();
 	const raw = search.get('section');
-	const section: Settings_section = raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'danger' ? raw : 'members';
+	const section: Settings_section = raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'notifications' || raw === 'danger' ? raw : 'members';
 	const read = use_bff_read<Realm_settings_data>('/v1/realm_settings/get', org && slug ? { org_slug: org, slug } : null, { fallback_error: 'Could not load settings.' });
 	const data = read.data;
 	const realm_id = data?.realm.id ?? null;
@@ -352,6 +354,7 @@ export function Component() {
 							{section === 'members' ? <Members data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'tokens' ? <Tokens data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'a2a' ? <Realm_a2a_panel realm_id={data.realm.id} can_edit={admin} /> : null}
+							{section === 'notifications' && sidebar_realm ? <Notifications_panel org_id={sidebar_realm.org_id} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org }} /> : null}
 							{section === 'danger' ? <Danger data={data} admin={admin} post={post} /> : null}
 						</div>
 					</div>

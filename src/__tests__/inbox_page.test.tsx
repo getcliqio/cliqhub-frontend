@@ -79,8 +79,10 @@ describe('Shell nav', () => {
 		render_page();
 		await screen.findByTestId('inbox-item-a');
 		const nav = screen.getByRole('navigation', { name: 'Main' });
-		const main = ['Dashboard', 'HUGs', 'Realms', 'Teams', 'Events'];
+		const main = ['Dashboard', 'HUGs', 'Realms', 'Teams'];
 		for (const label of main) expect(within(nav).getByRole('link', { name: new RegExp(`^${label}`) })).toBeInTheDocument();
+		// No Events page: notifications live in Org settings and each realm's Settings.
+		expect(within(nav).queryByRole('link', { name: /^Events/ })).toBeNull();
 		// The inbox lives behind the bell, not in the sidebar.
 		expect(within(nav).queryByRole('link', { name: /^Inbox/ })).toBeNull();
 		expect(within(nav).queryByText('Work')).toBeNull();
@@ -91,8 +93,6 @@ describe('Shell nav', () => {
 		// measureone: you're the owner → Org admin.
 		const admin = within(nav).getByTestId('nav-org-admin');
 		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Org settings']);
-		// Events is for everyone (members land on "Reaches you"), not only org admins.
-		expect(within(nav).getByRole('link', { name: /^Events/ })).toHaveAttribute('href', '/notifications?org=measureone');
 		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
 		// No Marketplace button in the top bar for now.
 		expect(screen.queryByTestId('marketplace-link')).toBeNull();

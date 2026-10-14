@@ -33,7 +33,6 @@ import {
 	Layers,
 	LayoutDashboard,
 	UserCog,
-	Zap,
 	Moon,
 	Sun,
 	Monitor,
@@ -331,9 +330,11 @@ function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolea
 	);
 }
 
-/** Notifications page for the view: in a realm it opens filtered to that realm. */
+/** Where notifications are set for the view: the realm's Settings › Notifications, else the org's (`/notifications` picks one). */
 function notifications_path(scope: View_scope): string {
-	return scope.kind === 'realm' ? `/notifications?realm=${encodeURIComponent(scope.realm.id)}` : '/notifications';
+	if (scope.kind === 'realm') return `/o/${encodeURIComponent(scope.realm.org_slug)}/realms/${encodeURIComponent(scope.realm.slug)}/settings?section=notifications`;
+	if (scope.kind === 'org') return `/orgs/${encodeURIComponent(scope.org.id)}?tab=notifications`;
+	return '/notifications';
 }
 
 /** In a view, only show notifications that belong to it (account-wide ones always show). */
@@ -399,7 +400,7 @@ function Bell_menu({ data, scope, multi_org }: { data: Overview_data | null; sco
 					)}
 					<div className="flex justify-between border-t border-[var(--g-line)] px-3.5 py-2.5 text-[12.5px]">
 						<Link to={view_href('/inbox?tab=all', scope, multi_org)} onClick={() => set_open(false)} className="font-semibold text-[var(--g-acc)] hover:underline">Open inbox →</Link>
-						<Link to={view_href(notifications_path(scope), scope, multi_org)} onClick={() => set_open(false)} className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Rules &amp; channels</Link>
+						<Link to={notifications_path(scope)} onClick={() => set_open(false)} className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">Rules &amp; channels</Link>
 					</div>
 				</div>
 			) : null}
@@ -507,15 +508,13 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const hugs_waiting = view_org ? view_org.counts.needs_you : 0;
 	// One flat list of resources, the same for everyone; org admins get one extra group.
 	// The inbox lives behind the bell (top right); problems also surface on the Dashboard.
-	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs, Events.
+	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs. Notifications live in Org settings and each realm's Settings.
 	const nav: Nav_item[] = [
 		{ to: view_href('/home', scope, multi_org), label: 'Dashboard', icon: LayoutDashboard, end: true },
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
 	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting };
-	// Everyone: members see what reaches them there; admins also change rules and channels.
-	const events_item: Nav_item = { to: view_href(notifications_path(scope), scope, multi_org), label: 'Events', icon: Zap };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
 	const org_admin: Nav_item[] = view_org ? [
 		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
@@ -572,7 +571,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 								{nav.map((item) => <Side_link key={item.label} item={item} compact />)}
 								<Side_link item={teams_item} compact />
 								<Side_link item={hugs_item} compact />
-								{view_org ? <Side_link item={events_item} compact /> : null}
 							</div>
 							{is_org_admin ? (
 								<div data-testid="nav-org-admin">
@@ -616,7 +614,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 						<div className="space-y-0.5">
 							<Side_link item={teams_item} />
 							<Side_link item={hugs_item} />
-							{view_org ? <Side_link item={events_item} /> : null}
 						</div>
 
 						{is_org_admin ? (

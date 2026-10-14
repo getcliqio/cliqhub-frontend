@@ -144,8 +144,6 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const failed = d?.counts.failed_24h ?? 0;
 	const running = d?.counts.running ?? realm?.active_runs ?? 0;
 	const only_member = Boolean(s?.you.is_admin && s?.people && s.people.total <= 1);
-	// Notifications is keyed by the realm's id (not its slug).
-	const realm_id = d?.realm.id ?? realm?.id ?? null;
 
 	const link = (on: boolean, nested = false) => `flex items-center gap-2 rounded-lg px-2.5 py-[6px] text-[13px] ${nested ? 'pl-6 text-[12.5px]' : ''} ${on ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`;
 	const nested = (sec: Section) => (item && current === sec ? <span aria-current="page" className={`${link(true, true)} g-mono truncate`} data-testid="nav-item">{item}</span> : null);
@@ -181,7 +179,7 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 					{/* In Settings, the part you're on is the one marked (they're listed below). */}
 					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
 					{current === 'settings' ? SETTINGS_PARTS.map((p) => {
-						const to = p.id === 'agents' ? `${base}/agents` : p.id === 'notifications' ? `/notifications?org=${encodeURIComponent(org_slug)}${realm_id ? `&realm=${encodeURIComponent(realm_id)}` : ''}` : `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
+						const to = p.id === 'agents' ? `${base}/agents` : `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
 						const on = settings_part === p.id;
 						return <Link key={p.id} to={to} aria-current={on ? 'page' : undefined} className={`${link(on, true)} ${p.id === 'danger' ? 'text-[var(--g-bad)]' : ''}`} data-testid={`settings-${p.id}`}>{p.label}</Link>;
 					}) : null}

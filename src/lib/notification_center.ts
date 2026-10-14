@@ -42,6 +42,39 @@ export interface Notif_rule {
 	/** Built in: it always fires and can't be changed or removed. */
 	locked: boolean;
 	lock_reason: string | null;
+	/** Switched on. A rule sends only when it and its channel are on. */
+	enabled: boolean;
+}
+
+/** One rule behind a realm event row. */
+export interface Notif_event_rule {
+	rule_id: string;
+	selector: string;
+	tier: Notif_scope_kind;
+	channel_id: string;
+	channel_name: string | null;
+	channel_enabled: boolean;
+	enabled: boolean;
+	locked: boolean;
+	lock_reason: string | null;
+}
+
+/**
+ * How an event stands in a realm: `default` the org's rule · `paused` the org switched it off ·
+ * `replaced` this realm's rules (the org covers it too) · `realm_only` this realm's, the org doesn't
+ * cover it · `off` this realm's rules for it are all switched off.
+ */
+export type Notif_event_status = 'default' | 'paused' | 'replaced' | 'realm_only' | 'off';
+
+export interface Notif_realm_event {
+	event: string;
+	status: Notif_event_status;
+	/** The org's rule is locked: the realm can't replace or turn it off. */
+	locked: boolean;
+	/** A broader realm selector replacing it (e.g. `run.*`), else null. */
+	via: string | null;
+	org: Notif_event_rule[];
+	realm: Notif_event_rule[];
 }
 
 export interface Notification_center_data {
@@ -52,6 +85,8 @@ export interface Notification_center_data {
 	channels: Notif_channel[];
 	rules: Notif_rule[];
 	event_types: string[];
+	/** With `realm_id`: each event as it stands in that realm; else null. */
+	realm_events?: Notif_realm_event[] | null;
 	/** Which realms this response covers (their rules + channels). */
 	realm_page: { offset: number; limit: number; total: number; q: string | null; status: 'ok' | 'error'; error: string | null };
 	partial: boolean;

@@ -9,7 +9,7 @@ export interface Realm_settings_data {
 	partial: boolean;
 }
 
-export type Settings_section = 'general' | 'members' | 'tokens' | 'a2a' | 'danger';
+export type Settings_section = 'general' | 'members' | 'tokens' | 'a2a' | 'notifications' | 'danger';
 
 export const REALM_ROLES: Array<{ id: string; label: string; hint: string }> = [
 	{ id: 'admin', label: 'Admin', hint: 'change settings, members and rules' },

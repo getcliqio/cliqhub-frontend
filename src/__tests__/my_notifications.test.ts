@@ -14,7 +14,7 @@ function channel(id: string, destinations: Array<{ type: string; label: string }
 	return { id, name: id, owner: { kind, org_id, org_slug: 'measureone', realm_id: null, realm_slug: null }, destinations, enabled: true, rule_count: 1, system_key: null, locked: false, lock_reason: null };
 }
 function rule(id: string, event: string, channel_id: string, over: Partial<Notif_rule> = {}): Notif_rule {
-	return { id, event, scope: org_scope, channel_id, channel_name: channel_id, priority: 0, replaces: [], system_key: null, locked: false, lock_reason: null, ...over };
+	return { id, event, scope: org_scope, channel_id, channel_name: channel_id, priority: 0, replaces: [], system_key: null, locked: false, lock_reason: null, enabled: true, ...over };
 }
 
 const me: Me = { id: 'u1', email: 's@x.com' };
