@@ -1,5 +1,7 @@
 /**
- * Manage › Organization (Graphite) — /orgs/:id?tab=members|roles|scopes|integrations|a2a|notifications|settings
+ * Manage › Organization (Graphite) — /orgs/:id?tab=members|notifications|settings|roles|scopes|integrations|a2a
+ * Members (no tab) and Notifications open on their own (each has its own sidebar entry); Org settings
+ * (?tab=settings) has tabs General · Roles · Scopes · Integrations · A2A.
  * For a customer org's owners/admins (members see a read-only view).
  * Read: `POST /v1/org_page/get` (org with member statuses + pending invites + permission catalogue).
  * The header shows a Waiting-for-owner banner (who, when the invite expires) until the owner accepts.
@@ -443,15 +445,18 @@ export function Component() {
 	const { user } = useAuth();
 	const read = use_bff_read<Org_page_data>('/v1/org_page/get', id ? { org_id: id } : null, { fallback_error: 'Could not load the organization.' });
 	const d = read.data;
-	const tabs: Array<[Tab, string]> = [['members', 'Members'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A'], ['notifications', 'Notifications'], ['settings', 'Settings']];
-	const tab = (tabs.some(([k]) => k === sp.get('tab')) ? sp.get('tab') : 'members') as Tab;
+	// Org settings' tabs. Members and Notifications are their own views (sidebar), not tabs here.
+	const tabs: Array<[Tab, string]> = [['settings', 'General'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A']];
+	const raw_tab = sp.get('tab');
+	const tab = (raw_tab === 'notifications' || tabs.some(([k]) => k === raw_tab) ? raw_tab : 'members') as Tab;
+	const in_settings = tab !== 'members' && tab !== 'notifications';
 	const my_role = d?.org.my_role ?? '';
 	const can_manage = my_role === 'owner' || my_role === 'admin' || my_role === 'site_admin' || user?.role === 'admin';
 	const can_invite_owner = my_role === 'owner' || my_role === 'site_admin' || user?.role === 'admin';
 	const member_count = d ? d.org.members.filter((m) => m.status === 'active').length : 0;
 	const reload = async () => { await read.reload(); };
 	return (
-		<Graphite_shell data={overview.data} title="Organization">
+		<Graphite_shell data={overview.data} title={tab === 'members' ? 'Members' : tab === 'notifications' ? 'Notifications' : 'Org settings'}>
 			<div className="flex flex-col gap-4 px-7 py-6">
 				{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="organization" /> : null}
 				{!d && read.status !== 'error' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : null}
@@ -464,11 +469,13 @@ export function Component() {
 							<Link to={`/realms?org=${encodeURIComponent(d.org.slug)}`} className={`${G_BTN} ml-auto`}>Realms →</Link>
 						</header>
 						{d.org.status === 'waiting_for_owner' ? <Waiting_owner_banner invite={d.org.pending_owner_invite} /> : null}
-						<div role="tablist" aria-label="Organization" className="flex gap-1 border-b border-[var(--g-line)]">
-							{tabs.map(([k, l]) => (
-								<button key={k} role="tab" type="button" aria-selected={tab === k} onClick={() => set_sp(k === 'members' ? {} : { tab: k }, { replace: true })} className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-semibold ${tab === k ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>{l}</button>
-							))}
-						</div>
+						{in_settings ? (
+							<div role="tablist" aria-label="Org settings" className="flex gap-1 border-b border-[var(--g-line)]">
+								{tabs.map(([k, l]) => (
+									<button key={k} role="tab" type="button" aria-selected={tab === k} onClick={() => set_sp({ tab: k }, { replace: true })} className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-semibold ${tab === k ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>{l}</button>
+								))}
+							</div>
+						) : tab === 'members' ? <h2 className="text-[14px] font-semibold">Members</h2> : null}
 						{!can_manage && tab !== 'settings' ? <p className="text-[12.5px] text-[var(--g-ink-3)]">You can see this organization; its owners and admins manage it.</p> : null}
 						{tab === 'members' ? <Members data={d} can_manage={can_manage} can_invite_owner={can_invite_owner} reload={reload} /> : null}
 						{tab === 'roles' ? <Roles data={d} can_manage={can_manage} reload={reload} /> : null}

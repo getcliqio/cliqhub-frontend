@@ -280,6 +280,8 @@ interface Nav_item {
 	icon: LucideIcon;
 	end?: boolean;
 	badge?: number;
+	/** Set when the link's place depends on `?tab=` (NavLink only matches the path). */
+	active?: boolean;
 }
 
 function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolean }) {
@@ -293,13 +295,14 @@ function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolea
 				aria-label={label}
 				title={label}
 				className={({ isActive }) =>
-					`relative mx-auto grid h-9 w-9 place-items-center rounded-lg transition ${isActive
+					`relative mx-auto grid h-9 w-9 place-items-center rounded-lg transition ${(item.active ?? isActive)
 						? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]'
 						: 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
+				aria-current={item.active === undefined ? undefined : item.active ? 'page' : false}
 			>
 				{({ isActive }) => (
 					<>
-						<Icon aria-hidden className={`h-4 w-4 ${isActive ? 'text-[var(--g-acc)]' : 'opacity-70'}`} strokeWidth={1.8} />
+						<Icon aria-hidden className={`h-4 w-4 ${(item.active ?? isActive) ? 'text-[var(--g-acc)]' : 'opacity-70'}`} strokeWidth={1.8} />
 						{item.badge ? (
 							<span aria-hidden className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[var(--g-warn)] px-1 text-center text-[9.5px] font-bold leading-4 text-[var(--g-on-color)]" data-testid="rail-badge">
 								{item.badge > 99 ? '99+' : item.badge}
@@ -315,13 +318,14 @@ function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolea
 			to={item.to}
 			end={item.end}
 			className={({ isActive }) =>
-				`flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition ${isActive
+				`flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition ${(item.active ?? isActive)
 					? 'bg-[var(--g-hover)] text-[var(--g-ink)] shadow-[inset_2px_0_0_var(--g-acc)]'
 					: 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`}
+			aria-current={item.active === undefined ? undefined : item.active ? 'page' : false}
 		>
 			{({ isActive }) => (
 				<>
-					<Icon aria-hidden className={`h-4 w-4 shrink-0 ${isActive ? 'text-[var(--g-acc)]' : 'opacity-70'}`} strokeWidth={1.8} />
+					<Icon aria-hidden className={`h-4 w-4 shrink-0 ${(item.active ?? isActive) ? 'text-[var(--g-acc)]' : 'opacity-70'}`} strokeWidth={1.8} />
 					<span className="truncate">{item.label}</span>
 					{item.badge ? <Count_badge value={item.badge} /> : null}
 				</>
@@ -516,10 +520,13 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
 	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
+	// Members, Notifications and Org settings are views of the org page (`?tab=`): only the one open is current.
+	const org_tab = view_org && location.pathname === `/orgs/${view_org.id}` ? (new URLSearchParams(location.search).get('tab') ?? 'members') : null;
 	const org_admin: Nav_item[] = view_org ? [
-		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, end: true },
+		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, active: org_tab === 'members' },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
-		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings },
+		{ to: `/orgs/${view_org.id}?tab=notifications`, label: 'Notifications', icon: Bell, active: org_tab === 'notifications' },
+		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings, active: org_tab !== null && org_tab !== 'members' && org_tab !== 'notifications' },
 	] : [];
 
 	function enter_admin() {
