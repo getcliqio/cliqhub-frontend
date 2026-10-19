@@ -156,9 +156,11 @@ function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
 	const team = as_string(row.team);
 	if (team) phase.team = team;
 
-	if (row.inputs && typeof row.inputs === 'object' && !Array.isArray(row.inputs)) {
+	// A team phase's values for its sub-team: `args` (the only key the daemon reads).
+	const sub_args = row.args && typeof row.args === 'object' && !Array.isArray(row.args) ? row.args : null;
+	if (sub_args) {
 		const inputs: Record<string, string> = {};
-		for (const [key, value] of Object.entries(row.inputs as Record<string, unknown>)) {
+		for (const [key, value] of Object.entries(sub_args as Record<string, unknown>)) {
 			if (typeof value === 'string') inputs[key] = value;
 		}
 		if (Object.keys(inputs).length > 0) phase.inputs = inputs;

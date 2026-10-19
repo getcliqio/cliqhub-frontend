@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { parse_team_yml_text } from '@/lib/team_yml_parse';
 import type { GeneratedTeam } from '@/lib/builder/store';
+import { build_team_yml } from '@/lib/team_export';
 
 const base_team: GeneratedTeam = {
 	name: 'demo',
@@ -98,3 +99,22 @@ describe('HUG gate review block (builder ↔ daemon)', () => {
 		expect(group.team?.phases[0]?.review?.reviewer).toBe('elan');
 	});
 });
+
+describe('a team phase passes values to its sub-team in `args`', () => {
+	const phase = (team: GeneratedTeam | undefined) => team?.phases.find((p) => p.name === 'sync');
+
+	it.each(['args'])('reads `%s`', (key) => {
+		const yaml = `name: x\ndescription: d\nphases:\n  - name: sync\n    type: team\n    team: "@m/git-sync"\n    ${key}:\n      mode: "ensure"\n      index: "false"\n`;
+		const { team, error } = parse_team_yml_text(yaml, base_team);
+		expect(error).toBeFalsy();
+		expect(phase(team)?.inputs).toEqual({ mode: 'ensure', index: 'false' });
+	});
+
+	it('writes `args` (the daemon reads nothing else)', () => {
+		const { team } = parse_team_yml_text('name: x\ndescription: d\nphases:\n  - name: sync\n    type: team\n    team: "@m/git-sync"\n    args:\n      mode: "ensure"\n', base_team);
+		const out = build_team_yml({ ...team!, agents: [] });
+		expect(out).toContain('    args:\n      mode: "ensure"');
+		expect(out).not.toMatch(/team_inputs:|^\s+inputs:\s*$/m);
+	});
+});
+

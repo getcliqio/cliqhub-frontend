@@ -115,8 +115,9 @@ function serialize_phase(lines: string[], p: ExportPhase, indent: string): void 
 		if (rev.remind_every) lines.push(`${indent}    remind_every: ${rev.remind_every}`);
 	}
 	if (p.team) lines.push(`${indent}  team: "${p.team}"`);
+	// A team phase's values for its sub-team go in `args` (the daemon reads nothing else).
 	if (p.inputs && Object.keys(p.inputs).length > 0) {
-		lines.push(`${indent}  inputs:`);
+		lines.push(`${indent}  args:`);
 		for (const [k, v] of Object.entries(p.inputs)) {
 			lines.push(`${indent}    ${k}: "${v}"`);
 		}
