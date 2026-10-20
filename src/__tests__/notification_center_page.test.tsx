@@ -237,6 +237,34 @@ describe('Notifications — channels', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/remove', body: { id: 'ch-off' } }));
 	});
 
+	it('the org lists every channel — its own and each realm\'s — with where it belongs; built-ins first; a switch on the rest', async () => {
+		const calls = route_fetch(() => {
+			const d = center();
+			d.channels = [...d.channels, { ...ch('ch-built', 'All org members'), system_key: 'org.in_app', locked: true, lock_reason: 'Built in' }];
+			return d;
+		});
+		render_panel(false, 'channels');
+		await screen.findByTestId('channel-ch-built');
+		const rows = screen.getAllByTestId(/^channel-/).map((r) => r.getAttribute('data-testid'));
+		expect(rows[0]).toBe('channel-ch-built');
+		expect(rows).toContain('channel-ch-prod');
+		expect(rows).not.toContain('channel-ch-mine');
+		expect(within(row('channel-ch-prod')).getByTestId('belongs-to')).toHaveTextContent('Realm · prod-us');
+		expect(within(row('channel-ch-eng')).getByTestId('belongs-to')).toHaveTextContent('Org');
+		expect(within(row('channel-ch-built')).queryByRole('switch')).toBeNull();
+		fireEvent.click(within(row('channel-ch-eng')).getByRole('switch', { name: '#eng-alerts on' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', enabled: false } }));
+		expect(screen.queryByText(/rules?\b/i)).toBeNull();
+	});
+
+	it('a realm lists its own and the org\'s: its own as This realm', async () => {
+		route_fetch();
+		render_panel(true, 'channels');
+		await screen.findByTestId('channel-ch-prod');
+		expect(within(row('channel-ch-prod')).getByTestId('belongs-to')).toHaveTextContent('This realm');
+		expect(within(row('channel-ch-eng')).getByTestId('belongs-to')).toHaveTextContent('Org');
+	});
+
 	it('maps destination drafts to Core shapes', () => {
 		expect(draft_to_destination({ type: 'email', value: ' a@b.c ' })).toEqual({ type: 'email', address: 'a@b.c' });
 		expect(draft_to_destination({ type: 'webhook', value: 'https://x' })).toEqual({ type: 'webhook', url: 'https://x' });

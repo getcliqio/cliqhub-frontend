@@ -29,6 +29,9 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Channel_picker } from '@/components/graphite/g_channel_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
 import { Built_in_messages, Channels_tab } from '@/pages/notification_center_page';
+import { Switch } from '@/components/graphite/g_switch';
+
+export { Switch };
 
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 const LINK = 'text-[12.5px] font-semibold text-[var(--g-acc)] hover:underline disabled:opacity-40 disabled:no-underline';
@@ -37,24 +40,6 @@ const ROW = 'grid grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_44px_92px] items-cent
 
 /** Which part of Notifications is shown. */
 export type Notif_view = 'events' | 'channels';
-
-/** An on/off switch; disabled shows it greyed, with why in `title`. */
-export function Switch({ on, on_change, label, disabled = false, title }: { on: boolean; on_change: (next: boolean) => void; label: string; disabled?: boolean; title?: string }) {
-	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={on}
-			aria-label={label}
-			title={title}
-			disabled={disabled}
-			onClick={() => on_change(!on)}
-			className={`relative inline-block h-[17px] w-[30px] shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${on ? 'bg-[var(--g-acc)]' : 'bg-[var(--g-line-strong)]'}`}
-		>
-			<i aria-hidden className={`absolute top-[2px] h-[13px] w-[13px] rounded-full transition-[left] ${on ? 'left-[15px] bg-white' : 'left-[2px] bg-[var(--g-ink-3)]'}`} />
-		</button>
-	);
-}
 
 /**
  * A channel an event goes to; struck through when it or the event's switch is off. `org` marks the
@@ -168,7 +153,8 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 				</>
 			) : scope ? (
 				<section aria-label="Channels" data-testid="notif-channels">
-					<Channels_tab data={{ ...d, channels }} scope={scope} reload={read.reload} />
+					{/* The org lists every channel in it — its own and each realm's; a realm, its own and the org's. */}
+					<Channels_tab data={{ ...d, channels: realm ? channels : d.channels.filter((c) => c.owner.kind !== 'personal' && c.owner.org_id === org_id) }} scope={scope} reload={read.reload} />
 				</section>
 			) : null}
 		</div>

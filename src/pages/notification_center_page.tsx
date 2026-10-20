@@ -23,6 +23,7 @@ import {
 	type Notification_center_data,
 } from '@/lib/notification_center';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
+import { Switch } from '@/components/graphite/g_switch';
 import { Realm_picker, type Picked_realm } from '@/components/graphite/g_realm_picker';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
@@ -146,7 +147,13 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 	const [creating, set_creating] = useState(false);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm_delete, set_confirm_delete] = useState(false);
-	const channels = data.channels.filter((c) => in_view_channel(c, scope));
+	// Built-in channels first (they're everyone's), then by name.
+	const channels = data.channels.filter((c) => in_view_channel(c, scope))
+		.sort((a, b) => Number(Boolean(b.system_key || b.locked)) - Number(Boolean(a.system_key || a.locked)) || a.name.localeCompare(b.name));
+	/** Where a channel belongs: the org, or which realm ("This realm" in that realm's own view). */
+	const belongs = (c: Notif_channel) => c.owner.kind === 'org' ? 'Org'
+		: c.owner.kind === 'personal' ? 'A person'
+			: scope.kind === 'realm' && c.owner.realm_id === scope.realm.id ? 'This realm' : `Realm · ${c.owner.realm_slug ?? 'unknown'}`;
 	const open = channels.find((c) => c.id === open_id) ?? null;
 	const used_by = open ? data.rules.filter((r) => r.channel_id === open.id) : [];
 
@@ -182,8 +189,10 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 							<thead>
 								<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 									<th className="px-4 py-2.5 font-semibold">Channel</th>
+									<th className="px-4 py-2.5 font-semibold">Belongs to</th>
 									<th className="px-4 py-2.5 font-semibold">Destinations</th>
-									<th className="px-4 py-2.5 font-semibold">Used by</th>
+									<th className="px-4 py-2.5 font-semibold">Gets</th>
+									<th className="px-4 py-2.5 font-semibold">On</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -197,12 +206,16 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 										<td className="px-4 py-2.5">
 											<button type="button" className="text-left font-semibold hover:underline" onClick={() => { set_open_id(c.id); set_msg(null); set_confirm_delete(false); }}>{c.name}</button>
 											{c.locked ? <span title={c.lock_reason ?? 'Built in'}><Lock aria-label="Built in" className="ml-1.5 inline h-3 w-3 text-[var(--g-ink-3)]" /></span> : null}
-											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span>}
-											{/* The page is the org's or one realm's; in a realm, the org's channels are marked. */}
-											{scope.kind === 'realm' && c.owner.kind === 'org' ? <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]" title="The org’s channel (managed in the org’s Notifications)">org</span> : null}
+											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">off</span>}
 										</td>
+										<td className="px-4 py-2.5 text-[var(--g-ink-2)]" data-testid="belongs-to">{belongs(c)}</td>
 										<td className="px-4 py-2.5"><Dest_icons destinations={c.destinations} /></td>
-										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} rule{c.rule_count === 1 ? '' : 's'}</td>
+										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} event{c.rule_count === 1 ? '' : 's'}</td>
+										<td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
+											{c.locked
+												? <span title={c.lock_reason ?? 'Built in — always on'}><Lock aria-label="Built in" className="h-3 w-3 text-[var(--g-ink-3)]" /></span>
+												: <Switch on={c.enabled} label={`${c.name} on`} disabled={!can_edit_channel(data, c)} on_change={(next) => void act('/v1/notification_channels/update', { id: c.id, enabled: next }, next ? `${c.name} is on.` : `${c.name} is off — nothing is sent to it.`)} />}
+										</td>
 									</tr>
 								))}
 							</tbody>
@@ -218,7 +231,7 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 							<h2 className="text-[16px] font-semibold">{open.name}</h2>
 							<button type="button" aria-label="Close details" onClick={() => set_open_id(null)} className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-4 w-4" /></button>
 						</div>
-						<p className="text-[12.5px] text-[var(--g-ink-3)]">{open.enabled ? 'Enabled' : 'Disabled'} · used by {open.rule_count} rule{open.rule_count === 1 ? '' : 's'}</p>
+						<p className="text-[12.5px] text-[var(--g-ink-3)]">{open.enabled ? 'On' : 'Off'} · {belongs(open)} · gets {open.rule_count} event{open.rule_count === 1 ? '' : 's'}</p>
 						<div>
 							<span className={LABEL}>Destinations</span>
 							<ul className="flex flex-col gap-1.5">
@@ -228,12 +241,12 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 							</ul>
 						</div>
 						<div>
-							<span className={LABEL}>Used by</span>
+							<span className={LABEL}>Gets</span>
 							{used_by.length ? (
 								<ul className="text-[12.5px] text-[var(--g-ink-2)]">
 									{used_by.map((r) => <li key={r.id}>{event_label(r.event)} · {scope_text(r.scope)}</li>)}
 								</ul>
-							) : <p className="text-[12.5px] text-[var(--g-ink-3)]">No rules use this channel yet.</p>}
+							) : <p className="text-[12.5px] text-[var(--g-ink-3)]">No events go here yet — add it to an event on the Events page.</p>}
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						{open.locked ? (
@@ -252,10 +265,10 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 								<button type="button" onClick={() => set_confirm_delete(true)} className={`${ROW_ACTION_CLS} text-[var(--g-bad)]`}>Delete…</button>
 							)}
 						</div>}
-						{confirm_delete && open.rule_count > 0 ? <p className="text-[12px] text-[var(--g-warn-text)]">{open.rule_count} rule{open.rule_count === 1 ? '' : 's'} send to this channel and will stop delivering.</p> : null}
+						{confirm_delete && open.rule_count > 0 ? <p className="text-[12px] text-[var(--g-warn-text)]">{open.rule_count} event{open.rule_count === 1 ? '' : 's'} go to this channel; they stop going here.</p> : null}
 					</div>
 				) : (
-					<p className="text-[12.5px] text-[var(--g-ink-3)]">Select a channel to see its destinations, which rules use it, and to send a test.</p>
+					<p className="text-[12.5px] text-[var(--g-ink-3)]">Select a channel to see its destinations, which events go to it, and to send a test.</p>
 				)}
 			</aside>
 
