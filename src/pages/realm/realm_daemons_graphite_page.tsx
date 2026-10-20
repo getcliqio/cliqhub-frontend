@@ -168,7 +168,7 @@ export function Component() {
 						{data?.truncated ? <p className="text-[12px] text-[var(--g-ink-3)]">Showing the first {data.items.length} daemons.</p> : null}
 						<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-3.5 text-[12.5px] text-[var(--g-ink-2)]">
 							<b className="text-[13px] font-semibold text-[var(--g-ink)]">Add a machine</b>
-							<p className="mt-1">Install the CLI and run <code className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5">cliq login</code> then <code className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5">cliqd</code>. To enroll a server into this realm without logging in, create a daemon token in <Link to={`${base}/settings?section=tokens`} className="text-[var(--g-acc)] hover:underline">Settings › Access tokens</Link>. Runs go to an online daemon that has the team ready.</p>
+							<p className="mt-1">Install the CLI and run <code className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5">cliq login</code> then <code className="g-mono rounded bg-[var(--g-soft)] px-1.5 py-0.5">cliqd</code>. To enroll a server into this realm without logging in, create a daemon token in <Link to={`${base}/settings?section=tokens`} className="text-[var(--g-acc)] hover:underline">Settings › Security</Link>. Runs go to an online daemon that has the team ready.</p>
 						</div>
 					</>
 				)}

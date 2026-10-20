@@ -69,7 +69,7 @@ describe('Shell nav', () => {
 		fireEvent.click(within(footer).getByTestId('account-button'));
 		const menu = within(footer).getByRole('menu', { name: 'Account' });
 		const items = within(menu).getAllByRole('menuitem').map((m) => m.textContent ?? '');
-		expect(items).toEqual(expect.arrayContaining(['Profile & security', 'API tokens', 'All settings', 'Sign out']));
+		expect(items).toEqual(expect.arrayContaining(['Profile', 'Security', 'All settings', 'Sign out']));
 		expect(items.some((t) => /My notifications/.test(t))).toBe(false);
 		expect(within(menu).queryByRole('radiogroup', { name: 'Theme' })).toBeNull();
 	});

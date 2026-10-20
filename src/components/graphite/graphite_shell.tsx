@@ -334,9 +334,9 @@ function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolea
 	);
 }
 
-/** Where notifications are set for the view: the realm's Settings › Notifications, else the org's (`/notifications` picks one). */
+/** Where notifications are set for the view: the realm's Notifications, else the org's (`/notifications` picks one). */
 function notifications_path(scope: View_scope): string {
-	if (scope.kind === 'realm') return `/o/${encodeURIComponent(scope.realm.org_slug)}/realms/${encodeURIComponent(scope.realm.slug)}/settings?section=notifications`;
+	if (scope.kind === 'realm') return `/o/${encodeURIComponent(scope.realm.org_slug)}/realms/${encodeURIComponent(scope.realm.slug)}/notifications`;
 	if (scope.kind === 'org') return `/orgs/${encodeURIComponent(scope.org.id)}?tab=notifications`;
 	return '/notifications';
 }
@@ -512,7 +512,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const hugs_waiting = view_org ? view_org.counts.needs_you : 0;
 	// One flat list of resources, the same for everyone; org admins get one extra group.
 	// The inbox lives behind the bell (top right); problems also surface on the Dashboard.
-	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs. Notifications live in Org settings and each realm's Settings.
+	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs. Notifications: the org's (below) and each realm's own section.
 	const nav: Nav_item[] = [
 		{ to: view_href('/home', scope, multi_org), label: 'Dashboard', icon: LayoutDashboard, end: true },
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
@@ -723,8 +723,8 @@ function Account_menu({ on_close, user, is_site_admin, progress, on_admin, on_si
 				<span className="block truncate text-[11.5px] text-[var(--g-ink-3)]">@{user?.username}{is_site_admin ? ' · site admin' : ''}</span>
 			</div>
 			<div className="mb-1 border-t border-[var(--g-line)]" />
-			<Link role="menuitem" to="/settings?tab=profile" onClick={on_close} className={item}><UserRound aria-hidden className="h-4 w-4 opacity-70" />Profile &amp; security</Link>
-			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />API tokens</Link>
+			<Link role="menuitem" to="/settings?tab=profile" onClick={on_close} className={item}><UserRound aria-hidden className="h-4 w-4 opacity-70" />Profile</Link>
+			<Link role="menuitem" to="/settings?tab=tokens" onClick={on_close} className={item}><KeyRound aria-hidden className="h-4 w-4 opacity-70" />Security</Link>
 			<Link role="menuitem" to="/settings" onClick={on_close} className={item}><Settings aria-hidden className="h-4 w-4 opacity-70" />All settings</Link>
 			<div className="my-1 border-t border-[var(--g-line)]" />
 			<Link role="menuitem" to="/getting-started" onClick={on_close} className={item}>

@@ -23,7 +23,7 @@ import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 type Tab = 'profile' | 'password' | 'tokens' | 'scopes';
-const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Access tokens', 'Account'], ['scopes', 'My scopes', 'Publishing']];
+const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Security', 'Account'], ['scopes', 'My scopes', 'Publishing']];
 /** Where the old /settings tabs went. */
 export const LEGACY_SETTINGS_TAB: Record<string, string> = {
 	security: '/settings?tab=password',

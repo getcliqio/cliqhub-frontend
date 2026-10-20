@@ -46,8 +46,10 @@ function Legacy_live_redirect() {
 /** Old realm settings / channels URLs → `…/settings?section=` (notifications included). */
 function Realm_settings_redirect({ to }: { to: 'members' | 'tokens' | 'a2a' | 'danger' | 'notifications' }) {
   const { org = '', slug = '' } = useParams();
+  const base = `/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}`;
+  if (to === 'notifications') return <Navigate to={`${base}/notifications`} replace />;
   const q = to === 'members' ? '' : `?section=${to}`;
-  return <Navigate to={`/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/settings${q}`} replace />;
+  return <Navigate to={`${base}/settings${q}`} replace />;
 }
 
 function Draft_redirect() {
@@ -180,8 +182,13 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/realm/realm_daemons_graphite_page')),
           },
           {
-            // Realm settings: general, members, access tokens, danger zone (?section=).
+            // Realm settings: general, members, security (tokens), A2A, danger zone (?section=).
             path: 'o/:org/realms/:slug/settings',
+            lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
+          },
+          {
+            // Realm › Notifications: its own section of the realm (same page, notifications panel).
+            path: 'o/:org/realms/:slug/notifications',
             lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
           },
           {
@@ -285,7 +292,6 @@ export const router = createBrowserRouter([
               },
               // Old realm settings URLs → the Graphite settings page (or Notifications).
               { path: 'channels', element: <Realm_settings_redirect to="notifications" /> },
-              { path: 'notifications', element: <Realm_settings_redirect to="notifications" /> },
               { path: 'settings/security', element: <Realm_settings_redirect to="members" /> },
               { path: 'settings/security/members', element: <Realm_settings_redirect to="members" /> },
               { path: 'settings/security/tokens', element: <Realm_settings_redirect to="tokens" /> },

@@ -109,8 +109,8 @@ describe('/notifications (the old Events page) redirects to where notifications 
 	it.each([
 		['/notifications', `/orgs/${ORG_A}?tab=notifications`],
 		['/notifications?org=acme-labs', /^\/orgs\/[^?]+\?tab=notifications$/],
-		['/notifications?realm=r-prod', '/o/measureone/realms/prod-us/settings?section=notifications'],
-		['/notifications?org=measureone&realm=prod-us&channel=ch-1', '/o/measureone/realms/prod-us/settings?section=notifications&channel=ch-1'],
+		['/notifications?realm=r-prod', '/o/measureone/realms/prod-us/notifications'],
+		['/notifications?org=measureone&realm=prod-us&channel=ch-1', '/o/measureone/realms/prod-us/notifications?channel=ch-1'],
 	])('%s', async (from, to) => {
 		route_fetch();
 		render(

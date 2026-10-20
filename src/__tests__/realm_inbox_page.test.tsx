@@ -103,11 +103,11 @@ describe('Realm layout', () => {
 		expect(screen.getByText('page')).toBeInTheDocument();
 	});
 
-	it('left nav, in order: Teams, Runs, Daemons, Settings — signals, never counts', async () => {
+	it('left nav, in order: Teams, Runs, Daemons, Agents, Notifications, Settings — signals, never counts', async () => {
 		route_fetch(inbox());
 		render_layout();
 		await screen.findByRole('heading', { name: 'Prod US' });
-		expect(within(nav()).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-daemons', 'go-settings']);
+		expect(within(nav()).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-daemons', 'go-agents', 'go-notifications', 'go-settings']);
 		// A team is missing agent config; a run needs you / failed; daemons are online.
 		expect(within(screen.getByTestId('go-teams')).getByTestId('nav-attention')).toHaveAccessibleName('1 team is missing agent config');
 		expect(within(screen.getByTestId('go-runs')).getByTestId('nav-attention')).toHaveAccessibleName('2 need you · 1 failed in the last 24h');
@@ -158,10 +158,11 @@ describe('Realm layout', () => {
 		route_fetch(inbox());
 		const slug = render_layout('/o/measureone/realms/prod-us/settings?section=a2a');
 		await screen.findByRole('heading', { name: 'Prod US' });
-		expect(within(nav()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Teams!', 'Runs!', 'Daemons', 'Settings', 'Members', 'Access tokens', 'A2A', 'Agents', 'Notifications', 'General', 'Danger zone']);
+		expect(within(nav()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Teams!', 'Runs!', 'Daemons', 'Agents!', 'Notifications', 'Settings', 'Members', 'Security', 'A2A', 'General', 'Danger zone']);
 		expect(screen.getByTestId('settings-a2a')).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByTestId('settings-members')).toHaveAttribute('href', `/o/measureone/realms/${slug}/settings`);
-		expect(screen.getByTestId('settings-agents')).toHaveAttribute('href', `/o/measureone/realms/${slug}/agents`);
+		expect(screen.getByTestId('go-agents')).toHaveAttribute('href', `/o/measureone/realms/${slug}/agents`);
+		expect(screen.getByTestId('go-notifications')).toHaveAttribute('href', `/o/measureone/realms/${slug}/notifications`);
 	});
 
 	it('Edit realm opens the Realm details side panel: name and description saved together in one realms/update', async () => {

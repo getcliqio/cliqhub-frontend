@@ -364,7 +364,7 @@ describe('Breadcrumb, account menu', () => {
 		expect(await within(menu).findByLabelText('2 of 4 done')).toHaveTextContent('2 / 4');
 		expect(within(menu).getByRole('menuitem', { name: /Getting started/ })).toHaveAttribute('href', '/getting-started');
 		expect(within(menu).getByRole('menuitem', { name: /Docs/ })).toHaveAttribute('target', '_blank');
-		expect(within(menu).getByRole('menuitem', { name: 'API tokens' })).toHaveAttribute('href', '/settings?tab=tokens');
+		expect(within(menu).getByRole('menuitem', { name: 'Security' })).toHaveAttribute('href', '/settings?tab=tokens');
 		fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
 		expect(auth.logout).toHaveBeenCalled();
 	});

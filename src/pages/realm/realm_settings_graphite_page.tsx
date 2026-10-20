@@ -3,11 +3,11 @@
  * (BFF: realm, members, pending invites, access tokens). Every write is one
  * existing route: realms/update, realms/add_member (role changes only),
  * realms/remove_member, invitations/create (adding anyone), invitations/revoke, auth/generate_token,
- * auth/revoke_token, realms/delete. Notifications (?section=notifications) is the shared
+ * auth/revoke_token, realms/delete. Notifications (the realm's …/notifications section) is the shared
  * Notifications_panel for this realm; Agents is its own page.
  */
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Check, Copy, Lock, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time } from '@/lib/overview';
@@ -325,8 +325,11 @@ export function Component() {
 	const overview = use_overview();
 	const post = use_post();
 	const [search] = useSearchParams();
+	const { pathname } = useLocation();
 	const raw = search.get('section');
-	const section: Settings_section = raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'notifications' || raw === 'danger' ? raw : 'members';
+	// Notifications is its own realm section (…/notifications); the old ?section= link goes there.
+	const at_notifications = pathname.endsWith('/notifications');
+	const section: Settings_section = at_notifications ? 'notifications' : raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'danger' ? raw : 'members';
 	const read = use_bff_read<Realm_settings_data>('/v1/realm_settings/get', org && slug ? { org_slug: org, slug } : null, { fallback_error: 'Could not load settings.' });
 	const data = read.data;
 	const realm_id = data?.realm.id ?? null;
@@ -335,11 +338,15 @@ export function Component() {
 	// Realm admins, org owners/admins and site admins can change settings (Core enforces on write).
 	const admin = Boolean(data?.you.is_admin || org_role === 'owner' || org_role === 'admin');
 
+	if (raw === 'notifications' && !at_notifications) {
+		return <Navigate to={`/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/notifications`} replace />;
+	}
+
 	return (
 		<Graphite_shell
 			data={overview.data}
 			current_realm_id={realm_id}
-			title="Settings"
+			title={at_notifications ? 'Notifications' : 'Settings'}
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
 			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>

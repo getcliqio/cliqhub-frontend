@@ -293,7 +293,7 @@ describe('Realm › Agents', () => {
 		fireEvent.click(screen.getByRole('button', { name: /All agents/ }));
 		expect(await screen.findByTestId('ragent-exec')).toBeInTheDocument();
 		// Agents is one of Settings' parts in the realm's left nav.
-		expect(screen.getByTestId('settings-agents')).toHaveAttribute('aria-current', 'page');
+		expect(screen.getByTestId('go-agents')).toHaveAttribute('aria-current', 'page');
 	});
 
 	it('agent in realm: a key it hasn\'t set shows the org\'s value with Replace; emptying its own value removes it', async () => {

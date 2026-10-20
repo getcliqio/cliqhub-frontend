@@ -91,15 +91,15 @@ function Details_panel({ realm_id, name, description, on_close, on_saved }: { re
 /** Last summary per realm, so the header doesn't flash empty between realm pages. */
 const LAST = new Map<string, Realm_inbox_data>();
 
-type Section = 'teams' | 'runs' | 'daemons' | 'settings';
+type Section = 'teams' | 'runs' | 'daemons' | 'agents' | 'notifications' | 'settings';
 /** Which section a realm path belongs to. */
 const SECTION_OF: Record<string, Section> = {
-	teams: 'teams', runs: 'runs', settings: 'settings', agents: 'settings', daemons: 'daemons', workspaces: 'daemons',
+	teams: 'teams', runs: 'runs', settings: 'settings', agents: 'agents', notifications: 'notifications', daemons: 'daemons', workspaces: 'daemons',
 };
 /** Settings' parts, listed under Settings while you're in it. */
 const SETTINGS_PARTS: Array<{ id: string; label: string }> = [
-	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Access tokens' }, { id: 'a2a', label: 'A2A' },
-	{ id: 'agents', label: 'Agents' }, { id: 'notifications', label: 'Notifications' }, { id: 'general', label: 'General' }, { id: 'danger', label: 'Danger zone' },
+	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Security' }, { id: 'a2a', label: 'A2A' },
+	{ id: 'general', label: 'General' }, { id: 'danger', label: 'Danger zone' },
 ];
 
 function Attention({ count, title }: { count: boolean; title: string }) {
@@ -131,7 +131,7 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const sub = pathname.startsWith(`${base}/`) ? pathname.slice(base.length + 1).split('/')[0] : '';
 	const current: Section | null = SECTION_OF[sub] ?? null;
 	const at_list = Boolean(current) && !item;
-	const settings_part = sub === 'agents' ? 'agents' : (new URLSearchParams(search).get('section') ?? 'members');
+	const settings_part = new URLSearchParams(search).get('section') ?? 'members';
 	// Right after New realm: what was set up and the enrollment token — shown once.
 	const created = (location.state as Realm_created_state | null)?.created ?? null;
 	const dismiss_created = () => navigate(`${pathname}${search}`, { replace: true, state: null });
@@ -176,10 +176,12 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 					{nested('runs')}
 					<Link to={`${base}/daemons`} aria-current={current === 'daemons' && !item ? 'page' : undefined} className={link(current === 'daemons' && !item)} data-testid="go-daemons">Daemons{online === null ? null : online > 0 ? <Dot tone="ok" title={`${online} online`} /> : <Dot tone="off" title="No daemon online" />}</Link>
 					{nested('daemons')}
+					<Link to={`${base}/agents`} aria-current={current === 'agents' && !item ? 'page' : undefined} className={link(current === 'agents' && !item)} data-testid="go-agents">Agents<Attention count={missing > 0} title={`${missing} team${missing === 1 ? ' is' : 's are'} missing agent config`} /></Link>
+					<Link to={`${base}/notifications`} aria-current={current === 'notifications' ? 'page' : undefined} className={link(current === 'notifications')} data-testid="go-notifications">Notifications</Link>
 					{/* In Settings, the part you're on is the one marked (they're listed below). */}
 					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
 					{current === 'settings' ? SETTINGS_PARTS.map((p) => {
-						const to = p.id === 'agents' ? `${base}/agents` : `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
+						const to = `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
 						const on = settings_part === p.id;
 						return <Link key={p.id} to={to} aria-current={on ? 'page' : undefined} className={`${link(on, true)} ${p.id === 'danger' ? 'text-[var(--g-bad)]' : ''}`} data-testid={`settings-${p.id}`}>{p.label}</Link>;
 					}) : null}
@@ -197,7 +199,7 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 							))}
 							{created.token ? (
 								<Secret_reveal title={`Enrollment token ${created.token_name ?? ''}`.trim()} secret={created.token} env_name="CLIQ_DAEMON_TOKEN"
-									note={`Set CLIQ_DAEMON_TOKEN on the machine that runs cliqd; it joins ${created.qualified_slug}. Make more tokens from the realm’s Access tokens.`} on_done={dismiss_created} />
+									note={`Set CLIQ_DAEMON_TOKEN on the machine that runs cliqd; it joins ${created.qualified_slug}. Make more tokens in the realm’s Settings › Security.`} on_done={dismiss_created} />
 							) : <button type="button" onClick={dismiss_created} className={`${ROW_ACTION_CLS} w-fit`}>Dismiss</button>}
 						</div>
 					) : null}

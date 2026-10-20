@@ -186,7 +186,7 @@ export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close
 		</div>,
 		// Enrollment
 		<div key="e" className="flex flex-col gap-3">
-			<p className="text-[12.5px] text-[var(--g-ink-3)]">A daemon joins the realm with an enrollment token. It’s made with the realm and shown once, right after. You can revoke it, or make more, from the realm’s Access tokens.</p>
+			<p className="text-[12.5px] text-[var(--g-ink-3)]">A daemon joins the realm with an enrollment token. It’s made with the realm and shown once, right after. You can revoke it, or make more, from the realm’s Settings › Security.</p>
 			<label><span className={LABEL}>Token name</span><input aria-label="Token name" value={eff_token} onChange={(e) => { set_token_touched(true); set_token_name(e.target.value); set_err(null); }} className={`${G_INPUT} g-mono w-full`} /></label>
 		</div>,
 		// Review

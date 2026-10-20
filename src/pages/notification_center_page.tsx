@@ -398,7 +398,7 @@ export function Component() {
 	const realms = data.orgs.flatMap((o) => o.realms);
 	const realm = realm_param ? realms.find((r) => r.id === realm_param) ?? realms.find((r) => r.slug === realm_param && (!org_param || r.org_slug === org_param)) : undefined;
 	const keep = params.get('channel') ? `&channel=${encodeURIComponent(params.get('channel')!)}` : '';
-	if (realm) return <Navigate to={`/o/${encodeURIComponent(realm.org_slug)}/realms/${encodeURIComponent(realm.slug)}/settings?section=notifications${keep}`} replace />;
+	if (realm) return <Navigate to={`/o/${encodeURIComponent(realm.org_slug)}/realms/${encodeURIComponent(realm.slug)}/notifications${keep.replace(/^&/, '?')}`} replace />;
 	const org = (org_param ? data.orgs.find((o) => o.slug === org_param || o.id === org_param) : undefined) ?? data.orgs.find((o) => o.role === 'owner' || o.role === 'admin') ?? data.orgs[0];
 	if (!org) return <Navigate to="/home" replace />;
 	return <Navigate to={`/orgs/${encodeURIComponent(org.id)}?tab=notifications${keep}`} replace />;

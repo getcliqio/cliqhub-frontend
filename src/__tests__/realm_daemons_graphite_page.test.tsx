@@ -58,7 +58,7 @@ describe('Realm daemons page', () => {
 		expect(within(mbp).getByText('3/3')).toBeInTheDocument();
 		expect(within(screen.getByTestId('daemon-d-gpu')).getByText('1/3')).toBeInTheDocument();
 		expect(screen.getByRole('button', { name: /Stale\s*1/ })).toBeInTheDocument();
-		expect(screen.getByRole('link', { name: 'Settings › Access tokens' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings?section=tokens');
+		expect(screen.getByRole('link', { name: 'Settings › Security' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/settings?section=tokens');
 		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Daemons/ })).toHaveAttribute('aria-current', 'page');
 	});
 
