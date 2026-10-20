@@ -27,9 +27,11 @@ interface Props {
     placeholder?: string;
     /** Additional CSS class on the outermost wrapper. */
     class_name?: string;
+    /** The run's realm: its own channels are listed too (the channels that realm can use). */
+    realm_id?: string;
 }
 
-export function ChannelUserPicker({ selected, on_change, placeholder, class_name }: Props) {
+export function ChannelUserPicker({ selected, on_change, placeholder, class_name, realm_id }: Props) {
     const auth_fetch = useOrgFetch();
     const { current_id } = useOrg();
     const [query, set_query] = useState('');
@@ -50,7 +52,7 @@ export function ChannelUserPicker({ selected, on_change, placeholder, class_name
                 try {
                     const res = await auth_fetch('/v1/orgs/get_reviewable_targets', {
                         method: 'POST',
-                        body: JSON.stringify({ query: search, org_id: current_id ?? undefined }),
+                        body: JSON.stringify({ query: search, org_id: current_id ?? undefined, ...(realm_id ? { realm_id } : {}) }),
                     });
                     const data = await res.json();
                     if (!data.ok) {
@@ -80,7 +82,7 @@ export function ChannelUserPicker({ selected, on_change, placeholder, class_name
                 }
             }, 200);
         },
-        [auth_fetch, current_id],
+        [auth_fetch, current_id, realm_id],
     );
 
     /** Load initial list on first open. */

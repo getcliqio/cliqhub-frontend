@@ -9,7 +9,7 @@
  *   • no prefill = blank fields (original behaviour intact)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 const auth_fetch = vi.fn();
@@ -26,7 +26,7 @@ vi.mock('@/lib/org_context', () => ({
 
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 
-function stub_team_inputs(spec: Array<{ name: string; required?: boolean; description?: string }>) {
+function stub_team_inputs(spec: Array<{ name: string; required?: boolean; description?: string; type?: string }>) {
     // Response shape matches /v1/teams/get_by_id — the dialog reads
     // `data.data.inputs` first, falling back to `data.inputs`.
     return {
@@ -163,5 +163,28 @@ describe('Run_in_realm_dialog — prefill_from', () => {
 
         await waitFor(() => screen.getByText(/team inputs/i));
         expect(screen.queryByTestId('prefill-source-hint')).toBeNull();
+    });
+});
+
+describe('Run_in_realm_dialog — channel inputs (PLAN-notifications-v2 B4.2)', () => {
+    beforeEach(() => {
+        auth_fetch.mockReset();
+    });
+
+    it('the channel picker lists the channels the run\'s realm can use (sends the realm)', async () => {
+        auth_fetch.mockImplementation(async (url: string) => ({
+            json: async () => (url === '/v1/orgs/get_reviewable_targets'
+                ? { ok: true, data: { users: [], channels: [{ id: 'c1', name: 'ops' }] } }
+                : stub_team_inputs([{ name: 'reviewers', type: 'channel', required: true }])),
+        }));
+        render_dialog();
+        const picker = await screen.findByPlaceholderText('Search channels…');
+        fireEvent.focus(picker);
+        await waitFor(() => {
+            const call = auth_fetch.mock.calls.find((c) => c[0] === '/v1/orgs/get_reviewable_targets');
+            expect(call).toBeTruthy();
+            expect(JSON.parse(call![1].body)).toMatchObject({ org_id: 'org-acme', realm_id: 'realm-1' });
+        });
+        expect(await screen.findByText('ops')).toBeTruthy();
     });
 });

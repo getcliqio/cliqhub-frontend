@@ -510,8 +510,9 @@ export function Run_in_realm_dialog({
 																...prev,
 																[spec.name]: next.join(','),
 															}))}
-															placeholder="Search users or channels…"
+															placeholder="Search channels…"
 															class_name="mt-1"
+															realm_id={selected_realm?.id}
 														/>
 													</div>
 												);
