@@ -36,7 +36,7 @@ import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 /** `org_page/get`: `invites` is null when the caller may not see them; `permissions` is null when the catalogue could not be read. */
 interface Org_page_data { org: Org_detail; invites: Invite_row[] | null; permissions: { all: string[]; owner_only: string[] } | null; partial: boolean }
 
-type Tab = 'members' | 'roles' | 'scopes' | 'integrations' | 'a2a' | 'notifications' | 'settings';
+type Tab = 'members' | 'roles' | 'scopes' | 'integrations' | 'a2a' | 'events' | 'channels' | 'settings';
 const JIRA_ON = import.meta.env.VITE_ENABLE_JIRA_INTEGRATION === 'true';
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
 type Msg = { tone: 'ok' | 'bad'; text: string } | null;
@@ -448,16 +448,18 @@ export function Component() {
 	const d = read.data;
 	// Org settings' tabs. Members and Notifications are their own views (sidebar), not tabs here.
 	const tabs: Array<[Tab, string]> = [['settings', 'General'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A']];
-	const raw_tab = sp.get('tab');
-	const tab = (raw_tab === 'notifications' || tabs.some(([k]) => k === raw_tab) ? raw_tab : 'members') as Tab;
-	const in_settings = tab !== 'members' && tab !== 'notifications';
+	// Notifications is Events and Channels (sidebar); the old ?tab=notifications is Events.
+	const raw_tab = sp.get('tab') === 'notifications' ? 'events' : sp.get('tab');
+	const tab = (raw_tab === 'events' || raw_tab === 'channels' || tabs.some(([k]) => k === raw_tab) ? raw_tab : 'members') as Tab;
+	const in_notifications = tab === 'events' || tab === 'channels';
+	const in_settings = tab !== 'members' && !in_notifications;
 	const my_role = d?.org.my_role ?? '';
 	const can_manage = my_role === 'owner' || my_role === 'admin' || my_role === 'site_admin' || user?.role === 'admin';
 	const can_invite_owner = my_role === 'owner' || my_role === 'site_admin' || user?.role === 'admin';
 	const member_count = d ? d.org.members.filter((m) => m.status === 'active').length : 0;
 	const reload = async () => { await read.reload(); };
 	return (
-		<Graphite_shell data={overview.data} title={tab === 'members' ? 'Members' : tab === 'notifications' ? 'Notifications' : 'Org settings'}>
+		<Graphite_shell data={overview.data} title={tab === 'members' ? 'Members' : tab === 'events' ? 'Events' : tab === 'channels' ? 'Channels' : 'Org settings'}>
 			<div className="flex flex-col gap-4 px-7 py-6">
 				{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="organization" /> : null}
 				{!d && read.status !== 'error' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : null}
@@ -483,7 +485,7 @@ export function Component() {
 						{tab === 'scopes' ? <Scopes data={d} can_manage={can_manage} reload={reload} /> : null}
 						{tab === 'integrations' ? <Integrations /> : null}
 						{tab === 'a2a' ? <Org_mesh_panel org_id={d.org.id} can_edit={can_manage} /> : null}
-						{tab === 'notifications' ? <Notifications_panel org_id={d.org.id} realm={null} /> : null}
+						{in_notifications ? <Notifications_panel org_id={d.org.id} realm={null} view={tab === 'channels' ? 'channels' : 'events'} /> : null}
 						{tab === 'settings' ? <Settings data={d} can_manage={can_manage} reload={reload} /> : null}
 					</>
 				) : null}

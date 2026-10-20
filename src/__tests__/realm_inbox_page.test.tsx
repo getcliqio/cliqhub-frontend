@@ -162,7 +162,7 @@ describe('Realm layout', () => {
 		expect(screen.getByTestId('settings-a2a')).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByTestId('settings-members')).toHaveAttribute('href', `/o/measureone/realms/${slug}/settings`);
 		expect(screen.getByTestId('go-agents')).toHaveAttribute('href', `/o/measureone/realms/${slug}/agents`);
-		expect(screen.getByTestId('go-notifications')).toHaveAttribute('href', `/o/measureone/realms/${slug}/notifications`);
+		expect(screen.getByTestId('go-notifications')).toHaveAttribute('href', `/o/measureone/realms/${slug}/notifications/events`);
 	});
 
 	it('Edit realm opens the Realm details side panel: name and description saved together in one realms/update', async () => {

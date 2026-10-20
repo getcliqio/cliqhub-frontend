@@ -362,9 +362,9 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 /* ------------------------------------------------------------------ */
 
 /**
- * `/notifications` — the old Events page. Notifications now live where they apply: a realm's under
- * its Settings › Notifications, the org's under Org settings › Notifications. Old links
- * (`?org=`, `?realm=` id or slug, `?channel=`) land there.
+ * `/notifications` — the old Events page. Notifications now live where they apply — Events and Channels,
+ * a realm's under its Notifications, the org's under the org's Notifications. Old links (`?org=`,
+ * `?realm=` id or slug) land on Events; with `?channel=`, on Channels.
  */
 export function Component() {
 	const overview = use_overview();
@@ -376,8 +376,9 @@ export function Component() {
 	const realms = data.orgs.flatMap((o) => o.realms);
 	const realm = realm_param ? realms.find((r) => r.id === realm_param) ?? realms.find((r) => r.slug === realm_param && (!org_param || r.org_slug === org_param)) : undefined;
 	const keep = params.get('channel') ? `&channel=${encodeURIComponent(params.get('channel')!)}` : '';
-	if (realm) return <Navigate to={`/o/${encodeURIComponent(realm.org_slug)}/realms/${encodeURIComponent(realm.slug)}/notifications${keep.replace(/^&/, '?')}`} replace />;
+	const part = keep ? 'channels' : 'events';
+	if (realm) return <Navigate to={`/o/${encodeURIComponent(realm.org_slug)}/realms/${encodeURIComponent(realm.slug)}/notifications/${part}${keep.replace(/^&/, '?')}`} replace />;
 	const org = (org_param ? data.orgs.find((o) => o.slug === org_param || o.id === org_param) : undefined) ?? data.orgs.find((o) => o.role === 'owner' || o.role === 'admin') ?? data.orgs[0];
 	if (!org) return <Navigate to="/home" replace />;
-	return <Navigate to={`/orgs/${encodeURIComponent(org.id)}?tab=notifications${keep}`} replace />;
+	return <Navigate to={`/orgs/${encodeURIComponent(org.id)}?tab=${part}${keep}`} replace />;
 }

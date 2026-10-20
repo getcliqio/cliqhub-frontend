@@ -187,8 +187,17 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
           },
           {
-            // Realm › Notifications: its own section of the realm (same page, notifications panel).
+            // Realm › Notifications: its own section of the realm (same page, notifications panel) —
+            // Events and Channels; the bare path goes to Events.
             path: 'o/:org/realms/:slug/notifications',
+            lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
+          },
+          {
+            path: 'o/:org/realms/:slug/notifications/events',
+            lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
+          },
+          {
+            path: 'o/:org/realms/:slug/notifications/channels',
             lazy: lazy_route(() => import('@/pages/realm/realm_settings_graphite_page')),
           },
           {

@@ -97,6 +97,8 @@ type Section = 'teams' | 'runs' | 'daemons' | 'agents' | 'notifications' | 'sett
 const SECTION_OF: Record<string, Section> = {
 	teams: 'teams', runs: 'runs', settings: 'settings', agents: 'agents', notifications: 'notifications', daemons: 'daemons', workspaces: 'daemons',
 };
+/** Notifications' parts, listed under Notifications while you're in it. */
+const NOTIF_PARTS: Array<{ id: string; label: string }> = [{ id: 'events', label: 'Events' }, { id: 'channels', label: 'Channels' }];
 /** Settings' parts, listed under Settings while you're in it. */
 const SETTINGS_PARTS: Array<{ id: string; label: string }> = [
 	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Security' }, { id: 'a2a', label: 'A2A' },
@@ -179,7 +181,12 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 					<Link to={`${base}/daemons`} aria-current={current === 'daemons' && !item ? 'page' : undefined} className={link(current === 'daemons' && !item)} data-testid="go-daemons">Daemons{online === null ? null : online > 0 ? <Dot tone="ok" title={`${online} online`} /> : <Dot tone="off" title="No daemon online" />}</Link>
 					{nested('daemons')}
 					<Link to={`${base}/agents`} aria-current={current === 'agents' && !item ? 'page' : undefined} className={link(current === 'agents' && !item)} data-testid="go-agents">Agents<Attention count={missing > 0} title={`${missing} team${missing === 1 ? ' is' : 's are'} missing agent config`} /></Link>
-					<Link to={`${base}/notifications`} aria-current={current === 'notifications' ? 'page' : undefined} className={link(current === 'notifications')} data-testid="go-notifications">Notifications</Link>
+					<Link to={`${base}/notifications/events`} className={link(false)} data-testid="go-notifications">Notifications</Link>
+					{/* Notifications' parts — Events and Channels — listed under it while you're in it. */}
+					{current === 'notifications' ? NOTIF_PARTS.map((p) => {
+						const on = pathname === `${base}/notifications/${p.id}`;
+						return <Link key={p.id} to={`${base}/notifications/${p.id}`} aria-current={on ? 'page' : undefined} className={link(on, true)} data-testid={`notifications-${p.id}`}>{p.label}</Link>;
+					}) : null}
 					{/* In Settings, the part you're on is the one marked (they're listed below). */}
 					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
 					{current === 'settings' ? SETTINGS_PARTS.filter((p) => p.id !== 'danger' || !(d && is_personal_default_realm({ id: d.realm.id, slug, org_slug }, { username: user?.username, default_realm_id }))).map((p) => {

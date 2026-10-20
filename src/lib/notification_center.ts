@@ -77,6 +77,27 @@ export interface Notif_realm_event {
 	realm: Notif_event_rule[];
 }
 
+/** One event on the Events page: every event, whether or not a channel gets it. */
+export interface Notif_event_row {
+	event: string;
+	/** Some rule that reaches it is on, and its channel is on. */
+	sent: boolean;
+	/** CliqHub fixes it (a locked rule, e.g. Unknown channel → All realm members). */
+	fixed: boolean;
+	/** A built-in rule reaches it. */
+	built_in: boolean;
+	/** The org's rules that reach it (exact, or a wildcard such as `run.*`). */
+	org: Notif_event_rule[];
+	/** In a realm, the realm's own rules that reach it. */
+	realm: Notif_event_rule[];
+}
+
+/** Events of one family (`run`, `phase`, …), in catalog order. */
+export interface Notif_event_group {
+	family: string;
+	events: Notif_event_row[];
+}
+
 export interface Notification_center_data {
 	/** `can_edit`: org-wide rules (owners and site admins); `can_edit_channels`: org channels. */
 	orgs: Array<{ id: string; slug: string; display_name: string; role: string; status: 'ok' | 'error'; error: string | null; can_edit: boolean; can_edit_channels: boolean }>;
@@ -87,6 +108,8 @@ export interface Notification_center_data {
 	event_types: string[];
 	/** With `realm_id`: each event as it stands in that realm; else null. */
 	realm_events?: Notif_realm_event[] | null;
+	/** With one org or one realm in view: every event, grouped, with the channels that get it; else null. */
+	events?: Notif_event_group[] | null;
 	/** Which realms this response covers (their rules + channels). */
 	realm_page: { offset: number; limit: number; total: number; q: string | null; status: 'ok' | 'error'; error: string | null };
 	partial: boolean;

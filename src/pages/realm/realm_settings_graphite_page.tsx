@@ -13,7 +13,7 @@ import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { Realm_a2a_panel } from '@/components/graphite/g_mesh';
-import { Notifications_panel } from '@/components/graphite/g_notifications';
+import { Notifications_panel, type Notif_view } from '@/components/graphite/g_notifications';
 import { handle, person_name } from '@/lib/admin';
 import { REALM_ROLES, is_personal_default_realm, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -331,8 +331,11 @@ export function Component() {
 	const [search] = useSearchParams();
 	const { pathname } = useLocation();
 	const raw = search.get('section');
-	// Notifications is its own realm section (…/notifications); the old ?section= link goes there.
-	const at_notifications = pathname.endsWith('/notifications');
+	// Notifications is its own realm section: …/notifications/events and …/notifications/channels (the bare
+	// path and the old ?section= link go to Events).
+	const notif_base = `/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/notifications`;
+	const at_notifications = /\/notifications(\/(events|channels))?$/.test(pathname);
+	const notif_view: Notif_view = pathname.endsWith('/channels') ? 'channels' : 'events';
 	const section: Settings_section = at_notifications ? 'notifications' : raw === 'general' || raw === 'tokens' || raw === 'a2a' || raw === 'danger' ? raw : 'members';
 	const read = use_bff_read<Realm_settings_data>('/v1/realm_settings/get', org && slug ? { org_slug: org, slug } : null, { fallback_error: 'Could not load settings.' });
 	const data = read.data;
@@ -342,15 +345,17 @@ export function Component() {
 	// Realm admins, org owners/admins and site admins can change settings (Core enforces on write).
 	const admin = Boolean(data?.you.is_admin || org_role === 'owner' || org_role === 'admin');
 
-	if (raw === 'notifications' && !at_notifications) {
-		return <Navigate to={`/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/notifications`} replace />;
+	if (raw === 'notifications' && !at_notifications) return <Navigate to={`${notif_base}/events`} replace />;
+	if (at_notifications && pathname.endsWith('/notifications')) {
+		// A channel link (?channel=) opens Channels; anything else Events.
+		return <Navigate to={`${notif_base}/${search.get('channel') ? 'channels' : 'events'}${search.toString() ? `?${search}` : ''}`} replace />;
 	}
 
 	return (
 		<Graphite_shell
 			data={overview.data}
 			current_realm_id={realm_id}
-			title={at_notifications ? 'Notifications' : 'Settings'}
+			title={at_notifications ? (notif_view === 'events' ? 'Events' : 'Channels') : 'Settings'}
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
 			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>
@@ -365,7 +370,7 @@ export function Component() {
 							{section === 'members' ? <Members data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'tokens' ? <Tokens data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'a2a' ? <Realm_a2a_panel realm_id={data.realm.id} can_edit={admin} /> : null}
-							{section === 'notifications' && sidebar_realm ? <Notifications_panel org_id={sidebar_realm.org_id} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org }} /> : null}
+							{section === 'notifications' && sidebar_realm ? <Notifications_panel org_id={sidebar_realm.org_id} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org }} view={notif_view} /> : null}
 							{section === 'danger' ? <Danger data={data} admin={admin} post={post} /> : null}
 						</div>
 					</div>
