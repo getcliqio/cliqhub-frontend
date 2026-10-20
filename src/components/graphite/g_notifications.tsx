@@ -28,7 +28,7 @@ import { use_post } from '@/components/graphite/g_agents';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Channel_picker } from '@/components/graphite/g_channel_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
-import { Built_in_messages, Channels_tab, New_channel_drawer } from '@/pages/notification_center_page';
+import { Channels_tab, New_channel_drawer } from '@/pages/notification_center_page';
 import { Switch } from '@/components/graphite/g_switch';
 
 export { Switch };
@@ -163,7 +163,7 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 							<h3 className="mb-2 text-[13px] font-semibold">Custom events <span className="font-normal text-[var(--g-ink-3)]">· events your teams emit; send them anywhere like any other</span></h3>
 							<Custom_events_panel org_id={org_id} initial={{ id: realm.id, slug: realm.slug, org_slug: realm.org_slug }} />
 						</section>
-					) : <Built_in_messages />}
+					) : null}
 				</>
 			) : scope ? (
 				<section aria-label="Channels" data-testid="notif-channels">

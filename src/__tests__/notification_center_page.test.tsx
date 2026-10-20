@@ -133,7 +133,7 @@ describe('/notifications (the old Events page) redirects to where notifications 
 describe('Org › Notifications › Events', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one read for the org; every event grouped, with the channels it goes to — or Not sent; built-in messages', async () => {
+	it('one read for the org; every event grouped, with the channels it goes to — or Not sent; nothing else on the page', async () => {
 		const calls = route_fetch();
 		render_panel(false);
 		await screen.findByTestId('notif-events');
@@ -144,7 +144,7 @@ describe('Org › Notifications › Events', () => {
 		expect(within(row('event-run.crashed')).getByTestId('event-chip')).toHaveTextContent('run.*');
 		expect(within(row('event-run.crashed')).queryByRole('button', { name: /^Remove/ })).toBeNull();
 		expect(screen.getByRole('heading', { name: 'Events' })).toBeInTheDocument();
-		expect(screen.getByTestId('built-in-messages')).toBeInTheDocument();
+		expect(screen.queryByTestId('built-in-messages')).toBeNull();
 	});
 
 	it('✕ removes a channel from the event; the switch turns it off; + channel adds one', async () => {

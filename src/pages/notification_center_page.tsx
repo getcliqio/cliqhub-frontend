@@ -57,40 +57,6 @@ function Event_cell({ selector, tag }: { selector: string; tag?: React.ReactNode
 	);
 }
 
-/**
- * Invite and account messages CliqHub always sends to the people involved. They are built in,
- * not rules: nothing here can be turned off or redirected.
- */
-const BUILT_IN_MESSAGES: Array<{ what: string; to: string; how: string }> = [
-	{ what: 'Invite sent, invite reminder', to: 'The invited person', how: 'Email · in-app once they have an account' },
-	{ what: 'Invite accepted, declined or expired', to: 'Who sent the invite, and the org’s owners', how: 'Email · in-app' },
-	{ what: 'Org never claimed by its owner', to: 'Who sent the owner invite', how: 'In-app' },
-	{ what: 'New account: set your password', to: 'The person', how: 'Email' },
-	{ what: 'Password reset, password changed', to: 'The person', how: 'Email · in-app' },
-];
-
-export function Built_in_messages() {
-	return (
-		<section aria-label="Built-in messages" className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" data-testid="built-in-messages">
-			<div className="border-b border-[var(--g-line)] px-4 py-2.5">
-				<b className="text-[13px] font-semibold">Built-in messages</b>
-				<span className="ml-2 text-[12px] text-[var(--g-ink-3)]">Always sent to the people involved — not rules, nothing to set up.</span>
-			</div>
-			<table className="w-full text-left text-[12.5px]">
-				<tbody>
-					{BUILT_IN_MESSAGES.map((m) => (
-						<tr key={m.what} className="border-b border-[var(--g-line-2)] last:border-b-0">
-							<td className="px-4 py-2 font-medium">{m.what}</td>
-							<td className="px-4 py-2 text-[var(--g-ink-2)]">{m.to}</td>
-							<td className="px-4 py-2 text-[var(--g-ink-3)]">{m.how}</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-		</section>
-	);
-}
-
 function use_post() {
 	const auth_fetch = useAuthFetch();
 	return async (path: string, body: Record<string, unknown>): Promise<{ ok: true; data: unknown } | { ok: false; error: string }> => {
