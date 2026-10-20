@@ -265,6 +265,36 @@ describe('Notifications — channels', () => {
 		expect(within(row('channel-ch-eng')).getByTestId('belongs-to')).toHaveTextContent('Org');
 	});
 
+	it('New channel: pick the type first; Email has To, Cc and Bcc; the channel belongs to this realm', async () => {
+		const calls = route_fetch(realm_center, (u) => (u.endsWith('/notification_channels/create') ? { body: { ok: true, data: { id: 'ch-new', name: 'Platform' } } } : null));
+		render_panel(true, 'channels');
+		fireEvent.click(await screen.findByRole('button', { name: /New channel/ }));
+		const drawer = screen.getByRole('dialog', { name: 'New channel' });
+		expect(within(drawer).queryByLabelText('Name')).toBeNull();
+		fireEvent.click(within(drawer).getByRole('radio', { name: /Email/ }));
+		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Platform' } });
+		fireEvent.change(within(drawer).getByLabelText('To'), { target: { value: 'a@x.com,b@x.com ' } });
+		fireEvent.change(within(drawer).getByLabelText(/^Cc/), { target: { value: 'c@x.com' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Create channel' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/create', body: {
+			name: 'Platform', realm_id: 'r-prod', destinations: [{ type: 'email', address: 'a@x.com, b@x.com', cc: 'c@x.com' }],
+		} }));
+	});
+
+	it('New channel from an event: the new channel is added to that event', async () => {
+		const calls = route_fetch(realm_center, (u) => (u.endsWith('/notification_channels/create') ? { body: { ok: true, data: { id: 'ch-new', name: 'Oncall' } } } : null));
+		render_panel(true);
+		fireEvent.click(within(await screen.findByTestId('event-run.started')).getByRole('button', { name: '+ channel' }));
+		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'New channel…' }));
+		const drawer = screen.getByRole('dialog', { name: 'New channel' });
+		fireEvent.click(within(drawer).getByRole('radio', { name: /In-app/ }));
+		expect(within(drawer).getByTestId('nc-in-app')).toHaveTextContent('everyone in this realm');
+		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Oncall' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Create channel' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-new' }] }));
+		expect(calls.find((c) => c.url === '/v1/notification_channels/create')?.body).toEqual({ name: 'Oncall', realm_id: 'r-prod', destinations: [{ type: 'cliqhub' }] });
+	});
+
 	it('maps destination drafts to Core shapes', () => {
 		expect(draft_to_destination({ type: 'email', value: ' a@b.c ' })).toEqual({ type: 'email', address: 'a@b.c' });
 		expect(draft_to_destination({ type: 'webhook', value: 'https://x' })).toEqual({ type: 'webhook', url: 'https://x' });

@@ -129,11 +129,21 @@ export function Drawer({ title, on_close, children, label }: { title: string; on
 /* ------------------------------------------------------------------ */
 /* Channels                                                            */
 
-type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook'; value: string };
+type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook'; value: string; cc?: string; bcc?: string };
+
+/** A comma-separated address list, tidied (empty → undefined). */
+function addresses(v: string | undefined): string | undefined {
+	const list = (v ?? '').split(',').map((a) => a.trim()).filter(Boolean);
+	return list.length ? list.join(', ') : undefined;
+}
 
 export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 	if (d.type === 'slack') return { type: 'slack', webhook_url: d.value.trim() };
-	if (d.type === 'email') return { type: 'email', address: d.value.trim() };
+	if (d.type === 'email') {
+		const cc = addresses(d.cc);
+		const bcc = addresses(d.bcc);
+		return { type: 'email', address: addresses(d.value) ?? '', ...(cc ? { cc } : {}), ...(bcc ? { bcc } : {}) };
+	}
 	if (d.type === 'webhook') return { type: 'webhook', url: d.value.trim() };
 	return { type: 'cliqhub' };
 }
@@ -277,9 +287,22 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 	);
 }
 
-function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
+/** The kinds of channel, picked first in New channel. */
+const CHANNEL_TYPES: Array<{ type: Dest_draft['type']; label: string; hint: string }> = [
+	{ type: 'cliqhub', label: 'In-app', hint: 'Shows in CliqHub' },
+	{ type: 'email', label: 'Email', hint: 'To, Cc, Bcc' },
+	{ type: 'slack', label: 'Slack', hint: 'An incoming webhook' },
+	{ type: 'webhook', label: 'Webhook', hint: 'POSTs to a URL' },
+];
+
+/**
+ * New channel (side drawer): pick the type first, then only that type's fields. A channel belongs to where
+ * it's made — this realm, or this org (the account-wide view asks). Opened from an event, `on_saved` adds
+ * the new channel to it.
+ */
+export function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 	data: Notification_center_data; scope: View_scope;
-	/** Opened from the rule panel: start at the rule's level. */
+	/** Start at this level (e.g. opened from a realm's event). */
 	preset?: { owner: 'org' | 'realm'; org_id: string; realm: Picked_realm | null };
 	on_close: () => void; on_saved: (created: { id: string; name: string } | null) => Promise<void>;
 }) {
@@ -292,22 +315,26 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 		const r = data.realms.find((x) => x.org_id === oid && can_edit_realm(data, x.id));
 		return r ? { id: r.id, slug: r.slug, org_slug: r.org_slug } : null;
 	};
+	const [type, set_type] = useState<Dest_draft['type'] | null>(null);
 	const [name, set_name] = useState('');
-	// A channel belongs to where it's made: this realm, or this org. Only the account-wide view asks.
 	const [owner, set_owner] = useState<'org' | 'realm'>(preset?.owner ?? (scope.kind === 'realm' ? 'realm' : scope.kind === 'org' ? 'org' : !can_edit_org_channels(data, start_org) ? 'realm' : 'org'));
 	const [org_id, set_org_id] = useState(start_org);
 	const [realm, set_realm] = useState<Picked_realm | null>(preset?.realm ?? (scope.kind === 'realm' ? { id: scope.realm.id, slug: scope.realm.slug, org_slug: scope.realm.org_slug } : first_realm(start_org)));
 	const realm_id = realm?.id ?? '';
-	const [dests, set_dests] = useState<Dest_draft[]>([{ type: 'cliqhub', value: '' }]);
+	const [value, set_value] = useState('');
+	const [cc, set_cc] = useState('');
+	const [bcc, set_bcc] = useState('');
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
 	const allowed = owner === 'org' ? can_edit_org_channels(data, org_id) : Boolean(realm_id) && can_edit_realm(data, realm_id);
-	const ready = allowed && name.trim() && dests.length > 0 && dests.every((d) => d.type === 'cliqhub' || d.value.trim()) && (owner === 'org' ? org_id : realm_id);
+	const ready = Boolean(type) && allowed && name.trim() && (type === 'cliqhub' || value.trim()) && (owner === 'org' ? org_id : realm_id);
+	const where = owner === 'realm' ? 'this realm' : 'this org';
 
 	async function save() {
+		if (!type) return;
 		set_busy(true);
 		set_error(null);
-		const body: Record<string, unknown> = { name: name.trim(), destinations: dests.map(draft_to_destination) };
+		const body: Record<string, unknown> = { name: name.trim(), destinations: [draft_to_destination({ type, value, cc, bcc })] };
 		if (owner === 'org') body.org_id = org_id;
 		else body.realm_id = realm_id;
 		const res = await post('/v1/notification_channels/create', body);
@@ -317,52 +344,55 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 		await on_saved(created && typeof created.id === 'string' ? { id: created.id, name: String(created.name ?? name.trim()) } : null);
 	}
 
-	const placeholder: Record<Dest_draft['type'], string> = { cliqhub: '', slack: 'https://hooks.slack.com/services/…', email: 'ops@example.com', webhook: 'https://example.com/hook' };
-
 	return (
 		<Drawer title="New channel" label="New channel" on_close={on_close}>
 			<div>
-				<label className={LABEL} htmlFor="nc-name">Name</label>
-				<input id="nc-name" value={name} onChange={(e) => set_name(e.target.value)} placeholder="#prod-oncall" className={INPUT} />
-			</div>
-			{scope.kind === 'all' ? (<div>
-				<span className={LABEL}>Owned by</span>
-				<div role="radiogroup" aria-label="Owned by" className="grid grid-cols-2 gap-2">
-					{([['org', 'The whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
-						<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org_channels(data, org_id)} title={k === 'org' && !can_edit_org_channels(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)]'}`}>{l}</button>
+				<span className={LABEL}>Type</span>
+				<div role="radiogroup" aria-label="Type" className="grid grid-cols-2 gap-2">
+					{CHANNEL_TYPES.map((t) => (
+						<button key={t.type} type="button" role="radio" aria-checked={type === t.type} onClick={() => { set_type(t.type); set_value(''); set_cc(''); set_bcc(''); }}
+							className={`rounded-lg border px-3 py-2.5 text-left ${type === t.type ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)] hover:bg-[var(--g-soft)]'}`}>
+							<b className="block text-[13px] font-semibold">{t.label}</b>
+							<span className="text-[11.5px] text-[var(--g-ink-3)]">{t.hint}</span>
+						</button>
 					))}
 				</div>
-				<div className="mt-2 grid gap-2">
-					{view_org_id ? null : <select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org_channels(data, id)) set_owner('realm'); }} className={INPUT}>
-						{ok_orgs.map((o) => <option key={o.id} value={o.id} disabled={!org_usable(o.id)}>{o.display_name}{org_usable(o.id) ? '' : ` — ${o.role}, view only`}</option>)}
-					</select>}
-					{owner === 'realm' ? (
-						<Realm_picker org_id={org_id} value={realm} on_change={set_realm} blocked={(id) => (can_edit_realm(data, id) ? null : 'view only')} />
-					) : null}
-				</div>
-			</div>) : !allowed ? <p className="text-[12.5px] text-[var(--g-ink-3)]">{owner === 'org' ? 'Only org owners and admins can add the org’s channels.' : 'Only this realm’s admins can add its channels.'}</p> : null}
-			<div>
-				<span className={LABEL}>Destinations</span>
-				<div className="flex flex-col gap-2">
-					{dests.map((d, i) => (
-						<div key={i} className="flex gap-2">
-							<select aria-label={`Destination ${i + 1} type`} value={d.type} onChange={(e) => set_dests((cur) => cur.map((x, j) => (j === i ? { type: e.target.value as Dest_draft['type'], value: '' } : x)))} className={`${INPUT.replace('w-full', '')} w-[140px] shrink-0`}>
-								<option value="cliqhub">In-app</option>
-								<option value="slack">Slack</option>
-								<option value="email">Email</option>
-								<option value="webhook">Webhook</option>
-							</select>
-							{d.type === 'cliqhub' ? (
-								<span className="flex min-w-0 flex-1 items-center text-[12.5px] text-[var(--g-ink-3)]">Shows in CliqHub for the people involved</span>
-							) : (
-								<input aria-label={`Destination ${i + 1} value`} value={d.value} onChange={(e) => set_dests((cur) => cur.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))} placeholder={placeholder[d.type]} className={INPUT} />
-							)}
-							{dests.length > 1 ? <button type="button" aria-label={`Remove destination ${i + 1}`} onClick={() => set_dests((cur) => cur.filter((_, j) => j !== i))} className="text-[var(--g-ink-3)] hover:text-[var(--g-bad)]"><X className="h-4 w-4" /></button> : null}
+			</div>
+			{type ? (
+				<>
+					<div>
+						<label className={LABEL} htmlFor="nc-name">Name</label>
+						<input id="nc-name" value={name} onChange={(e) => set_name(e.target.value)} placeholder={type === 'email' ? 'Platform team' : '#prod-oncall'} className={INPUT} />
+					</div>
+					{scope.kind === 'all' ? (<div>
+						<span className={LABEL}>Belongs to</span>
+						<div role="radiogroup" aria-label="Belongs to" className="grid grid-cols-2 gap-2">
+							{([['org', 'The whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
+								<button key={k} type="button" role="radio" aria-checked={owner === k} disabled={k === 'org' && !can_edit_org_channels(data, org_id)} title={k === 'org' && !can_edit_org_channels(data, org_id) ? 'Needs org owner or admin' : undefined} onClick={() => set_owner(k)} className={`rounded-lg border px-3 py-2.5 text-left text-[13px] font-semibold disabled:cursor-not-allowed disabled:opacity-40 ${owner === k ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)]'}`}>{l}</button>
+							))}
 						</div>
-					))}
-				</div>
-				<button type="button" onClick={() => set_dests((cur) => [...cur, { type: 'slack', value: '' }])} className="mt-2 text-[12.5px] text-[var(--g-acc)] hover:underline">+ Add destination</button>
-			</div>
+						<div className="mt-2 grid gap-2">
+							{view_org_id ? null : <select aria-label="Org" value={org_id} onChange={(e) => { const id = e.target.value; set_org_id(id); set_realm(first_realm(id)); if (!can_edit_org_channels(data, id)) set_owner('realm'); }} className={INPUT}>
+								{ok_orgs.map((o) => <option key={o.id} value={o.id} disabled={!org_usable(o.id)}>{o.display_name}{org_usable(o.id) ? '' : ` — ${o.role}, view only`}</option>)}
+							</select>}
+							{owner === 'realm' ? (
+								<Realm_picker org_id={org_id} value={realm} on_change={set_realm} blocked={(id) => (can_edit_realm(data, id) ? null : 'view only')} />
+							) : null}
+						</div>
+					</div>) : !allowed ? <p className="text-[12.5px] text-[var(--g-ink-3)]">{owner === 'org' ? 'Only org owners and admins can add the org’s channels.' : 'Only this realm’s admins can add its channels.'}</p> : null}
+					{type === 'cliqhub' ? <p className="text-[12.5px] text-[var(--g-ink-3)]" data-testid="nc-in-app">Shows in CliqHub to everyone in {where}. To reach one person, use their own channel (their username).</p> : null}
+					{type === 'email' ? (
+						<div className="grid gap-2" data-testid="nc-email">
+							<div><label className={LABEL} htmlFor="nc-to">To</label><input id="nc-to" value={value} onChange={(e) => set_value(e.target.value)} placeholder="ops@example.com, oncall@example.com" className={INPUT} /></div>
+							<div><label className={LABEL} htmlFor="nc-cc">Cc <span className="font-normal normal-case">(optional)</span></label><input id="nc-cc" value={cc} onChange={(e) => set_cc(e.target.value)} className={INPUT} /></div>
+							<div><label className={LABEL} htmlFor="nc-bcc">Bcc <span className="font-normal normal-case">(optional)</span></label><input id="nc-bcc" value={bcc} onChange={(e) => set_bcc(e.target.value)} className={INPUT} /></div>
+							<p className="text-[11.5px] text-[var(--g-ink-3)]">Separate addresses with commas.</p>
+						</div>
+					) : null}
+					{type === 'slack' ? <div><label className={LABEL} htmlFor="nc-slack">Webhook URL</label><input id="nc-slack" value={value} onChange={(e) => set_value(e.target.value)} placeholder="https://hooks.slack.com/services/…" className={INPUT} /></div> : null}
+					{type === 'webhook' ? <div><label className={LABEL} htmlFor="nc-url">URL</label><input id="nc-url" value={value} onChange={(e) => set_value(e.target.value)} placeholder="https://example.com/hook" className={INPUT} /></div> : null}
+				</>
+			) : <p className="text-[12.5px] text-[var(--g-ink-3)]">Pick what kind of channel it is.</p>}
 			{error ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{error}</p> : null}
 			<div className="flex gap-2">
 				<button type="button" disabled={!ready || busy} onClick={() => void save()} className={PRIMARY}>{busy ? 'Creating…' : 'Create channel'}</button>

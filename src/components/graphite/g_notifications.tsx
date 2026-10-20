@@ -28,7 +28,7 @@ import { use_post } from '@/components/graphite/g_agents';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Channel_picker } from '@/components/graphite/g_channel_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
-import { Built_in_messages, Channels_tab } from '@/pages/notification_center_page';
+import { Built_in_messages, Channels_tab, New_channel_drawer } from '@/pages/notification_center_page';
 import { Switch } from '@/components/graphite/g_switch';
 
 export { Switch };
@@ -143,7 +143,21 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 
 			{view === 'events' ? (
 				<>
-					<Events groups={d.events ?? []} in_realm={Boolean(realm)} can_edit={can_edit} busy={busy} write={write} channels={channels} />
+					<Events
+						groups={d.events ?? []} in_realm={Boolean(realm)} can_edit={can_edit} busy={busy} write={write} channels={channels}
+						new_channel={scope ? (event, done) => (
+							<New_channel_drawer
+								data={d} scope={scope}
+								preset={realm ? { owner: 'realm', org_id, realm } : { owner: 'org', org_id, realm: null }}
+								on_close={done}
+								on_saved={async (created) => {
+									done();
+									if (created) await write({ items: [{ event, channel_id: created.id }] }, `${created.name} created; ${event_label(event)} goes there.`);
+									else await read.reload();
+								}}
+							/>
+						) : null}
+					/>
 					{realm ? (
 						<section aria-label="Custom events" data-testid="notif-custom">
 							<h3 className="mb-2 text-[13px] font-semibold">Custom events <span className="font-normal text-[var(--g-ink-3)]">· events your teams emit; send them anywhere like any other</span></h3>
@@ -168,12 +182,15 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
  * org's in an org; the realm's own in a realm): those get ✕ and the switch. A channel set for the whole
  * family (`run.*`) or, in a realm, by the org shows read-only.
  */
-function Events({ groups, in_realm, can_edit, busy, write, channels }: {
+function Events({ groups, in_realm, can_edit, busy, write, channels, new_channel }: {
 	groups: Notif_event_group[]; in_realm: boolean; can_edit: boolean; busy: boolean; channels: Notif_channel[];
 	write: (w: Write, done: string) => Promise<void>;
+	/** The New channel drawer for an event (the channel is added to it once made); null when it can't open. */
+	new_channel: ((event: string, done: () => void) => ReactNode) | null;
 }) {
 	const { user } = useAuth();
 	const [adding_to, set_adding_to] = useState<string | null>(null);
+	const [creating_for, set_creating_for] = useState<string | null>(null);
 	const [pick, set_pick] = useState('');
 	const rows = groups.flatMap((g) => g.events);
 	const sent = rows.filter((r) => r.sent).length;
@@ -212,6 +229,7 @@ function Events({ groups, in_realm, can_edit, busy, write, channels }: {
 										</div>
 										<button type="button" disabled={!pick || busy} onClick={() => { void write({ items: [{ event: r.event, channel_id: pick }] }, `${event_label(r.event)} now goes there too.`); set_adding_to(null); set_pick(''); }} className={PRIMARY}>Add</button>
 										<button type="button" onClick={() => { set_adding_to(null); set_pick(''); }} className={ROW_ACTION_CLS}>Cancel</button>
+										{new_channel ? <button type="button" onClick={() => { set_creating_for(r.event); set_adding_to(null); set_pick(''); }} className={LINK}>New channel…</button> : null}
 									</div>
 								)}
 							/>
@@ -219,6 +237,7 @@ function Events({ groups, in_realm, can_edit, busy, write, channels }: {
 					</div>
 				))}
 			</div>
+			{creating_for && new_channel ? new_channel(creating_for, () => set_creating_for(null)) : null}
 		</section>
 	);
 }
