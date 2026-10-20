@@ -2,14 +2,15 @@
  * Notifications (Graphite) — where events go, for one org or one realm.
  *
  *   Org settings › Notifications   the org's rules (the Default everywhere) and channels
- *   Realm › Settings › Notifications  each event as it stands here — Default (the org's), Paused by
- *                                  org, Replaced, Realm only or Off — plus the realm's channels and
- *                                  custom events
+ *   Realm › Notifications          each event as it stands here — the org's channels (read-only, they
+ *                                  apply in every realm) plus this realm's own: Default (org only),
+ *                                  Paused by org, Both (org + this realm), Realm only or Off — plus the
+ *                                  realm's channels and custom events
  *
- * Rules and channels each have an on/off switch; a rule sends only when it and its channel are on.
- * One switch per row, always in the On column: on an org row it pauses the org's rule; on a realm row
- * it means "sends in this realm" (off on a Default row turns it off here, on again goes back to Default).
- * Actions are Replace (copy the org's rule here to edit), Reset (back to Default) and Remove.
+ * The org's rules and a realm's own rules both apply (PLAN-notifications-v2 B1): a realm adds channels to
+ * an event, it can't change or turn off the org's. Rules and channels each have an on/off switch; a rule
+ * sends only when it and its channel are on. On an org row the switch pauses the org's rule; on a realm
+ * row it switches this realm's own rules for the event.
  *
  * Read: `POST /v1/notification_center/get { org_id, realm_id? }` (with a realm, `realm_events`).
  * Writes: `POST /v1/notification_center/set_rules` (rules to write, each with its own channel and
@@ -41,7 +42,7 @@ const ROW = 'grid grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_120px_44px_84px] it
 const STATUS: Record<Notif_event_status, { label: string; cls: string }> = {
 	default: { label: 'Default', cls: 'bg-[var(--g-soft)] text-[var(--g-ink-2)]' },
 	paused: { label: 'Paused by org', cls: 'bg-[var(--g-bad-soft)] text-[var(--g-bad)]' },
-	replaced: { label: 'Replaced', cls: 'bg-[var(--g-acc-soft)] text-[var(--g-acc)]' },
+	both: { label: 'Org + this realm', cls: 'bg-[var(--g-acc-soft)] text-[var(--g-acc)]' },
 	realm_only: { label: 'Realm only', cls: 'bg-[var(--g-ok-soft,var(--g-soft))] text-[var(--g-ok)]' },
 	off: { label: 'Off', cls: 'bg-[var(--g-bad-soft)] text-[var(--g-bad)]' },
 };
@@ -267,13 +268,6 @@ function Org_rules({ rules, channels, can_edit, busy, write, on_add }: {
 
 /* ── Realm ───────────────────────────────────────────────────────────── */
 
-/** Same channels on both sides (Off made by turning a Default row off). */
-function same_channels(a: Notif_event_rule[], b: Notif_event_rule[]): boolean {
-	const x = new Set(a.map((r) => r.channel_id));
-	const y = new Set(b.map((r) => r.channel_id));
-	return x.size === y.size && [...x].every((c) => y.has(c));
-}
-
 function Realm_rules({ rows, can_edit, busy, write, channels, on_add }: {
 	rows: Notif_realm_event[]; can_edit: boolean; busy: boolean; channels: Notif_channel[];
 	write: (w: Write, done: string) => Promise<void>; on_add: () => void;
@@ -283,77 +277,66 @@ function Realm_rules({ rows, can_edit, busy, write, channels, on_add }: {
 	const [pick, set_pick] = useState('');
 	const { user } = useAuth();
 	const count = (s: Notif_event_status) => rows.filter((r) => r.status === s && !r.via).length;
-	const summary = [count('replaced') ? `${count('replaced')} replaced` : null, count('off') ? `${count('off')} off` : null, count('realm_only') ? `${count('realm_only')} realm only` : null, 'rest default'].filter(Boolean).join(' · ');
-	const shown = only_changed ? rows.filter((r) => r.status !== 'default' && r.status !== 'paused') : rows;
+	const own_rows = rows.filter((r) => r.realm.length > 0 && !r.via).length;
+	const summary = [own_rows ? `${own_rows} with this realm’s own channels` : null, count('off') ? `${count('off')} off` : null, 'the org’s apply everywhere'].filter(Boolean).join(' · ');
+	const shown = only_changed ? rows.filter((r) => r.realm.length > 0) : rows;
 
 	return (
 		<Rules_card
 			title="Rules"
-			summary={<>{summary}<label className="ml-3 inline-flex items-center gap-1.5"><input type="checkbox" checked={only_changed} onChange={(e) => set_only_changed(e.target.checked)} />only what this realm changed</label></>}
+			summary={<>{summary}<label className="ml-3 inline-flex items-center gap-1.5"><input type="checkbox" checked={only_changed} onChange={(e) => set_only_changed(e.target.checked)} />only this realm’s own</label></>}
 			can_edit={can_edit}
 			on_add={on_add}
 		>
-			{shown.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">{only_changed ? 'This realm uses the Default for every event.' : 'No rules yet — nothing is sent for this realm’s events.'}</p> : null}
+			{shown.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">{only_changed ? 'This realm has no channels of its own — the org’s apply.' : 'No rules yet — nothing is sent for this realm’s events.'}</p> : null}
 			{by_family(shown, (r) => r.event).map((g) => (
 				<div key={g.family} role="rowgroup">
 					<Group_head family={g.family} />
 					{g.rows.map((r) => {
 						const own = r.realm.length > 0 && !r.via;
-						const inherited = r.status === 'default' || r.status === 'paused';
 						const editable = can_edit && !busy;
-						// The row's switch: "sends in this realm".
-						const on = r.status === 'default' || ((r.status === 'replaced' || r.status === 'realm_only') && r.realm.some((x) => x.enabled));
-						const toggle = (next: boolean) => {
-							if (r.status === 'default' && !next) return write({ items: r.org.map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: false })) }, `${event_label(r.event)} is off in this realm.`);
-							if (r.status === 'off' && next) {
-								// Turned off from Default → back to Default; otherwise switch this realm's rules back on.
-								return same_channels(r.realm, r.org)
-									? write({ remove: r.realm.map((x) => x.rule_id) }, `${event_label(r.event)} is back to Default.`)
-									: write({ items: r.realm.map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: true })) }, `${event_label(r.event)} is on.`);
-							}
-							return write({ items: r.realm.map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: next })) }, next ? `${event_label(r.event)} is on.` : `${event_label(r.event)} is off in this realm.`);
-						};
-						const switch_off_why = r.locked ? 'Locked by the org — always sent' : r.status === 'paused' ? 'The org paused this rule' : r.via ? `Set by this realm’s ${r.via} rule` : undefined;
-						const sends = inherited ? r.org : r.realm;
+						// The row's switch: this realm's own rules for the event (the org's can't be changed here).
+						const on = r.realm.some((x) => x.enabled);
+						const toggle = (next: boolean) => write({ items: r.realm.map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: next })) }, next ? `${event_label(r.event)}: this realm’s channels are on.` : `${event_label(r.event)}: this realm’s channels are off (the org’s still send).`);
+						const adding = adding_to === r.event;
 						return (
 							<div key={r.event} className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`realm-event-${r.event}`}>
 								<div role="row" className={ROW}>
 									<Event_name event={r.event} />
-									<div className={`min-w-0 ${inherited ? 'opacity-70' : ''}`}>
-										{r.status === 'off' ? <span className="text-[12.5px] text-[var(--g-ink-3)]">Nothing is sent in this realm</span>
-											: sends.map((x) => <Chip key={x.rule_id} name={x.channel_name} rule_on={x.enabled} channel_on={x.channel_enabled} />)}
+									<div className="min-w-0">
+										{r.status === 'off' ? <span className="text-[12.5px] text-[var(--g-ink-3)]">Nothing is sent in this realm</span> : null}
+										{r.org.map((x) => <span key={x.rule_id} className="opacity-70" title="The org’s — applies in every realm"><Chip name={x.channel_name} rule_on={x.enabled} channel_on={x.channel_enabled} /></span>)}
+										{own ? r.realm.map((x) => <Chip key={x.rule_id} name={x.channel_name} rule_on={x.enabled} channel_on={x.channel_enabled} />) : null}
 									</div>
 									<Status_badge status={r.status} via={r.via} />
-									<Switch on={on} label={`${event_label(r.event)} on in this realm`} disabled={!editable || r.locked || r.status === 'paused' || Boolean(r.via)} title={switch_off_why} on_change={(next) => void toggle(next)} />
+									{own ? <Switch on={on} label={`${event_label(r.event)}: this realm’s channels on`} disabled={!editable} on_change={(next) => void toggle(next)} /> : <span />}
 									<div className="flex justify-end">
-										{r.locked ? <span className="inline-flex items-center gap-1 text-[12px] text-[var(--g-ink-3)]" title={r.org.find((x) => x.locked)?.lock_reason ?? undefined}><Lock aria-hidden className="h-3 w-3" />locked</span>
+										{r.locked && !own ? <span className="inline-flex items-center gap-1 text-[12px] text-[var(--g-ink-3)]" title={r.org.find((x) => x.locked)?.lock_reason ?? undefined}><Lock aria-hidden className="h-3 w-3" />locked</span>
 											: !can_edit || r.via ? null
-												: inherited ? <button type="button" disabled={busy} onClick={() => void write({ items: r.org.map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: true })) }, `${event_label(r.event)} replaced in this realm — edit its channels below.`)} className={LINK}>Replace</button>
-													: r.status === 'realm_only' ? <button type="button" disabled={busy} onClick={() => void write({ remove: r.realm.map((x) => x.rule_id) }, `${event_label(r.event)} rule removed.`)} className={QUIET}>Remove</button>
-														: <button type="button" disabled={busy} onClick={() => void write({ remove: r.realm.map((x) => x.rule_id) }, `${event_label(r.event)} is back to Default.`)} className={LINK} title="Back to Default: deletes this realm’s rules for the event">Reset</button>}
+												: <button type="button" disabled={busy} onClick={() => { set_adding_to(adding ? null : r.event); set_pick(''); }} className={LINK}>+ channel</button>}
 									</div>
 								</div>
-								{own && r.status === 'replaced' ? (
+								{own || adding ? (
 									<div className="bg-[color-mix(in_srgb,var(--g-acc-soft)_35%,transparent)] pb-1.5" data-testid={`realm-lines-${r.event}`}>
 										{r.realm.map((x) => {
 											const ch = channels.find((c) => c.id === x.channel_id);
 											return (
 												<div key={x.rule_id} role="row" className={`${ROW} py-1 text-[12.5px]`}>
-													<span className="pl-3 text-[var(--g-ink-3)]">↳ channel</span>
-													<span><Chip name={x.channel_name} rule_on={x.enabled} channel_on={x.channel_enabled} /><span className="text-[11.5px] text-[var(--g-ink-3)]">{ch?.owner.kind === 'realm' ? 'realm channel' : r.org.some((o) => o.channel_id === x.channel_id) ? 'copied from Default' : 'org channel'}</span></span>
+													<span className="pl-3 text-[var(--g-ink-3)]">↳ this realm</span>
+													<span><Chip name={x.channel_name} rule_on={x.enabled} channel_on={x.channel_enabled} /><span className="text-[11.5px] text-[var(--g-ink-3)]">{ch?.owner.kind === 'realm' ? 'realm channel' : 'org channel'}</span></span>
 													<span />
 													<Switch on={x.enabled} label={`${x.channel_name ?? 'channel'} on`} disabled={!editable} on_change={(next) => void write({ items: [{ event: r.event, channel_id: x.channel_id, enabled: next }] }, 'Saved.')} />
 													<div className="flex justify-end">{can_edit ? <button type="button" disabled={busy} onClick={() => void write({ remove: [x.rule_id] }, 'Channel removed.')} className={QUIET}>Remove</button> : null}</div>
 												</div>
 											);
 										})}
-										{can_edit ? (adding_to === r.event ? (
+										{can_edit && adding ? (
 											<div className="flex items-center gap-2 px-4 py-1.5 pl-7">
-												<div className="w-[280px]"><Channel_picker channels={channels.filter((c) => !r.realm.some((x) => x.channel_id === c.id))} value={pick} on_change={set_pick} me_id={user ? String(user.id) : null} label="Add a channel" /></div>
+												<div className="w-[280px]"><Channel_picker channels={channels.filter((c) => !r.realm.some((x) => x.channel_id === c.id) && !r.org.some((x) => x.channel_id === c.id))} value={pick} on_change={set_pick} me_id={user ? String(user.id) : null} label="Add a channel" /></div>
 												<button type="button" disabled={!pick || busy} onClick={() => { void write({ items: [{ event: r.event, channel_id: pick }] }, 'Channel added.'); set_adding_to(null); set_pick(''); }} className={PRIMARY}>Add</button>
 												<button type="button" onClick={() => { set_adding_to(null); set_pick(''); }} className={ROW_ACTION_CLS}>Cancel</button>
 											</div>
-										) : <button type="button" onClick={() => set_adding_to(r.event)} className={`${LINK} ml-7 mt-1`}>+ Add a channel</button>) : null}
+										) : null}
 									</div>
 								) : null}
 							</div>
@@ -368,8 +351,8 @@ function Realm_rules({ rows, can_edit, busy, write, channels, on_add }: {
 /* ── Add rule ────────────────────────────────────────────────────────── */
 
 /**
- * Pick events and a channel. In a realm, an event the org already covers becomes Replaced: the org's
- * channels are copied in (on) along with the new one, so nothing is dropped without you seeing it.
+ * Pick events and a channel. In a realm the channel is added for this realm — the org's channels for those
+ * events still send (both apply).
  */
 function Add_rule_drawer({ data, channels, realm_rows, on_close, on_save }: {
 	data: Notification_center_data; channels: Notif_channel[]; realm_rows: Notif_realm_event[] | null;
@@ -380,17 +363,12 @@ function Add_rule_drawer({ data, channels, realm_rows, on_close, on_save }: {
 	const [channel, set_channel] = useState('');
 	const [busy, set_busy] = useState(false);
 	const groups = useMemo(() => event_options(data.event_types, data.rules), [data.event_types, data.rules]);
-	// In a realm: events where the org's Default is in play (not yet replaced here).
-	const takes_over = realm_rows ? events.map((e) => realm_rows.find((r) => r.event === e)).filter((r): r is Notif_realm_event => Boolean(r && (r.status === 'default' || r.status === 'paused') && r.org.length)) : [];
-	const locked = realm_rows ? events.filter((e) => realm_rows.find((r) => r.event === e)?.locked) : [];
+	// In a realm: events the org also sends somewhere — said so they're not surprised by both.
+	const org_too = realm_rows ? events.map((e) => realm_rows.find((r) => r.event === e)).filter((r): r is Notif_realm_event => Boolean(r && r.org.length)) : [];
 
 	async function save() {
 		set_busy(true);
-		const items = [
-			...events.map((event) => ({ event, channel_id: channel })),
-			...takes_over.flatMap((r) => r.org.filter((x) => x.channel_id !== channel).map((x) => ({ event: r.event, channel_id: x.channel_id, enabled: true }))),
-		];
-		await on_save({ items }, `Rule added for ${events.map(event_label).join(', ')}.`);
+		await on_save({ items: events.map((event) => ({ event, channel_id: channel })) }, `Rule added for ${events.map(event_label).join(', ')}.`);
 		set_busy(false);
 	}
 
@@ -403,14 +381,13 @@ function Add_rule_drawer({ data, channels, realm_rows, on_close, on_save }: {
 			<div>
 				<Channel_picker channels={channels} value={channel} on_change={set_channel} me_id={user ? String(user.id) : null} label="Send to" />
 			</div>
-			{takes_over.length ? (
-				<p className="text-[12.5px] text-[var(--g-warn-text)]" data-testid="takes-over">
-					The org already sends {takes_over.map((r) => event_label(r.event)).join(', ')}. Adding a rule here replaces it in this realm — the org’s {takes_over.flatMap((r) => r.org).length === 1 ? 'channel is' : 'channels are'} copied in (on), so you can keep or switch them off.
+			{org_too.length ? (
+				<p className="text-[12.5px] text-[var(--g-ink-3)]" data-testid="org-too">
+					The org also sends {org_too.map((r) => event_label(r.event)).join(', ')} — those keep going too; this adds a channel for this realm.
 				</p>
 			) : null}
-			{locked.length ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{locked.map(event_label).join(', ')}: the org’s rule is locked and can’t be replaced in a realm.</p> : null}
 			<div className="flex gap-2">
-				<button type="button" disabled={!events.length || !channel || busy || locked.length > 0} onClick={() => void save()} className={PRIMARY}>{busy ? 'Adding…' : 'Add rule'}</button>
+				<button type="button" disabled={!events.length || !channel || busy} onClick={() => void save()} className={PRIMARY}>{busy ? 'Adding…' : 'Add rule'}</button>
 				<button type="button" onClick={on_close} className={ROW_ACTION_CLS}>Cancel</button>
 			</div>
 		</Drawer>

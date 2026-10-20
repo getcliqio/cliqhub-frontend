@@ -64,7 +64,7 @@ export interface Notif_event_rule {
  * `replaced` this realm's rules (the org covers it too) · `realm_only` this realm's, the org doesn't
  * cover it · `off` this realm's rules for it are all switched off.
  */
-export type Notif_event_status = 'default' | 'paused' | 'replaced' | 'realm_only' | 'off';
+export type Notif_event_status = 'default' | 'paused' | 'both' | 'realm_only' | 'off';
 
 export interface Notif_realm_event {
 	event: string;

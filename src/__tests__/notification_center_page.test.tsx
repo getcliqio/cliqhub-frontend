@@ -55,19 +55,19 @@ function center(): Notification_center_data {
 	};
 }
 
-/** prod-us: each status once. */
+/** prod-us: each status once (the org's rules and the realm's own both apply). */
 function realm_center(): Notification_center_data {
 	const ev = (event: string, status: Notif_realm_event['status'], org: Notif_event_rule[], realm: Notif_event_rule[], over: Partial<Notif_realm_event> = {}): Notif_realm_event => ({ event, status, locked: false, via: null, org, realm, ...over });
 	return {
 		...center(),
 		realm_events: [
-			ev('daemon.offline', 'off', [er('o-dmn', 'ch-eng', '#eng-alerts', 'org')], [er('r-dmn', 'ch-eng', '#eng-alerts', 'realm', { enabled: false })]),
+			ev('daemon.offline', 'off', [], [er('r-dmn', 'ch-prod', '#prod-alerts', 'realm', { enabled: false })]),
 			ev('hug.review_requested', 'default', [er('o-hug', 'ch-eng', '#eng-alerts', 'org', { locked: true })], [], { locked: true }),
 			ev('run.awaiting_input', 'default', [er('o-input', 'ch-eng', '#eng-alerts', 'org')], []),
 			ev('run.completed', 'paused', [er('o-done', 'ch-runs', '#eng-runs', 'org', { enabled: false })], []),
-			ev('run.failed', 'replaced', [er('o-failed', 'ch-eng', '#eng-alerts', 'org')], [er('r-prod', 'ch-prod', '#prod-alerts', 'realm'), er('r-copy', 'ch-eng', '#eng-alerts', 'realm', { enabled: false })]),
+			ev('run.failed', 'both', [er('o-failed', 'ch-eng', '#eng-alerts', 'org')], [er('r-prod', 'ch-prod', '#prod-alerts', 'realm')]),
 			ev('run.started', 'realm_only', [], [er('r-start', 'ch-prod', '#prod-alerts', 'realm')]),
-			ev('run.crashed', 'replaced', [er('o-crash', 'ch-eng', '#eng-alerts', 'org')], [er('r-all', 'ch-prod', '#prod-alerts', 'realm')], { via: 'run.*' }),
+			ev('run.crashed', 'both', [er('o-crash', 'ch-eng', '#eng-alerts', 'org')], [er('r-all', 'ch-prod', '#prod-alerts', 'realm')], { via: 'run.*' }),
 		],
 	};
 }
@@ -177,10 +177,10 @@ describe('Org settings › Notifications', () => {
 	});
 });
 
-describe('Realm › Settings › Notifications', () => {
+describe('Realm › Notifications — the org\'s rules and the realm\'s own both apply', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one read with the realm; each event as it stands here; summary; only-changed filter', async () => {
+	it('one read with the realm; each event as it stands here; summary; only this realm\'s own', async () => {
 		const calls = route_fetch(realm_center);
 		render_panel(true);
 		await screen.findByTestId('realm-event-run.failed');
@@ -188,77 +188,71 @@ describe('Realm › Settings › Notifications', () => {
 		const status = (e: string) => row(`realm-event-${e}`).querySelector('[data-status]')?.textContent;
 		expect(status('run.awaiting_input')).toBe('Default');
 		expect(status('run.completed')).toBe('Paused by org');
-		expect(status('run.failed')).toBe('Replaced');
+		expect(status('run.failed')).toBe('Org + this realm');
 		expect(status('run.started')).toBe('Realm only');
 		expect(status('daemon.offline')).toBe('Off');
-		expect(status('run.crashed')).toBe('Replaced ·run.*');
+		expect(status('run.crashed')).toBe('Org + this realm ·run.*');
 		expect(row('realm-event-daemon.offline')).toHaveTextContent('Nothing is sent in this realm');
-		expect(screen.getByTestId('notif-rules')).toHaveTextContent('1 replaced · 1 off · 1 realm only · rest default');
-		fireEvent.click(screen.getByLabelText(/only what this realm changed/));
+		// Both: the org's channel and the realm's own are shown.
+		expect(row('realm-event-run.failed')).toHaveTextContent('#eng-alerts');
+		expect(row('realm-event-run.failed')).toHaveTextContent('#prod-alerts');
+		expect(screen.getByTestId('notif-rules')).toHaveTextContent('3 with this realm’s own channels · 1 off · the org’s apply everywhere');
+		fireEvent.click(screen.getByLabelText(/only this realm’s own/));
 		expect(screen.queryByTestId('realm-event-run.awaiting_input')).toBeNull();
 		expect(screen.getByTestId('realm-event-run.failed')).toBeInTheDocument();
-		// Realm's own channels and the org's; custom events here.
 		expect(within(screen.getByTestId('notif-channels')).getByTestId('channel-ch-prod')).toBeInTheDocument();
 		expect(screen.getByTestId('notif-custom')).toBeInTheDocument();
 	});
 
-	it('Default: switch off turns it off here (the org\'s channels copied, off); Replace copies them on', async () => {
-		const calls = route_fetch(realm_center);
+	it('a Default row: the org\'s can\'t be changed here (no switch, no Replace) — "+ channel" adds this realm\'s own', async () => {
+		route_fetch(realm_center);
 		render_panel(true);
 		const r = await screen.findByTestId('realm-event-run.awaiting_input');
-		expect(within(r).getByRole('switch')).toHaveAttribute('aria-checked', 'true');
-		fireEvent.click(within(r).getByRole('switch'));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.awaiting_input', channel_id: 'ch-eng', enabled: false }] }));
-		fireEvent.click(within(r).getByRole('button', { name: 'Replace' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.awaiting_input', channel_id: 'ch-eng', enabled: true }] }));
+		expect(within(r).queryByRole('switch')).toBeNull();
+		expect(within(r).queryByRole('button', { name: 'Replace' })).toBeNull();
+		fireEvent.click(within(r).getByRole('button', { name: '+ channel' }));
+		const adding = await screen.findByTestId('realm-lines-run.awaiting_input');
+		expect(within(adding).getByRole('button', { name: 'Add' })).toBeDisabled();
+		expect(within(adding).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
 	});
 
-	it('Off (made from Default): switching it on is Reset — back to Default', async () => {
-		const calls = route_fetch(realm_center);
-		render_panel(true);
-		const r = await screen.findByTestId('realm-event-daemon.offline');
-		fireEvent.click(within(r).getByRole('switch'));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-dmn'] }));
-	});
-
-	it('Replaced: its channel lines each switch and remove; the row switch turns them all off; Reset deletes them', async () => {
+	it('Both: this realm\'s lines switch and remove on their own; the row switch covers only this realm\'s; no Reset', async () => {
 		const calls = route_fetch(realm_center);
 		render_panel(true);
 		const lines = await screen.findByTestId('realm-lines-run.failed');
 		expect(lines).toHaveTextContent('#prod-alertsrealm channel');
-		expect(lines).toHaveTextContent('#eng-alertscopied from Default');
-		fireEvent.click(within(lines).getByRole('switch', { name: '#eng-alerts on' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.failed', channel_id: 'ch-eng', enabled: true }] }));
+		expect(lines).not.toHaveTextContent('#eng-alerts');
+		fireEvent.click(within(lines).getByRole('switch', { name: '#prod-alerts on' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.failed', channel_id: 'ch-prod', enabled: false }] }));
 		fireEvent.click(within(row('realm-event-run.failed')).getAllByRole('switch')[0]);
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.failed', channel_id: 'ch-prod', enabled: false }, { event: 'run.failed', channel_id: 'ch-eng', enabled: false }] }));
-		fireEvent.click(within(row('realm-event-run.failed')).getByRole('button', { name: 'Reset' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-prod', 'r-copy'] }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.failed', channel_id: 'ch-prod', enabled: false }] }));
+		expect(within(row('realm-event-run.failed')).queryByRole('button', { name: 'Reset' })).toBeNull();
+		fireEvent.click(within(lines).getByRole('button', { name: 'Remove' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-prod'] }));
 	});
 
-	it('locked / paused by org / set by a broader realm rule: the switch is greyed and nothing to replace', async () => {
+	it('locked / paused by org / set by a broader realm rule: nothing to switch here', async () => {
 		route_fetch(realm_center);
 		render_panel(true);
 		const locked = await screen.findByTestId('realm-event-hug.review_requested');
-		expect(within(locked).getByRole('switch')).toBeDisabled();
-		expect(within(locked).queryByRole('button', { name: 'Replace' })).toBeNull();
+		expect(within(locked).queryByRole('switch')).toBeNull();
 		expect(within(locked).getByText('locked')).toBeInTheDocument();
-		expect(within(row('realm-event-run.completed')).getByRole('switch')).toBeDisabled();
-		expect(within(row('realm-event-run.completed')).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
-		expect(within(row('realm-event-run.crashed')).getByRole('switch')).toBeDisabled();
-		expect(within(row('realm-event-run.crashed')).queryByRole('button', { name: 'Reset' })).toBeNull();
+		expect(within(row('realm-event-run.completed')).queryByRole('switch')).toBeNull();
+		expect(within(row('realm-event-run.crashed')).queryByRole('switch')).toBeNull();
+		expect(within(row('realm-event-run.crashed')).queryByRole('button', { name: '+ channel' })).toBeNull();
 	});
 
-	it('Realm only: Remove deletes its rules', async () => {
+	it('Realm only: Remove deletes its rule', async () => {
 		const calls = route_fetch(realm_center);
 		render_panel(true);
-		fireEvent.click(within(await screen.findByTestId('realm-event-run.started')).getByRole('button', { name: 'Remove' }));
+		fireEvent.click(within(await screen.findByTestId('realm-lines-run.started')).getByRole('button', { name: 'Remove' }));
 		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-start'] }));
 	});
 
 	it('a failed write says why and keeps the list', async () => {
-		route_fetch(realm_center, (u) => (u.endsWith('/set_rules') ? { status: 409, body: { ok: false, error: { code: 'locked', message: 'The org\'s rule for run.awaiting_input is locked' } } } : null));
+		route_fetch(realm_center, (u) => (u.endsWith('/set_rules') ? { status: 409, body: { ok: false, error: { code: 'locked', message: 'That rule is locked' } } } : null));
 		render_panel(true);
-		fireEvent.click(within(await screen.findByTestId('realm-event-run.awaiting_input')).getByRole('button', { name: 'Replace' }));
+		fireEvent.click(within(await screen.findByTestId('realm-lines-run.failed')).getByRole('switch', { name: '#prod-alerts on' }));
 		expect(await screen.findByRole('alert')).toHaveTextContent('is locked');
 		expect(screen.getByTestId('realm-event-run.failed')).toBeInTheDocument();
 	});
