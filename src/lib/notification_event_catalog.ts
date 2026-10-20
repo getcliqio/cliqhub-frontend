@@ -36,7 +36,6 @@ const REALM_GROUPS: Event_group[] = [
 			{ value: 'phase.failed', label: 'Phase failed' },
 			{ value: 'phase.skipped', label: 'Phase skipped' },
 			{ value: 'phase.escalated', label: 'Phase escalated' },
-			{ value: 'phase.input_required', label: 'Input required' },
 			{ value: 'phase.inputs_supplied', label: 'Inputs supplied' },
 			{ value: 'phase.timed_out', label: 'Phase timed out' },
 			{ value: 'phase.idle', label: 'Phase idle' },
@@ -46,7 +45,6 @@ const REALM_GROUPS: Event_group[] = [
 		value: 'hug.*',
 		label: 'All HUG',
 		children: [
-			{ value: 'hug.review_requested', label: 'Review requested' },
 			{ value: 'hug.review_reminded', label: 'Review reminded' },
 			{ value: 'hug.review_responded', label: 'Review responded' },
 			{ value: 'hug.routing_requested', label: 'Routing requested' },
