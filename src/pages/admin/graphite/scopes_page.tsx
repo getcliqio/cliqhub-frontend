@@ -3,7 +3,7 @@
  * Read: `POST /v1/admin_list/get {kind:'scopes'}` (→ orgs/get_scopes, site-admin catalog).
  * Writes (org scopes): orgs/new_scope · orgs/update_scope · orgs/delete_scope.
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { month_year, type Admin_list_data, type Admin_scope_row } from '@/lib/admin';
@@ -11,6 +11,7 @@ import { Admin_header, Banner, Empty_row, Pager, Pill, TABLE_WRAP, TH, TR, use_l
 import { Org_filter } from '@/components/graphite/g_lookup';
 import { Sort_th, use_table_sort } from '@/components/graphite/g_sort';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
+import { Scope_slug_field, scope_slug } from '@/components/graphite/g_scope_slug';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { use_row_open, ROW_OPENS } from '@/components/graphite/g_row';
 
@@ -21,21 +22,34 @@ function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg:
 	const [f, set_f] = useState({ org_id: '', slug: '', display_name: '', visibility: 'private' });
 	const [busy, set_busy] = useState(false);
 	const [err, set_err] = useState<string | null>(null);
+	// The picked org's slug: the new scope's read-only prefix.
+	const [org_slug, set_org_slug] = useState('');
+	useEffect(() => {
+		set_org_slug('');
+		if (!f.org_id) return;
+		let live = true;
+		void post('/v1/orgs/get_by_id', { org_id: f.org_id }).then((r) => {
+			if (live && r.ok) set_org_slug(String((r.data as { slug?: unknown } | null)?.slug ?? ''));
+		});
+		return () => { live = false; };
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the org changes
+	}, [f.org_id]);
+	const slug = scope_slug(org_slug, f.slug);
 	async function submit(e: FormEvent) {
 		e.preventDefault();
 		set_busy(true); set_err(null);
-		const r = await post('/v1/orgs/new_scope', { org_id: f.org_id, slug: f.slug.trim(), visibility: f.visibility, ...(f.display_name.trim() ? { display_name: f.display_name.trim() } : {}) });
+		const r = await post('/v1/orgs/new_scope', { org_id: f.org_id, slug, visibility: f.visibility, ...(f.display_name.trim() ? { display_name: f.display_name.trim() } : {}) });
 		set_busy(false);
 		if (!r.ok) { set_err(r.error); return; }
-		on_done(`@${f.slug.trim()} created`);
+		on_done(`@${slug} created`);
 	}
 	return (
 		<form onSubmit={(e) => void submit(e)} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Org<div className="mt-1"><Org_filter value={f.org_id} on_change={(v) => set_f({ ...f, org_id: v })} all_label="Pick an org…" /></div></label>
-			<label className="text-[12.5px] text-[var(--g-ink-2)]">Slug<input aria-label="Slug" value={f.slug} onChange={(e) => set_f({ ...f, slug: e.target.value })} placeholder="acme-data" className={`${G_INPUT} mt-1 block w-[170px]`} /></label>
+			<Scope_slug_field org_slug={org_slug} value={f.slug} on_change={(rest) => set_f({ ...f, slug: rest })} />
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Name" value={f.display_name} onChange={(e) => set_f({ ...f, display_name: e.target.value })} className={`${G_INPUT} mt-1 block w-[180px]`} /></label>
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Visibility" value={f.visibility} onChange={(e) => set_f({ ...f, visibility: e.target.value })} className={`${G_INPUT} mt-1 block w-[120px]`}><option value="private">private</option><option value="public">public</option></select></label>
-			<button type="submit" disabled={busy || !f.org_id || !/^[a-z][a-z0-9-]*$/.test(f.slug.trim())} className={G_PRIMARY}>Create scope</button>
+			<button type="submit" disabled={busy || !f.org_id || !slug} className={G_PRIMARY}>Create scope</button>
 			<button type="button" aria-label="Close" onClick={on_close} className="ml-auto self-start text-[var(--g-ink-3)]"><X className="h-4 w-4" /></button>
 			{err ? <p role="alert" className="w-full text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
 		</form>

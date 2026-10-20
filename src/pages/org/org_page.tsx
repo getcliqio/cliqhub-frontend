@@ -25,6 +25,7 @@ import { day_month, role_label, type Invite_row } from '@/lib/invites';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Avatar, Banner, Chips, Empty_row, Pill, TABLE_WRAP, TH, TR } from '@/components/graphite/g_admin';
 import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_agents';
+import { Scope_slug_field, scope_slug } from '@/components/graphite/g_scope_slug';
 import { Member_status_pill, Org_invite_form, Org_status_pill, use_invite, Waiting_owner_banner } from '@/components/graphite/g_invites';
 import { Org_mesh_panel } from '@/components/graphite/g_mesh';
 import { Notifications_panel } from '@/components/graphite/g_notifications';
@@ -303,11 +304,11 @@ function Scopes({ data, can_manage, reload }: { data: Org_page_data; can_manage:
 			</div>
 			{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 			{f ? (
-				<form onSubmit={(e) => { e.preventDefault(); void run('/v1/orgs/new_scope', { slug: f.slug.trim(), visibility: f.visibility, ...(f.name.trim() ? { display_name: f.name.trim() } : {}) }, `@${f.slug.trim()} created.`).then((ok) => ok && set_f(null)); }} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
-					<label className="text-[12.5px] text-[var(--g-ink-2)]">Slug<input aria-label="Scope slug" value={f.slug} onChange={(e) => set_f({ ...f, slug: e.target.value })} placeholder={`${org.slug}-data`} className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
+				<form onSubmit={(e) => { e.preventDefault(); const slug = scope_slug(org.slug, f.slug); void run('/v1/orgs/new_scope', { slug, visibility: f.visibility, ...(f.name.trim() ? { display_name: f.name.trim() } : {}) }, `@${slug} created.`).then((ok) => ok && set_f(null)); }} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
+					<Scope_slug_field org_slug={org.slug} value={f.slug} on_change={(rest) => set_f({ ...f, slug: rest })} />
 					<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Scope name" value={f.name} onChange={(e) => set_f({ ...f, name: e.target.value })} className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
 					<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Scope visibility" value={f.visibility} onChange={(e) => set_f({ ...f, visibility: e.target.value as 'private' | 'public' })} className={`${G_INPUT} mt-1 block w-[120px]`}><option value="private">private</option><option value="public">public</option></select></label>
-					<button type="submit" disabled={busy || !/^[a-z][a-z0-9-]*$/.test(f.slug.trim())} className={G_PRIMARY}>Create scope</button>
+					<button type="submit" disabled={busy || !scope_slug(org.slug, f.slug)} className={G_PRIMARY}>Create scope</button>
 					<button type="button" onClick={() => set_f(null)} className={G_BTN}>Cancel</button>
 				</form>
 			) : null}

@@ -297,7 +297,9 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 		fireEvent.click(await screen.findByRole('button', { name: /New scope/ }));
 		const form = screen.getByRole('form', { name: 'New scope' });
 		await pick('Organization', /Acme/, undefined, form);
-		fireEvent.change(within(form).getByLabelText('Slug'), { target: { value: 'acme-data' } });
+		// The org's prefix is shown read-only; only the rest is typed.
+		await waitFor(() => expect(within(form).getByTestId('scope-prefix')).toHaveTextContent('@acme-'));
+		fireEvent.change(within(form).getByLabelText('Scope slug'), { target: { value: 'data' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Create scope' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/new_scope')?.body).toEqual({ org_id: orgs[0].id, slug: 'acme-data', visibility: 'private' }));
 		fireEvent.click(await screen.findByTestId('scope-acme'));
