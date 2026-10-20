@@ -16,3 +16,17 @@ export const REALM_ROLES: Array<{ id: string; label: string; hint: string }> = [
 	{ id: 'operator', label: 'Operator', hint: 'run teams and provide input' },
 	{ id: 'member', label: 'Member', hint: 'view' },
 ];
+
+/**
+ * Your personal default realm can't be deleted (Core refuses: realms/delete → 409), so it has no
+ * Danger zone. Core's rule: the realm is your default realm, or the `default` realm of your own org.
+ */
+export function is_personal_default_realm(
+	realm: { id: string; slug: string; org_slug?: string | null },
+	you: { username?: string | null; default_realm_id?: string | null },
+): boolean {
+	if (you.default_realm_id && realm.id === you.default_realm_id) return true;
+	const me = (you.username ?? '').trim().toLowerCase();
+	return Boolean(me) && realm.slug === 'default' && (realm.org_slug ?? '').toLowerCase() === me;
+}
+

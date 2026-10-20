@@ -9,13 +9,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Check, Copy, Lock, RefreshCw } from 'lucide-react';
-import { useAuthFetch } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview, relative_time } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { Realm_a2a_panel } from '@/components/graphite/g_mesh';
 import { Notifications_panel } from '@/components/graphite/g_notifications';
 import { handle, person_name } from '@/lib/admin';
-import { REALM_ROLES, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
+import { REALM_ROLES, is_personal_default_realm, type Realm_settings_data, type Settings_section } from '@/lib/realm_settings';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
@@ -292,6 +292,10 @@ function Danger({ data, admin, post }: { data: Realm_settings_data; admin: boole
 	const [typed, set_typed] = useState('');
 	const [busy, set_busy] = useState(false);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+	const { user, default_realm_id } = useAuth();
+	if (is_personal_default_realm({ id: data.realm.id, slug: data.realm.slug, org_slug: data.realm.org_slug }, { username: user?.username, default_realm_id })) {
+		return <p className="max-w-[600px] text-[12.5px] text-[var(--g-ink-3)]" data-testid="default-realm-kept">This is your personal default realm. It can’t be deleted.</p>;
+	}
 	async function del() {
 		set_busy(true); set_msg(null);
 		const res = await post('/v1/realms/delete', { realm_id: data.realm.id });

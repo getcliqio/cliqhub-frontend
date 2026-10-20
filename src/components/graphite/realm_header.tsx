@@ -17,7 +17,8 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { CheckCircle2 } from 'lucide-react';
-import { useAuthFetch } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { is_personal_default_realm } from '@/lib/realm_settings';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { relative_time } from '@/lib/overview';
 import type { Overview_realm } from '@/lib/overview';
@@ -124,6 +125,7 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const d = fetched ?? LAST.get(key) ?? null;
 	useEffect(() => { if (d) LAST.set(key, d); }, [key, d]);
 	const [editing, set_editing] = useState(false);
+	const { user, default_realm_id } = useAuth();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { pathname, search } = location;
@@ -180,7 +182,7 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 					<Link to={`${base}/notifications`} aria-current={current === 'notifications' ? 'page' : undefined} className={link(current === 'notifications')} data-testid="go-notifications">Notifications</Link>
 					{/* In Settings, the part you're on is the one marked (they're listed below). */}
 					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
-					{current === 'settings' ? SETTINGS_PARTS.map((p) => {
+					{current === 'settings' ? SETTINGS_PARTS.filter((p) => p.id !== 'danger' || !(d && is_personal_default_realm({ id: d.realm.id, slug, org_slug }, { username: user?.username, default_realm_id }))).map((p) => {
 						const to = `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
 						const on = settings_part === p.id;
 						return <Link key={p.id} to={to} aria-current={on ? 'page' : undefined} className={`${link(on, true)} ${p.id === 'danger' ? 'text-[var(--g-bad)]' : ''}`} data-testid={`settings-${p.id}`}>{p.label}</Link>;

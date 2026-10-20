@@ -433,7 +433,7 @@ function Settings({ data, can_manage, reload }: { data: Org_page_data; can_manag
 						: <div><button type="button" onClick={() => set_leave(true)} className={G_DANGER}>Leave…</button></div>}
 				</div>
 			) : null}
-			<p className="text-[12px] text-[var(--g-ink-3)]">Deleting an organization is done by a CliqHub admin.</p>
+			<p className="text-[12px] text-[var(--g-ink-3)]">{personal ? 'This is your personal org. It can’t be deleted.' : 'Deleting an organization is done by a CliqHub admin.'}</p>
 		</div>
 	);
 }
