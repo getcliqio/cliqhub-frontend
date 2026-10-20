@@ -201,7 +201,7 @@ export function Component() {
 				<div className="flex flex-wrap items-start gap-3">
 					<div className="min-w-0 flex-1">
 						<h1 className="text-[22px] font-semibold tracking-tight">Teams</h1>
-						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds and owns.` : 'Teams you and your orgs build and own.'} Build here, then install into any realm.</p>
+						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds, and teams installed in its realms.` : 'Teams you and your orgs build, and teams installed in your realms.'} Build here, then install into any realm.</p>
 					</div>
 					<Link to="/builder" className={PRIMARY}><Plus aria-hidden className="h-3.5 w-3.5" />New team</Link>
 				</div>
