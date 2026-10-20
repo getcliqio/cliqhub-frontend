@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { Lock, Plus, X } from 'lucide-react';
-import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { api_message } from '@/lib/use_bff_read';
 import type { View_scope } from '@/lib/view_scope';
@@ -20,7 +20,6 @@ import {
 	event_label,
 	scope_text,
 	type Notif_channel,
-	type Notif_scope_kind,
 	type Notification_center_data,
 } from '@/lib/notification_center';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
@@ -33,23 +32,6 @@ const LABEL = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.07em
 
 /* ------------------------------------------------------------------ */
 /* Small pieces                                                        */
-
-const TAG_STYLE: Record<Notif_scope_kind | 'personal', { fg: string; bg: string; word: string }> = {
-	org: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'org' },
-	realm: { fg: 'var(--g-run-text)', bg: 'rgba(91,157,255,.12)', word: 'realm' },
-	personal: { fg: 'var(--g-ink-2)', bg: 'var(--g-soft)', word: 'person' },
-};
-
-export function Scope_tag({ kind, text }: { kind: Notif_scope_kind | 'personal'; text: string; org?: { slug: string; display_name: string } | null }) {
-	// One org at a time: the org is the page's context, so the tag names only the level.
-	const t = TAG_STYLE[kind];
-	return (
-		<span className="inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-0.5 text-[12px]" style={{ color: t.fg, background: t.bg }} data-scope={kind}>
-			<span className="text-[10px] uppercase tracking-[0.06em] opacity-80">{t.word}</span>
-			<span className="truncate">{text}</span>
-		</span>
-	);
-}
 
 const DEST_GLYPH: Record<string, string> = { slack: '#', email: '@', webhook: '↗', http: '↗', jira: 'J', cliqhub: '◉', channel_ref: '→' };
 
@@ -156,8 +138,6 @@ export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 }
 
 export function Channels_tab({ data, scope, reload, realm_filter }: { data: Notification_center_data; scope: View_scope; reload: () => Promise<void>; realm_filter?: React.ReactNode }) {
-	const { user } = useAuth();
-	const me_id = user ? String(user.id) : null;
 	const row = use_row_open();
 	const post = use_post();
 	const [search] = useSearchParams();
@@ -166,7 +146,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 	const [creating, set_creating] = useState(false);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm_delete, set_confirm_delete] = useState(false);
-	const org_by_id = new Map(data.orgs.map((o) => [o.id, o]));
 	const channels = data.channels.filter((c) => in_view_channel(c, scope));
 	const open = channels.find((c) => c.id === open_id) ?? null;
 	const used_by = open ? data.rules.filter((r) => r.channel_id === open.id) : [];
@@ -203,7 +182,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 							<thead>
 								<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 									<th className="px-4 py-2.5 font-semibold">Channel</th>
-									<th className="px-4 py-2.5 font-semibold">Owned by</th>
 									<th className="px-4 py-2.5 font-semibold">Destinations</th>
 									<th className="px-4 py-2.5 font-semibold">Used by</th>
 								</tr>
@@ -220,9 +198,8 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 											<button type="button" className="text-left font-semibold hover:underline" onClick={() => { set_open_id(c.id); set_msg(null); set_confirm_delete(false); }}>{c.name}</button>
 											{c.locked ? <span title={c.lock_reason ?? 'Built in'}><Lock aria-label="Built in" className="ml-1.5 inline h-3 w-3 text-[var(--g-ink-3)]" /></span> : null}
 											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">disabled</span>}
-										</td>
-										<td className="px-4 py-2.5">
-											<Scope_tag kind={c.owner.kind} text={c.owner.kind === 'realm' ? c.owner.realm_slug ?? '' : c.owner.kind === 'org' ? org_by_id.get(c.owner.org_id)?.display_name ?? c.owner.org_slug : c.owner.user_id && c.owner.user_id === me_id ? 'you' : ''} org={c.owner.kind === 'personal' ? null : org_by_id.get(c.owner.org_id)} />
+											{/* The page is the org's or one realm's; in a realm, the org's channels are marked. */}
+											{scope.kind === 'realm' && c.owner.kind === 'org' ? <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]" title="The org’s channel (managed in the org’s Notifications)">org</span> : null}
 										</td>
 										<td className="px-4 py-2.5"><Dest_icons destinations={c.destinations} /></td>
 										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} rule{c.rule_count === 1 ? '' : 's'}</td>
@@ -303,7 +280,8 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 		return r ? { id: r.id, slug: r.slug, org_slug: r.org_slug } : null;
 	};
 	const [name, set_name] = useState('');
-	const [owner, set_owner] = useState<'org' | 'realm'>(preset?.owner ?? (scope.kind === 'realm' || !can_edit_org_channels(data, start_org) ? 'realm' : 'org'));
+	// A channel belongs to where it's made: this realm, or this org. Only the account-wide view asks.
+	const [owner, set_owner] = useState<'org' | 'realm'>(preset?.owner ?? (scope.kind === 'realm' ? 'realm' : scope.kind === 'org' ? 'org' : !can_edit_org_channels(data, start_org) ? 'realm' : 'org'));
 	const [org_id, set_org_id] = useState(start_org);
 	const [realm, set_realm] = useState<Picked_realm | null>(preset?.realm ?? (scope.kind === 'realm' ? { id: scope.realm.id, slug: scope.realm.slug, org_slug: scope.realm.org_slug } : first_realm(start_org)));
 	const realm_id = realm?.id ?? '';
@@ -334,7 +312,7 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 				<label className={LABEL} htmlFor="nc-name">Name</label>
 				<input id="nc-name" value={name} onChange={(e) => set_name(e.target.value)} placeholder="#prod-oncall" className={INPUT} />
 			</div>
-			<div>
+			{scope.kind === 'all' ? (<div>
 				<span className={LABEL}>Owned by</span>
 				<div role="radiogroup" aria-label="Owned by" className="grid grid-cols-2 gap-2">
 					{([['org', 'The whole org'], ['realm', 'One realm']] as const).map(([k, l]) => (
@@ -349,7 +327,7 @@ function New_channel_drawer({ data, scope, preset, on_close, on_saved }: {
 						<Realm_picker org_id={org_id} value={realm} on_change={set_realm} blocked={(id) => (can_edit_realm(data, id) ? null : 'view only')} />
 					) : null}
 				</div>
-			</div>
+			</div>) : !allowed ? <p className="text-[12.5px] text-[var(--g-ink-3)]">{owner === 'org' ? 'Only org owners and admins can add the org’s channels.' : 'Only this realm’s admins can add its channels.'}</p> : null}
 			<div>
 				<span className={LABEL}>Destinations</span>
 				<div className="flex flex-col gap-2">
