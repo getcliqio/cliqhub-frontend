@@ -10,6 +10,8 @@ export interface Realm_team_row {
 	in_team_list: boolean;
 	installed_count: number;
 	online_daemon_count: number;
+	/** Online daemons not on the realm's version (older, or not installed); null when not on the realm's list. */
+	online_stale: number | null;
 	last_run_at: number | null;
 	missing_agents: string[];
 }
@@ -22,11 +24,7 @@ export interface Realm_teams_data {
 	total: number;
 	offset: number;
 	limit: number;
-	counts: { all: number | null; full: number | null; partial: number | null; none: number | null };
-	partial: boolean;
 }
-
-export type Coverage_filter = 'full' | 'partial' | 'none';
 
 /** "3/3", "1/3", "0/3" — or "no daemons online". */
 export function coverage_text(r: Pick<Realm_team_row, 'installed_count' | 'online_daemon_count'>): string {

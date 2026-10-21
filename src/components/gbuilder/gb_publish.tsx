@@ -95,7 +95,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 			const v = String(p.data?.version ?? version);
 			const upgraded: string[] = []; const failed: string[] = [];
 			for (const i of installs.filter((x) => upgrade.has(x.realm_id))) {
-				const r = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ realm_id: i.realm_id, scope, slug }) }).catch(() => null);
+				const r = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ realm_id: i.realm_id, scope, slug, version: v }) }).catch(() => null);
 				const rp = r ? await r.json().catch(() => null) : null;
 				(r?.ok && rp?.ok ? upgraded : failed).push(i.realm_slug);
 			}

@@ -528,7 +528,7 @@ describe('Graphite builder — publish', () => {
 		expect(calls.find((c) => c.url === '/v1/teams/publish')!.body).toMatchObject({ bump: 'minor', visibility: 'private' });
 		const adds = calls.filter((c) => c.url === '/v1/realms/add_team');
 		expect(adds.map((a) => a.body.realm_id)).toEqual(['r1']);
-		expect(adds[0].body).toMatchObject({ scope: 'measureone', slug: 'feature-dev' });
+		expect(adds[0].body).toMatchObject({ scope: 'measureone', slug: 'feature-dev', version: '1.1.0' });
 		expect(screen.getByText('Upgraded prod-us.')).toBeTruthy();
 	});
 

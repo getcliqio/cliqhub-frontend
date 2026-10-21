@@ -18,13 +18,11 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 	return {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
-			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, last_run_at: Date.now() - 60_000, missing_agents: [] },
-			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: ['matcher'] },
-			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, last_run_at: null, missing_agents: [] },
+			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [] },
+			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'] },
+			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [] },
 		],
 		total: 3, offset: 0, limit: 25,
-		counts: { all: 3, full: 1, partial: 2, none: 0 },
-		partial: false,
 		...over,
 	};
 }
@@ -39,6 +37,7 @@ function route_fetch() {
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
 		if (u === '/v1/realm_teams/get') return new Response(JSON.stringify({ ok: true, data: teams() }));
+		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: true, data: { name: body.name, scope: body.scope, version: '2.5.0', versions: [{ version: '2.5.0', changelog: 'Faster PRs', published_at: Date.now() }, { version: '2.4.1', changelog: null, published_at: null }] } }));
 		if (u === '/v1/teams/get') return new Response(JSON.stringify({ ok: true, data: { teams: [{ name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
 		return new Response(JSON.stringify({ ok: true, team_list: [] }));
 	});
@@ -53,21 +52,24 @@ function render_page(path = '/o/measureone/realms/prod-us/teams') {
 describe('Realm teams page', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one read; rows show version, update, coverage, warnings', async () => {
+	it('one read; rows show the realm\'s version, newer available, online daemons current or not, warnings', async () => {
 		const calls = route_fetch();
 		render_page();
 		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
 		// The realm header's own read aside, one page read.
 		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get')).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
-		expect(within(fd).getByTestId('update-badge')).toHaveTextContent('↑ 2.5.0');
+		expect(within(fd).getByTestId('update-badge')).toHaveTextContent('↑ 2.5.0 available');
 		expect(screen.queryByRole('columnheader', { name: /Version/ })).toBeNull();
 		expect(within(screen.getByTestId('team-@measureone/recon')).getByTestId('team-version')).toHaveTextContent('· 0.8.3');
-		expect(within(fd).getByText('3/3')).toBeInTheDocument();
+		expect(within(fd).getByTestId('online-current')).toHaveTextContent('Online daemons are current');
 		const recon = screen.getByTestId('team-@measureone/recon');
-		expect(within(recon).getByText('1/3')).toBeInTheDocument();
+		expect(within(recon).getByTestId('online-stale')).toHaveTextContent('2 online daemons aren’t on 0.8.3');
+		// A team only daemons report (not on the realm's list): what they have.
+		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText('1/3')).toBeInTheDocument();
 		expect(within(recon).getByText(/needs agents: matcher/)).toBeInTheDocument();
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText(/not on the realm’s team list/)).toBeInTheDocument();
-		expect(screen.getByRole('button', { name: /On some daemons\s*2/ })).toBeInTheDocument();
+		// No coverage chips: the Online daemons column says what matters.
+		expect(screen.queryByRole('group', { name: 'Coverage' })).toBeNull();
 		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Teams/ })).toHaveAttribute('aria-current', 'page');
 	});
 
@@ -84,22 +86,39 @@ describe('Realm teams page', () => {
 		expect(await screen.findByTestId('where')).toHaveTextContent(href.split('?')[0]);
 	});
 
-	it('coverage chip and search go to the BFF', async () => {
+	it('search goes to the BFF', async () => {
 		const calls = route_fetch();
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
-		fireEvent.click(screen.getByRole('button', { name: /On some daemons/ }));
-		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ coverage: 'partial' }));
 		fireEvent.change(screen.getByLabelText('Search teams'), { target: { value: 'rec' } });
-		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ q: 'rec', coverage: 'partial' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ q: 'rec' }));
 	});
 
-	it('update, remove (confirmed) and add are single Core writes', async () => {
+	it('Update… picks a version (latest by default) and moves the realm to it; Update them re-installs the realm\'s version', async () => {
 		const calls = route_fetch();
 		render_page();
 		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
-		fireEvent.click(within(fd).getByRole('button', { name: 'Update' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'cliq', slug: 'feature-dev-js' } }));
+		fireEvent.click(within(fd).getByRole('button', { name: 'Update…' }));
+		const drawer = await screen.findByRole('dialog', { name: 'Version of @cliq/feature-dev-js' });
+		expect(within(drawer).getByRole('radio', { name: /2\.5\.0/ })).toBeChecked();
+		expect(within(drawer).getByText('Faster PRs')).toBeInTheDocument();
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Update realm to 2.5.0' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'cliq', slug: 'feature-dev-js', version: '2.5.0' } }));
+		// The newer badge opens the same picker.
+		fireEvent.click(await within(screen.getByTestId('team-@cliq/feature-dev-js')).findByTestId('update-badge'));
+		expect(await screen.findByRole('dialog', { name: 'Version of @cliq/feature-dev-js' })).toBeInTheDocument();
+		fireEvent.click(within(screen.getByRole('dialog', { name: 'Version of @cliq/feature-dev-js' })).getByRole('button', { name: 'Cancel' }));
+		// Up to date: Change version… ; daemons not on it: Update them.
+		const recon = screen.getByTestId('team-@measureone/recon');
+		expect(within(recon).getByRole('button', { name: 'Change version…' })).toBeInTheDocument();
+		fireEvent.click(within(recon).getByRole('button', { name: 'Update them' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'measureone', slug: 'recon', version: '0.8.3' } }));
+	});
+
+	it('remove (confirmed) and add are single Core writes', async () => {
+		const calls = route_fetch();
+		render_page();
+		await screen.findByTestId('team-@cliq/feature-dev-js');
 		fireEvent.click(within(screen.getByTestId('team-@measureone/recon')).getByRole('button', { name: 'More for @measureone/recon' }));
 		fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from realm…' }));
 		fireEvent.click(within(screen.getByTestId('team-@measureone/recon')).getByRole('button', { name: 'Remove' }));
