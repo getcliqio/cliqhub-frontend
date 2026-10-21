@@ -89,6 +89,17 @@ describe('Daemon page', () => {
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/uninstall')?.body).toEqual({ daemon_id: 'd1', scope: 'measureone', slug: 'feature-dev' }));
 	});
 
+	it('a team not on the realm\'s version is marked; Update installs the realm\'s version on this daemon', async () => {
+		const calls = route_fetch({ '/v1/daemon_page/get': () => daemon_data({
+			installed: [{ team_id: 't1', scope: 'measureone', slug: 'feature-dev', version: '1.2.0', realm_version: '1.3.0', realm_team_id: 'cat-fd' }],
+		}) });
+		open('/o/measureone/realms/prod-us/daemons/d1');
+		const behind = await screen.findByTestId('behind-feature-dev');
+		expect(behind).toHaveTextContent('1.2.0realm runs 1.3.0');
+		fireEvent.click(within(behind).getByRole('button', { name: 'Update' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/install')?.body).toEqual({ team_id: 'cat-fd', daemon_ids: ['d1'], version: '1.3.0', force: true }));
+	});
+
 	it('run here enqueues on the daemon + workspace; cancel needs a confirm', async () => {
 		const calls = route_fetch({ '/v1/daemon_page/get': () => daemon_data(), '/v1/runs/enqueue': () => ({ run_id: 'run-9', daemon_id: 'd1', accepted: true }) });
 		open('/o/measureone/realms/prod-us/daemons/d1');

@@ -129,7 +129,7 @@ export function Component() {
 											<Sort_th sort={sort} k="hostname" className="px-4 py-2.5 font-semibold">Host</Sort_th>
 											<Sort_th sort={sort} k="last_heartbeat" className="px-4 py-2.5 font-semibold">Last heartbeat</Sort_th>
 											<Sort_th sort={sort} k="running" className="px-4 py-2.5 font-semibold">Running</Sort_th>
-											<Sort_th sort={sort} k="teams_ready" className="px-4 py-2.5 font-semibold" title="Teams on this realm’s team list that this daemon has installed">Teams ready</Sort_th>
+											<Sort_th sort={sort} k="teams_ready" className="px-4 py-2.5 font-semibold" title="Of the realm’s teams, how many this daemon has at the realm’s version">Teams current</Sort_th>
 											<th className="w-[160px] px-4 py-2.5" />
 										</tr>
 									</thead>

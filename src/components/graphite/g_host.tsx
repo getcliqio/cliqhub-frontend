@@ -7,7 +7,11 @@ import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_age
 import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 
 export interface Host_run { run_id: string; run_name: string | null; state: string; team: string | null; phase: string | null; started_at: number | null; completed_at: number | null; last_updated_at: number | null }
-export interface Host_team { team_id: string | null; scope: string; slug: string; version: string | null }
+export interface Host_team {
+	team_id: string | null; scope: string; slug: string; version: string | null;
+	/** Daemon page: the version the realm runs, and the catalog id to install it (null when not on the realm's list). */
+	realm_version?: string | null; realm_team_id?: string | null;
+}
 export interface Host_workspace { id: string; name: string | null; path: string; teams: string[]; active_runs: number; last_run_state: string | null; last_run_at: number | null }
 export interface Host_realm { id: string; slug: string; name: string; org_slug?: string | null }
 export interface Daemon_page_data {

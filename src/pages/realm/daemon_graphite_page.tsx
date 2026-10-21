@@ -47,6 +47,15 @@ function Teams({ data, base, reload }: { data: Daemon_page_data; base: string; r
 		set_pick('');
 		await reload();
 	}
+	/** Put the realm's version on this daemon (it runs another one). */
+	async function to_realm_version(t: Host_team) {
+		if (!t.realm_team_id || !t.realm_version) return;
+		set_busy(true); set_msg(null);
+		const r = await post('/v1/teams/install', { team_id: t.realm_team_id, daemon_ids: [daemon_id], version: t.realm_version, force: true });
+		set_busy(false);
+		set_msg(r.ok ? { tone: 'ok', text: `Installing ${team_label(t)} ${t.realm_version} on this daemon.` } : { tone: 'bad', text: r.error });
+		if (r.ok) await reload();
+	}
 	async function uninstall(t: Host_team) {
 		set_busy(true); set_msg(null);
 		const r = await post('/v1/teams/uninstall', { daemon_id, scope: t.scope, slug: t.slug });
@@ -70,7 +79,13 @@ function Teams({ data, base, reload }: { data: Daemon_page_data; base: string; r
 								return (
 									<tr key={key} {...row({ to: `/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}` })} className={`${TR} ${ROW_OPENS}`} data-testid={`installed-${t.slug}`}>
 										<td className="g-mono px-4 py-2.5"><Link to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} className="hover:underline">{team_label(t)}</Link></td>
-										<td className="g-mono px-4 text-[var(--g-ink-2)]">{t.version ?? '—'}</td>
+										<td className="px-4">{t.realm_version && t.version !== t.realm_version ? (
+											<span className="inline-flex flex-wrap items-center gap-2" data-testid={`behind-${t.slug}`}>
+												<span className="g-mono text-[var(--g-warn-text)]">{t.version ?? '—'}</span>
+												<span className="text-[12px] text-[var(--g-ink-3)]">realm runs <span className="g-mono">{t.realm_version}</span></span>
+												{t.realm_team_id ? <button type="button" disabled={busy || !online} title={!online ? 'The daemon must be online' : `Install ${t.realm_version} on this daemon`} onClick={(e) => { e.stopPropagation(); void to_realm_version(t); }} className={G_BTN}>Update</button> : null}
+											</span>
+										) : <span className="g-mono text-[var(--g-ink-2)]">{t.version ?? '—'}</span>}</td>
 										<td className="px-4 text-right">{confirm === key
 											? <span className="inline-flex gap-2"><button type="button" disabled={busy} onClick={() => void uninstall(t)} className={G_DANGER}>Uninstall</button><button type="button" onClick={() => set_confirm(null)} className={G_BTN}>Keep</button></span>
 											: <span className="inline-flex items-center gap-2"><Row_open to={`${base}/teams/${encodeURIComponent(t.scope || '_')}/${encodeURIComponent(t.slug)}`} label={`Open ${team_label(t)}`} /><button type="button" onClick={() => set_confirm(key)} className="text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">Uninstall…</button></span>}</td>
