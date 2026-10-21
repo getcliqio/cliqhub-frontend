@@ -222,7 +222,7 @@ describe('Realm › Notifications › Events — the org\'s channels and the rea
 describe('Notifications — channels', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('details panel sends a test, switches a channel on/off and deletes it via the single Core routes', async () => {
+	it('details panel sends a test and deletes via the single Core routes; no Enable/Disable (the row switch does that)', async () => {
 		const calls = route_fetch();
 		render_panel(false, 'channels');
 		fireEvent.click(await screen.findByRole('button', { name: '#design' }));
@@ -230,8 +230,7 @@ describe('Notifications — channels', () => {
 		fireEvent.click(within(panel).getByRole('button', { name: 'Send test' }));
 		expect(await within(panel).findByRole('status')).toHaveTextContent('Test delivered to 1 destination.');
 		expect(calls).toContainEqual({ url: '/v1/notification_channels/test', body: { id: 'ch-off' } });
-		fireEvent.click(within(panel).getByRole('button', { name: 'Enable' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-off', enabled: true } }));
+		expect(within(panel).queryByRole('button', { name: /^(Enable|Disable)$/ })).toBeNull();
 		fireEvent.click(within(panel).getByRole('button', { name: 'Delete…' }));
 		fireEvent.click(within(panel).getByRole('button', { name: 'Delete channel' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/remove', body: { id: 'ch-off' } }));
@@ -265,19 +264,39 @@ describe('Notifications — channels', () => {
 		expect(within(row('channel-ch-eng')).getByTestId('belongs-to')).toHaveTextContent('Org');
 	});
 
-	it('New channel: pick the type first; Email has To, Cc and Bcc; the channel belongs to this realm', async () => {
+	it('New channel: a name, then destinations from "Add destination…" (each removable); it belongs to this realm', async () => {
 		const calls = route_fetch(realm_center, (u) => (u.endsWith('/notification_channels/create') ? { body: { ok: true, data: { id: 'ch-new', name: 'Platform' } } } : null));
 		render_panel(true, 'channels');
 		fireEvent.click(await screen.findByRole('button', { name: /New channel/ }));
 		const drawer = screen.getByRole('dialog', { name: 'New channel' });
-		expect(within(drawer).queryByLabelText('Name')).toBeNull();
-		fireEvent.click(within(drawer).getByRole('radio', { name: /Email/ }));
+		expect(within(drawer).queryByRole('radio')).toBeNull();
+		expect(within(drawer).getByTestId('nc-where')).toHaveTextContent('For the prod-us realm.');
 		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Platform' } });
+		expect(within(drawer).getByRole('button', { name: 'Create channel' })).toBeDisabled();
+		expect(within(drawer).getByText('Needs a destination.')).toBeInTheDocument();
+		// Email: To, Cc and Bcc; Add with no address says what's missing.
+		fireEvent.change(within(drawer).getByLabelText('Add destination'), { target: { value: 'email' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
+		expect(within(drawer).getByRole('alert')).toHaveTextContent('Enter at least one address.');
 		fireEvent.change(within(drawer).getByLabelText('To'), { target: { value: 'a@x.com,b@x.com ' } });
 		fireEvent.change(within(drawer).getByLabelText(/^Cc/), { target: { value: 'c@x.com' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(within(drawer).queryByLabelText('To')).toBeNull());
+		// A second destination, then a third removed again.
+		fireEvent.change(within(drawer).getByLabelText('Add destination'), { target: { value: 'slack' } });
+		fireEvent.change(within(drawer).getByLabelText('Slack webhook URL'), { target: { value: 'https://hooks.slack.com/services/T/B/x' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
+		fireEvent.change(await within(drawer).findByLabelText('Add destination'), { target: { value: 'webhook' } });
+		fireEvent.change(within(drawer).getByLabelText('URL'), { target: { value: 'https://pd.example/hook' } });
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
+		fireEvent.click(await within(drawer).findByRole('button', { name: 'Remove Webhook destination' }));
+		expect(within(within(drawer).getByTestId('destinations')).getAllByRole('listitem')).toHaveLength(2);
 		fireEvent.click(within(drawer).getByRole('button', { name: 'Create channel' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/create', body: {
-			name: 'Platform', realm_id: 'r-prod', destinations: [{ type: 'email', address: 'a@x.com, b@x.com', cc: 'c@x.com' }],
+			name: 'Platform', realm_id: 'r-prod', destinations: [
+				{ type: 'email', address: 'a@x.com, b@x.com', cc: 'c@x.com' },
+				{ type: 'slack', webhook_url: 'https://hooks.slack.com/services/T/B/x' },
+			],
 		} }));
 	});
 
@@ -287,12 +306,46 @@ describe('Notifications — channels', () => {
 		fireEvent.click(within(await screen.findByTestId('event-run.started')).getByRole('button', { name: '+ channel' }));
 		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'New channel…' }));
 		const drawer = screen.getByRole('dialog', { name: 'New channel' });
-		fireEvent.click(within(drawer).getByRole('radio', { name: /In-app/ }));
-		expect(within(drawer).getByTestId('nc-in-app')).toHaveTextContent('everyone in this realm');
+		fireEvent.change(within(drawer).getByLabelText('Add destination'), { target: { value: 'cliqhub' } });
+		expect(within(drawer).getByTestId('nc-in-app')).toHaveTextContent('Everyone in prod-us sees these messages in their CliqHub inbox.');
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
 		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Oncall' } });
-		fireEvent.click(within(drawer).getByRole('button', { name: 'Create channel' }));
+		fireEvent.click(await within(drawer).findByRole('button', { name: 'Create channel' }));
 		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-new' }] }));
 		expect(calls.find((c) => c.url === '/v1/notification_channels/create')?.body).toEqual({ name: 'Oncall', realm_id: 'r-prod', destinations: [{ type: 'cliqhub' }] });
+	});
+
+	it('a channel\'s details: add a destination and remove one, each saved (the BFF fills in the rest of the list)', async () => {
+		const calls = route_fetch(() => {
+			const d = center();
+			d.channels = d.channels.map((c) => (c.id === 'ch-eng' ? { ...c, destinations: [{ type: 'slack', label: 'Slack ••••1234' }, { type: 'email', label: 'ops@x.com' }] } : c));
+			return d;
+		}, (u) => (u.endsWith('/notification_channels/update') ? { body: { ok: true, data: { id: 'ch-eng', destinations: [] } } } : null));
+		render_panel(false, 'channels');
+		fireEvent.click(await screen.findByRole('button', { name: '#eng-alerts' }));
+		const panel = screen.getByRole('complementary', { name: 'Channel details' });
+		fireEvent.change(within(panel).getByLabelText('Add destination'), { target: { value: 'webhook' } });
+		fireEvent.change(within(panel).getByLabelText('URL'), { target: { value: 'https://pd.example/hook' } });
+		fireEvent.click(within(panel).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, add_destination: { type: 'webhook', url: 'https://pd.example/hook' } } }));
+		fireEvent.click(within(panel).getByRole('button', { name: 'Remove Email destination' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, remove_destination: { index: 1, type: 'email' } } }));
+	});
+
+	it('a channel\'s only destination can\'t be removed; a built-in channel has no editor', async () => {
+		const calls = route_fetch(() => {
+			const d = center();
+			d.channels = [...d.channels, { ...ch('ch-built', 'All org members'), system_key: 'org.in_app', locked: true, lock_reason: 'Built in' }];
+			return d;
+		});
+		render_panel(false, 'channels');
+		fireEvent.click(await screen.findByRole('button', { name: '#eng-alerts' }));
+		const panel = screen.getByRole('complementary', { name: 'Channel details' });
+		fireEvent.click(within(panel).getByRole('button', { name: 'Remove Slack destination' }));
+		expect(await within(panel).findByRole('alert')).toHaveTextContent('A channel needs at least one destination.');
+		expect(calls.some((c) => c.url === '/v1/notification_channels/update')).toBe(false);
+		fireEvent.click(screen.getByRole('button', { name: 'All org members' }));
+		expect(within(screen.getByRole('complementary', { name: 'Channel details' })).queryByLabelText('Add destination')).toBeNull();
 	});
 
 	it('maps destination drafts to Core shapes', () => {

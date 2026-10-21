@@ -98,7 +98,7 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 	const d = read.data;
 
 	// The channels list (shared with the old page) works on a view scope.
-	const scope = useMemo<View_scope | null>(() => {
+	const scope = useMemo<Exclude<View_scope, { kind: 'all' }> | null>(() => {
 		const org = overview.data?.orgs.find((o) => o.id === org_id) ?? null;
 		if (!org) return null;
 		if (!realm) return { kind: 'org', org, realm: null };
@@ -148,7 +148,6 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 						new_channel={scope ? (event, done) => (
 							<New_channel_drawer
 								data={d} scope={scope}
-								preset={realm ? { owner: 'realm', org_id, realm } : { owner: 'org', org_id, realm: null }}
 								on_close={done}
 								on_saved={async (created) => {
 									done();
