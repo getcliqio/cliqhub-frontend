@@ -35,6 +35,9 @@ const LABEL = 'mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.07em
 
 const DEST_GLYPH: Record<string, string> = { slack: '#', email: '@', webhook: '↗', http: '↗', jira: 'J', cliqhub: '◉', channel_ref: '→' };
 
+/** The built-ins that reach every member, each the way they chose (their personal channel). */
+const MEMBERS_KEYS: ReadonlySet<string> = new Set(['org.in_app', 'realm.members']);
+
 function Dest_icons({ destinations }: { destinations: Array<{ type: string; label: string }> }) {
 	return (
 		<span className="inline-flex gap-1">
@@ -94,7 +97,7 @@ export function Drawer({ title, on_close, children, label }: { title: string; on
 /* ------------------------------------------------------------------ */
 /* Channels                                                            */
 
-type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook'; value: string; cc?: string; bcc?: string };
+export type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook'; value: string; cc?: string; bcc?: string };
 
 /** A comma-separated address list, tidied (empty → undefined). */
 function addresses(v: string | undefined): string | undefined {
@@ -195,7 +198,7 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 											{c.enabled ? null : <span className="ml-2 rounded bg-[var(--g-soft)] px-1.5 text-[10.5px] text-[var(--g-ink-3)]">off</span>}
 										</td>
 										<td className="px-4 py-2.5 text-[var(--g-ink-2)]" data-testid="belongs-to">{belongs(c)}</td>
-										<td className="px-4 py-2.5"><Dest_icons destinations={c.destinations} /></td>
+										<td className="px-4 py-2.5"><span className="inline-flex items-center gap-2"><Dest_icons destinations={c.destinations} />{MEMBERS_KEYS.has(c.system_key ?? '') ? <span className="text-[11.5px] text-[var(--g-ink-3)]" data-testid="members-their-way">each member, their way</span> : null}</span></td>
 										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} event{c.rule_count === 1 ? '' : 's'}</td>
 										<td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
 											{c.locked
@@ -293,12 +296,14 @@ function draft_label(d: Dest_draft): string {
  * in only its fields, Add. Used by New channel (nothing saved until Create) and a channel's details
  * (each add / remove is saved). `on_add` / `on_remove` return an error to show, or null.
  */
-export function Destinations_editor({ items, where, on_add, on_remove }: {
+export function Destinations_editor({ items, where, on_add, on_remove, locked }: {
 	items: Array<{ type: string; label: string }>;
 	/** Who sees in-app messages, e.g. "prod-us" or "Acme". */
 	where: string;
 	on_add: (draft: Dest_draft) => Promise<string | null>;
 	on_remove: (index: number) => Promise<string | null>;
+	/** A destination that can't be removed (shown with a lock and why), e.g. a personal channel's in-app. */
+	locked?: (item: { type: string; label: string }) => string | null;
 }) {
 	const [type, set_type] = useState<Dest_draft['type'] | ''>('');
 	const [value, set_value] = useState('');
@@ -333,7 +338,9 @@ export function Destinations_editor({ items, where, on_add, on_remove }: {
 						<li key={`${d.type}-${i}`} className="flex items-center gap-2.5 rounded-md border border-[var(--g-line)] py-1.5 pl-2.5 pr-1.5 text-[12.5px]">
 							<Dest_icons destinations={[d]} />
 							<span className="min-w-0 flex-1"><span className="block text-[11px] text-[var(--g-ink-3)]">{DEST_NAME[d.type] ?? d.type}</span><span className="block truncate">{d.label}</span></span>
-							<button type="button" disabled={busy} onClick={() => void remove(i)} aria-label={`Remove ${DEST_NAME[d.type] ?? d.type} destination`} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-bad-soft)] hover:text-[var(--g-bad)] disabled:opacity-50"><X className="h-3.5 w-3.5" /></button>
+							{locked?.(d)
+								? <span title={locked(d)!} aria-label={locked(d)!} className="grid h-7 w-7 place-items-center text-[var(--g-ink-4)]"><Lock aria-hidden className="h-3.5 w-3.5" /></span>
+								: <button type="button" disabled={busy} onClick={() => void remove(i)} aria-label={`Remove ${DEST_NAME[d.type] ?? d.type} destination`} className="grid h-7 w-7 place-items-center rounded-md text-[var(--g-ink-3)] hover:bg-[var(--g-bad-soft)] hover:text-[var(--g-bad)] disabled:opacity-50"><X className="h-3.5 w-3.5" /></button>}
 						</li>
 					))}
 				</ul>

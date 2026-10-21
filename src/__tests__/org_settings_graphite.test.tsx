@@ -388,6 +388,32 @@ describe('Settings page', () => {
 		expect(order()).toEqual(['member-gone', 'member-maya', 'member-sapan']);
 	});
 
+	it('Settings › Notifications: how to reach me — in-app locked on; add and remove a destination on my own channel; send a test', async () => {
+		const calls = route_fetch({
+			'/v1/notification_channels/get': () => ({ ok: true, data: [{ id: 'me', name: 'sapan', destinations: [{ type: 'cliqhub' }, { type: 'email', account: true }] }] }),
+			'/v1/notification_channels/update': () => ({ ok: true, data: { id: 'me', destinations: [] } }),
+			'/v1/notification_channels/test': () => ({ ok: true, data: { delivered: 2 } }),
+		});
+		open_settings('/settings?tab=notifications');
+		const mine = await screen.findByTestId('my-destinations');
+		expect(calls.find((c) => c.url === '/v1/notification_channels/get')?.body).toEqual({ mine: true });
+		expect(within(mine).getByText('Your CliqHub inbox')).toBeInTheDocument();
+		expect(within(mine).getByText('s@x.com (your account email)')).toBeInTheDocument();
+		// In-app can't be removed; email can.
+		expect(within(mine).queryByRole('button', { name: 'Remove In-app destination' })).toBeNull();
+		expect(within(mine).getByLabelText(/Always on/)).toBeInTheDocument();
+		fireEvent.click(within(mine).getByRole('button', { name: 'Remove Email destination' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', remove_destination: { index: 1, type: 'email' } } }));
+		fireEvent.change(within(mine).getByLabelText('Add destination'), { target: { value: 'slack' } });
+		fireEvent.change(within(mine).getByLabelText('Slack webhook URL'), { target: { value: 'https://hooks.slack.com/services/T/B/me' } });
+		fireEvent.click(within(mine).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', add_destination: { type: 'slack', webhook_url: 'https://hooks.slack.com/services/T/B/me' } } }));
+		fireEvent.click(screen.getByRole('button', { name: 'Send test' }));
+		expect(await screen.findByText('Test sent to 2 destinations.')).toBeInTheDocument();
+		// What reaches me: the built-ins of my orgs and realms.
+		expect(within(screen.getByTestId('reaches-me')).getAllByText('All org members').length).toBeGreaterThan(0);
+	});
+
 	it('old tabs redirect', async () => {
 		route_fetch();
 		open_settings('/settings?tab=roles');

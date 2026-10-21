@@ -1,8 +1,9 @@
 /**
- * Settings (Graphite) — your account. /settings?tab=profile|password|tokens|scopes
+ * Settings (Graphite) — your account. /settings?tab=profile|password|tokens|notifications|scopes
  *   profile   users/update_profile · your orgs (orgs/leave)
  *   password  users/change_password
  *   tokens    auth/get_tokens · generate_token · rotate_token · revoke_token (type user)
+ *   notifications  notification_channels/get {mine} · update (add/remove a destination) · test — how to reach me
  *   scopes    orgs/get_scopes {user_id: me}
  * Org-wide settings moved: agents → /agents, channels/notifications → /notifications,
  * members/roles/Jira/A2A → Manage › Organization. Old ?tab= values redirect.
@@ -21,16 +22,16 @@ import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_age
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { Destinations_editor, draft_to_destination } from '@/pages/notification_center_page';
 
-type Tab = 'profile' | 'password' | 'tokens' | 'scopes';
-const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Security', 'Account'], ['scopes', 'My scopes', 'Publishing']];
+type Tab = 'profile' | 'password' | 'tokens' | 'notifications' | 'scopes';
+const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Security', 'Account'], ['notifications', 'Notifications', 'Account'], ['scopes', 'My scopes', 'Publishing']];
 /** Where the old /settings tabs went. */
 export const LEGACY_SETTINGS_TAB: Record<string, string> = {
 	security: '/settings?tab=password',
 	access: '/settings?tab=tokens',
 	agents: '/agents',
 	channels: '/notifications?tab=channels',
-	notifications: '/notifications',
 	bindings: '/notifications',
 	integrations: '/org?tab=integrations',
 	mesh: '/org?tab=a2a',
@@ -277,6 +278,82 @@ function Scopes() {
 	);
 }
 
+/** One of my destinations as I see it (my own, so in full — except secrets in URLs). */
+function my_label(d: Record<string, unknown>, my_email: string | null): string {
+	const host = (u: unknown) => { try { return `${new URL(String(u)).host}/…`; } catch { return String(u ?? ''); } };
+	if (d.type === 'cliqhub') return 'Your CliqHub inbox';
+	if (d.type === 'email') return d.account === true ? `${my_email ?? 'Your account email'} (your account email)` : [d.address, d.cc && `cc ${d.cc}`, d.bcc && `bcc ${d.bcc}`].filter(Boolean).join(' · ');
+	if (d.type === 'slack') return `Slack · ${host(d.webhook_url)}`;
+	if (d.type === 'webhook' || d.type === 'http') return host(d.url);
+	return String(d.type);
+}
+
+/** Settings › Notifications — how to reach me (my personal channel), and what reaches me. */
+function My_notifications() {
+	const { user } = useAuth();
+	const overview = use_overview();
+	const post = use_post();
+	const read = use_bff_read<Array<{ id: string; name: string; destinations: Array<Record<string, unknown>> }>>('/v1/notification_channels/get', { mine: true }, { fallback_error: 'Could not load your notification settings.' });
+	const mine = read.data?.[0] ?? null;
+	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+	const items = (mine?.destinations ?? []).map((d) => ({ type: String(d.type), label: my_label(d, user?.email ?? null) }));
+	const change = async (change: Record<string, unknown>): Promise<string | null> => {
+		if (!mine) return 'Your channel isn’t loaded yet.';
+		set_msg(null);
+		const r = await post('/v1/notification_channels/update', { id: mine.id, ...change });
+		if (!r.ok) return r.error;
+		await read.reload();
+		return null;
+	};
+	async function test() {
+		if (!mine) return;
+		set_msg(null);
+		const r = await post('/v1/notification_channels/test', { id: mine.id });
+		if (!r.ok) { set_msg({ tone: 'bad', text: r.error }); return; }
+		const d = r.data as { delivered?: number; errors?: string[] } | null;
+		set_msg(d?.errors?.length ? { tone: 'bad', text: `Sent to ${d.delivered ?? 0}; ${d.errors.join('; ')}` } : { tone: 'ok', text: `Test sent to ${d?.delivered ?? 0} destination${d?.delivered === 1 ? '' : 's'}.` });
+	}
+	const orgs = overview.data?.orgs ?? [];
+	return (
+		<div className="flex flex-col gap-4">
+			<section aria-label="How to reach me" className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5">
+				<div>
+					<h2 className="text-[15px] font-semibold">How to reach me</h2>
+					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">Your personal channel{mine ? <> <span className="g-mono text-[var(--g-ink-2)]">{mine.name}</span></> : null} — one for your whole account, in every org you’re in. Anything meant for you comes here: “All org members”, “All realm members”, reviews, and any channel that names you.</p>
+				</div>
+				{read.status === 'error' && !read.data ? <Banner tone="bad">{read.error}</Banner> : null}
+				{read.status === 'loading' && !read.data ? <div className="h-[120px] animate-pulse rounded-lg bg-[var(--g-soft)]" aria-busy="true" aria-label="Loading" /> : null}
+				{mine ? (
+					<div data-testid="my-destinations">
+						<Destinations_editor
+							items={items} where="you"
+							locked={(d) => (d.type === 'cliqhub' ? 'Always on — you always get it in your CliqHub inbox' : null)}
+							on_add={(d) => change({ add_destination: draft_to_destination(d) })}
+							on_remove={(i) => change({ remove_destination: { index: i, type: items[i]!.type } })}
+						/>
+					</div>
+				) : null}
+				{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
+				{mine ? <div><button type="button" onClick={() => void test()} className={G_BTN}>Send test</button></div> : null}
+			</section>
+			<section aria-label="What reaches me" className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5">
+				<div>
+					<h2 className="text-[15px] font-semibold">What reaches me</h2>
+					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">These reach everyone in an org or realm — you included, through the destinations above.</p>
+				</div>
+				<ul className="flex flex-col gap-1.5 text-[12.5px]" data-testid="reaches-me">
+					{orgs.map((o) => (
+						<li key={o.id} className="flex flex-col gap-1.5">
+							<span className="flex items-center gap-2 rounded-md border border-[var(--g-line-2)] px-3 py-2"><b className="font-medium">All org members</b><span className="ml-auto text-[var(--g-ink-3)]">{o.display_name}</span></span>
+							{o.realms.map((r) => <span key={r.id} className="flex items-center gap-2 rounded-md border border-[var(--g-line-2)] px-3 py-2"><b className="font-medium">All realm members</b><span className="ml-auto text-[var(--g-ink-3)]">{r.slug} · {o.display_name}</span></span>)}
+						</li>
+					))}
+				</ul>
+			</section>
+		</div>
+	);
+}
+
 export function Component() {
 	const overview = use_overview();
 	const [sp, set_sp] = useSearchParams();
@@ -300,7 +377,7 @@ export function Component() {
 						))}
 					</nav>
 					<div className="min-w-0 flex-1">
-						{tab === 'profile' ? <Profile /> : tab === 'password' ? <Password /> : tab === 'tokens' ? <Tokens /> : <Scopes />}
+						{tab === 'profile' ? <Profile /> : tab === 'password' ? <Password /> : tab === 'tokens' ? <Tokens /> : tab === 'notifications' ? <My_notifications /> : <Scopes />}
 					</div>
 				</div>
 			</div>
