@@ -150,22 +150,22 @@ describe('team page helpers', () => {
 describe('Build › Teams list', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('Published tab by default: one read; rows show phases and latest, no status, installs or Open', async () => {
+	it('All tab by default: one read; rows show phases and latest, no status, installs or Open', async () => {
 		const calls = route_fetch();
 		render_at('/teams');
 		const row = await screen.findByTestId('team-measureone/feature-dev-js');
 		const reads = calls.filter((c) => c.url === '/v1/team_list/get');
 		expect(reads).toHaveLength(1);
-		expect(reads[0]!.body).toMatchObject({ status: 'published', limit: 25, offset: 0, scope: 'measureone' });
+		expect(reads[0]!.body).toMatchObject({ status: 'all', limit: 25, offset: 0, scope: 'measureone' });
 		expect(within(row).getByLabelText(/3 phases/)).toBeInTheDocument();
 		expect(within(row).getByText('1.4.2')).toBeInTheDocument();
 		expect(within(row).queryByText('Published')).toBeNull();
 		expect(within(row).queryByText(/staging/)).toBeNull();
 		expect(within(row).queryByRole('link', { name: 'Open' })).toBeNull();
 		expect(screen.queryByRole('columnheader', { name: /Status|Installed in/ })).toBeNull();
-		// Two tabs only, with counts; no filters.
-		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Published1', 'Drafts1']);
-		expect(screen.getByRole('tab', { name: /Published/ })).toHaveAttribute('aria-selected', 'true');
+		// Three tabs, with counts; no filters.
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['All2', 'Published1', 'Drafts1']);
+		expect(screen.getByRole('tab', { name: /All/ })).toHaveAttribute('aria-selected', 'true');
 		expect(screen.queryByLabelText('Search teams')).toBeNull();
 		// The primary action is on the page, not in the top bar; no Marketplace.
 		expect(within(screen.getByRole('main')).getByRole('link', { name: 'New team' })).toHaveAttribute('href', '/builder');
@@ -173,11 +173,13 @@ describe('Build › Teams list', () => {
 		expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
 	});
 
-	it('org view scopes the read; the Drafts tab reads drafts', async () => {
+	it('org view scopes the read; Published and Drafts tabs read their status', async () => {
 		const calls = route_fetch();
 		render_at('/teams?org=measureone');
 		await screen.findByTestId('team-measureone/feature-dev-js');
-		expect(calls.at(-1)!.body).toMatchObject({ org_id: expect.any(String), scope: 'measureone', status: 'published' });
+		expect(calls.at(-1)!.body).toMatchObject({ org_id: expect.any(String), scope: 'measureone', status: 'all' });
+		fireEvent.click(screen.getByRole('tab', { name: /Published/ }));
+		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ status: 'published' }));
 		fireEvent.click(screen.getByRole('tab', { name: /Drafts/ }));
 		await waitFor(() => expect(calls.at(-1)!.body).toMatchObject({ status: 'draft' }));
 		expect(screen.getByRole('tab', { name: /Drafts/ })).toHaveAttribute('aria-selected', 'true');

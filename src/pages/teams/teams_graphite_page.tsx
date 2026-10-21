@@ -1,6 +1,6 @@
 /**
- * Build › Teams (Graphite): two tabs, Published and Drafts. Read: one `POST /v1/team_list/get` per
- * page (BFF: the caller's teams, counts per status, phase shape per team). Follows the view
+ * Build › Teams (Graphite): tabs All (own teams and teams installed in the realms), Published and Drafts
+ * (own teams only). Read: one `POST /v1/team_list/get` per page (BFF: counts per tab, phase shape per team). Follows the view
  * switcher: an org view shows that org's teams and realms. Write: `/v1/realms/add_team` (install
  * a published team into one realm). A row opens the team.
  */
@@ -25,8 +25,9 @@ const TAB = (on: boolean) => `-mb-px inline-flex items-center gap-1.5 border-b-2
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 
-type Status = 'published' | 'draft';
+type Status = 'all' | 'published' | 'draft';
 const TABS: Array<{ id: Status; label: string }> = [
+	{ id: 'all', label: 'All' },
 	{ id: 'published', label: 'Published' },
 	{ id: 'draft', label: 'Drafts' },
 ];
@@ -168,7 +169,7 @@ export function Component() {
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
 	const [search, set_search] = useSearchParams();
-	const status: Status = search.get('status') === 'draft' ? 'draft' : 'published';
+	const status: Status = search.get('status') === 'draft' ? 'draft' : search.get('status') === 'published' ? 'published' : 'all';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
 	const [open_install, set_open_install] = useState<string | null>(null);
 	const [msg, set_msg] = useState<string | null>(null);
@@ -211,7 +212,7 @@ export function Component() {
 					<>
 						<div role="tablist" aria-label="Teams" className="flex gap-5 border-b border-[var(--g-line)]">
 							{TABS.map((t) => (
-								<button key={t.id} type="button" role="tab" aria-selected={status === t.id} onClick={() => set_param('status', t.id === 'published' ? null : t.id)} className={TAB(status === t.id)}>
+								<button key={t.id} type="button" role="tab" aria-selected={status === t.id} onClick={() => set_param('status', t.id === 'all' ? null : t.id)} className={TAB(status === t.id)}>
 									{t.label}{data ? <span className="g-mono text-[11px] font-normal text-[var(--g-ink-3)]">{data.counts[t.id]}</span> : null}
 								</button>
 							))}
@@ -221,7 +222,7 @@ export function Component() {
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
 							{data && data.items.length === 0 ? (
 								<div className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">
-									{status === 'draft' ? 'No drafts.' : <>No published teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link>.</>}
+									{status === 'draft' ? 'No drafts.' : <>No {status === 'published' ? 'published ' : ''}teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link>.</>}
 								</div>
 							) : null}
 							{data && data.items.length ? (
