@@ -4,10 +4,33 @@
  * team page uses (see components/team_actions.tsx).
  */
 import { BUILDER_SESSION_KEYS, normalize_builder_team } from '@/lib/builder/session_restore';
+import { parse_team_yml_text } from '@/lib/team_yml_parse';
 
 type Rec = Record<string, unknown>;
 
 export function builder_team_from_detail(raw: Rec, opts: { label: string; version?: string | null; fork?: boolean }): ReturnType<typeof normalize_builder_team> {
+	const roles = (Array.isArray(raw.roles) ? raw.roles as Rec[] : []).map((r) => ({ name: String(r.name ?? ''), content: String(r.content_md ?? '') }));
+	// The team's own team.yml first: everything in it is kept (args, timeout, when, hug, an agent's inputs…).
+	const text = typeof raw.raw_manifest === 'string' ? raw.raw_manifest : typeof raw.team_json === 'string' ? raw.team_json : '';
+	// A draft the builder saved is its own JSON, not team.yml.
+	if (text.trim().startsWith('{')) {
+		try {
+			const team = normalize_builder_team(JSON.parse(text));
+			if (team) return opts.fork ? { ...team, name: `${opts.label}-fork`, version: undefined } : team;
+		} catch { /* not JSON: read as team.yml */ }
+	}
+	if (text.trim()) {
+		const base = { name: opts.label, description: String(raw.description ?? ''), phases: [], roles, agents: [] };
+		const parsed = parse_team_yml_text(text, base);
+		if (!parsed.error) {
+			return normalize_builder_team({
+				...parsed.team,
+				name: opts.fork ? `${opts.label}-fork` : opts.label,
+				version: opts.fork ? undefined : opts.version ?? undefined,
+			});
+		}
+	}
+	// No team.yml (older teams): Core's phase list.
 	const wf = (raw.workflow ?? {}) as { phases?: Rec[]; support?: Rec[] };
 	const phases: Rec[] = [...(wf.phases ?? []), ...(wf.support ?? []).map((p): Rec => ({ ...p, is_support: true }))];
 	const agents = (raw.agents && typeof raw.agents === 'object' ? raw.agents : {}) as Record<string, { entry?: string; env?: string[] }>;

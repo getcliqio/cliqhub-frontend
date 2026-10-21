@@ -57,8 +57,9 @@ export function format_yaml(text: string, base: GeneratedTeam): Format_outcome {
 	const r = parse_yaml(text, base);
 	if (!r.ok) return r;
 	if (has_comments(text)) return { ok: true, team: r.team, text, changed: false, kept_comments: true };
-	const out = team_to_yaml(r.team);
-	return { ok: true, team: r.team, text: out, changed: out.trim() !== text.trim(), kept_comments: false };
+	// Format = the canonical layout, so the text as typed isn't reused.
+	const out = team_to_yaml({ ...r.team, source_text: undefined });
+	return { ok: true, team: { ...r.team, source_text: out }, text: out, changed: out.trim() !== text.trim(), kept_comments: false };
 }
 
 /** 1-based [from, to] line range of each phase's block in team.yml. */

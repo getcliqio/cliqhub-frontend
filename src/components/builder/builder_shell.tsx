@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { BuilderProvider, useBuilder, useBuilderDispatch } from '@/lib/builder/store';
 import {
+	adopt_source,
 	BUILDER_SESSION_KEYS,
 	normalize_builder_team,
 	read_builder_session_team,
@@ -69,10 +70,10 @@ export function StateRestorer() {
 					const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; team_json?: string | null; status?: string; visibility?: string; draft?: { manifest: string; description: string | null; saved_at: string | null } | null };
 					const copy = d.draft?.manifest ? { team_json: d.draft.manifest, description: d.draft.description ?? null, saved_at: d.draft.saved_at ?? null } : null;
 					const as_json = (text: string | null | undefined) => { if (!text) return null; try { return normalize_builder_team(JSON.parse(text)); } catch { return null; } };
-					// Working copy (builder JSON) → older drafts' builder JSON → the published version itself.
-					const team = (searchParams.get('fresh') !== '1' ? as_json(copy?.team_json) : null)
-						?? as_json(d.team_json)
-						?? builder_team_from_detail(d, { label: d.scope ? `@${d.scope}/${d.name}` : String(d.name ?? ''), version: d.latest_version ?? null });
+					// Working copy (builder JSON) → the published version, read from its team.yml.
+					const published = builder_team_from_detail(d, { label: d.scope ? `@${d.scope}/${d.name}` : String(d.name ?? ''), version: d.latest_version ?? null });
+					const working = searchParams.get('fresh') !== '1' ? as_json(copy?.team_json) : null;
+					const team = working && published ? adopt_source(working, published) : working ?? published;
 					if (!team) return;
 					dispatch({ type: 'SET_TEAM', team, validation: null });
 					dispatch({ type: 'SET_DRAFT_ID', draft_id });

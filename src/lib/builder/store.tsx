@@ -26,6 +26,11 @@ export interface GeneratedPhase {
 	is_support?: boolean;
 	/** Phase is staged but not yet confirmed by the user */
 	pending?: boolean;
+	/**
+	 * This phase as written in team.yml when it was opened. Saving starts from it, so fields the builder
+	 * doesn't edit (args, timeout, when, hug, an agent's own inputs…) are kept as they were.
+	 */
+	source?: Record<string, unknown>;
 }
 
 export interface GeneratedRole {
@@ -52,6 +57,10 @@ export interface GeneratedTeam {
 	phases: GeneratedPhase[];
 	roles: GeneratedRole[];
 	agents: GeneratedAgent[];
+	/** team.yml as opened (parsed): saving starts from it, so nothing the builder doesn't edit is lost. */
+	source?: Record<string, unknown>;
+	/** team.yml text as opened: saved unchanged (comments and all) when nothing was edited. */
+	source_text?: string;
 }
 
 export interface ValidationResult {

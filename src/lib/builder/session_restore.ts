@@ -29,6 +29,28 @@ export function normalize_builder_team(raw: unknown): GeneratedTeam | null {
 		})),
 		roles: Array.isArray(team.roles) ? team.roles : [],
 		agents: Array.isArray(team.agents) ? team.agents : [],
+		...(team.source && typeof team.source === 'object' ? { source: team.source } : {}),
+		...(typeof team.source_text === 'string' ? { source_text: team.source_text } : {}),
+	};
+}
+
+/**
+ * A working copy saved before the builder kept team.yml: give it the published team.yml to start from, and
+ * fill in the phase fields it lost on the way (an action, a sub-team, its args…) from the published version.
+ */
+export function adopt_source(team: GeneratedTeam, published: GeneratedTeam): GeneratedTeam {
+	if (team.source || !published.source) return team;
+	const by_name = new Map(published.phases.map((p) => [p.name, p]));
+	return {
+		...team,
+		source: published.source,
+		phases: team.phases.map((p) => {
+			const pub = by_name.get(p.name);
+			if (!pub || p.source) return p;
+			const filled = { ...p };
+			for (const [k, v] of Object.entries(pub)) if ((filled as Record<string, unknown>)[k] === undefined) (filled as Record<string, unknown>)[k] = v;
+			return filled;
+		}),
 	};
 }
 

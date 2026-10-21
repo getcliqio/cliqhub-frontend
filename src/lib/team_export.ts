@@ -1,4 +1,6 @@
 import JSZip from 'jszip';
+import yaml from 'js-yaml';
+import { map_phase, team_fields_of } from '@/lib/team_yml_parse';
 import type { SourceEntry, TargetEntry } from '@/lib/types';
 
 /** HUG review configuration for export. */
@@ -24,6 +26,8 @@ export interface ExportPhase {
 	team?: string;
 	inputs?: Record<string, string>;
 	is_support?: boolean;
+	/** The phase as written in team.yml when opened (kept on save). */
+	source?: Record<string, unknown>;
 }
 
 export interface ExportAgent {
@@ -47,136 +51,140 @@ export interface ExportTeamData {
 	phases: ExportPhase[];
 	roles: ExportRole[];
 	agents?: ExportAgent[];
+	/** team.yml as opened (parsed), and its text. */
+	source?: Record<string, unknown>;
+	source_text?: string;
 }
 
-function serialize_phase(lines: string[], p: ExportPhase, indent: string): void {
-	lines.push(`${indent}- name: ${p.name}`);
-	lines.push(`${indent}  type: ${p.type}`);
-	if (p.agent) lines.push(`${indent}  agent: ${p.agent}`);
-	if (p.depends_on.length > 0) {
-		lines.push(`${indent}  depends_on: [${p.depends_on.join(', ')}]`);
-	}
-	if (p.commands?.length) {
-		lines.push(`${indent}  commands:`);
-		for (const c of p.commands) {
-			lines.push(`${indent}    - name: ${c.name}`);
-			lines.push(`${indent}      run: ${c.run}`);
-			if (c.scope) lines.push(`${indent}      scope: ${c.scope}`);
-			if (c.escalate_on_fail === false) lines.push(`${indent}      escalate_on_fail: false`);
-		}
-	}
-	if (p.max_iterations) {
-		lines.push(`${indent}  max_iterations: ${p.max_iterations}`);
-	}
-	if (p.action) {
-		lines.push(`${indent}  action: ${p.action}`);
-	}
-	if (p.model) {
-		lines.push(`${indent}  model: ${p.model}`);
-	}
-	if (p.sources?.length) {
-		lines.push(`${indent}  sources:`);
-		for (const e of p.sources) {
-			lines.push(`${indent}    - name: ${e.name}`);
-			if (e.url) lines.push(`${indent}      url: "${e.url}"`);
-			if (e.ref) lines.push(`${indent}      ref: ${e.ref}`);
-		}
-	}
-	if (p.target_entries?.length) {
-		lines.push(`${indent}  target_entries:`);
-		for (const e of p.target_entries) {
-			lines.push(`${indent}    - name: ${e.name}`);
-			lines.push(`${indent}      file: ${e.file}`);
-			if (e.url) lines.push(`${indent}      url: "${e.url}"`);
-			if (e.ref) lines.push(`${indent}      ref: ${e.ref}`);
-			if (e.mode && e.mode !== 'create') lines.push(`${indent}      mode: ${e.mode}`);
-		}
-	}
-	if (p.review) {
-		lines.push(`${indent}  review:`);
-		const rev = p.review;
-		if (rev.reviewer) {
-			// The HUG gate reads reviewer groups: any one of these people may decide.
-			const reviewers = (Array.isArray(rev.reviewer) ? rev.reviewer : [rev.reviewer])
-				.flatMap((r) => r.split(','))
-				.map((r) => r.trim())
-				.filter(Boolean);
-			if (reviewers.length > 0) {
-				lines.push(`${indent}    reviewers:`);
-				lines.push(`${indent}      - policy: any`);
-				lines.push(`${indent}        channels: [${reviewers.join(', ')}]`);
-			}
-		}
-		if (rev.artifacts?.length) {
-			lines.push(`${indent}    artifacts:`);
-			for (const a of rev.artifacts) lines.push(`${indent}      - ${a}`);
-		}
-		if (rev.timeout) lines.push(`${indent}    timeout: ${rev.timeout}`);
-		if (rev.remind_every) lines.push(`${indent}    remind_every: ${rev.remind_every}`);
-	}
-	if (p.team) lines.push(`${indent}  team: "${p.team}"`);
-	// A team phase's values for its sub-team go in `args` (the daemon reads nothing else).
-	if (p.inputs && Object.keys(p.inputs).length > 0) {
-		lines.push(`${indent}  args:`);
-		for (const [k, v] of Object.entries(p.inputs)) {
-			lines.push(`${indent}    ${k}: "${v}"`);
-		}
-	}
+type Rec = Record<string, unknown>;
+
+/** Same value, whatever the key order. */
+function same(a: unknown, b: unknown): boolean {
+	const norm = (v: unknown): unknown => {
+		if (Array.isArray(v)) return v.map(norm);
+		if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v as Rec).sort().filter((k) => (v as Rec)[k] !== undefined).map((k) => [k, norm((v as Rec)[k])]));
+		return v ?? null;
+	};
+	return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
 }
 
-export function build_team_yml(team: ExportTeamData): string {
+/** Sets `key`, or removes it when the value is empty. */
+function put(out: Rec, key: string, value: unknown): void {
+	if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0)) delete out[key];
+	else out[key] = value;
+}
+
+/**
+ * One field: what team.yml had (`raw`) when the builder's value (`now`) still equals what the builder read
+ * from it (`was`); otherwise the builder's value, written by `write` (which may keep parts of `raw`).
+ */
+function field<T>(raw: unknown, now: T, was: T, write: (v: T, raw: unknown) => unknown = (v) => v): unknown {
+	return same(now, was) ? raw : write(now, raw);
+}
+
+/** A list of named rows: each row keeps what team.yml had for it, plus the builder's changes. */
+function rows<T extends { name?: string }>(now: T[] | undefined, was: T[] | undefined, raw: unknown, write: (v: T) => Rec, key: (v: T, i: number) => string = (v) => v.name ?? ''): Rec[] | undefined {
+	if (!now?.length) return undefined;
+	const raw_list = Array.isArray(raw) ? raw as Rec[] : [];
+	return now.map((item, i) => {
+		const k = key(item, i);
+		const at = (was ?? []).findIndex((w, j) => key(w, j) === k);
+		const raw_item = at >= 0 && raw_list[at] && typeof raw_list[at] === 'object' ? raw_list[at] : null;
+		if (raw_item && same(item, was![at])) return raw_item;
+		const out: Rec = { ...(raw_item ?? {}) };
+		for (const [f, v] of Object.entries(write(item))) put(out, f, v);
+		return out;
+	});
+}
+
+const review_yaml = (r: ExportReviewBlock, raw: unknown): Rec => {
+	const src = raw && typeof raw === 'object' ? raw as Rec : {};
+	const out: Rec = { ...src };
+	const reviewers = (Array.isArray(r.reviewer) ? r.reviewer : r.reviewer ? [r.reviewer] : [])
+		.flatMap((x) => x.split(',')).map((x) => x.trim()).filter(Boolean);
+	// The HUG gate reads reviewer groups: any one of these channels may decide.
+	delete out.reviewer;
+	put(out, 'reviewers', reviewers.length ? [{ policy: 'any', channels: reviewers }] : undefined);
+	put(out, 'artifacts', r.artifacts);
+	put(out, 'timeout', r.timeout);
+	put(out, 'remind_every', r.remind_every);
+	return out;
+};
+
+/** The usual order of team.yml keys; anything else follows, as written. */
+const TEAM_KEYS = ['name', 'version', 'description', 'tags', 'inputs', 'outputs', 'use_when', 'not_for', 'tools', 'cliq_version', 'agents', 'phases', 'support'];
+const PHASE_KEYS = ['name', 'description', 'type', 'agent', 'depends_on', 'when', 'commands', 'max_iterations', 'timeout', 'action', 'model', 'sources', 'target_entries', 'review', 'hug', 'team', 'args', 'output', 'route_targets', 'over', 'over_file', 'over_field', 'key', 'concurrency'];
+
+function ordered(out: Rec, keys: string[]): Rec {
+	const first = keys.filter((k) => k in out).map((k) => [k, out[k]] as const);
+	const rest = Object.entries(out).filter(([k]) => !keys.includes(k));
+	return Object.fromEntries([...first, ...rest]);
+}
+
+/** One phase as team.yml: what it had when opened, plus what was changed in the builder. */
+function phase_doc(p: ExportPhase): Rec {
+	const raw = p.source ?? {};
+	const was = (p.source ? map_phase(p.source, Boolean(p.is_support)) : null) ?? ({ depends_on: [] } as Partial<ExportPhase>);
+	const out: Rec = p.source ? { ...raw } : {};
+	out.name = p.name;
+	put(out, 'type', field(raw.type, p.type, was.type));
+	put(out, 'agent', field(raw.agent, p.agent, was.agent));
+	put(out, 'depends_on', field(raw.depends_on, p.depends_on, was.depends_on));
+	put(out, 'commands', field(raw.commands, p.commands, was.commands, (v, r) => rows(v, was.commands, r, (c) => ({ name: c.name || undefined, run: c.run, scope: c.scope, escalate_on_fail: c.escalate_on_fail }), (_c, i) => String(i))));
+	put(out, 'max_iterations', field(raw.max_iterations, p.max_iterations, was.max_iterations));
+	put(out, 'action', field(raw.action, p.action, was.action));
+	put(out, 'model', field(raw.model, p.model, was.model));
+	put(out, 'sources', field(raw.sources, p.sources, was.sources, (v, r) => rows(v, was.sources, r, (e) => ({ name: e.name, url: e.url, ref: e.ref }))));
+	put(out, 'target_entries', field(raw.target_entries, p.target_entries, was.target_entries, (v, r) => rows(v, was.target_entries, r, (e) => ({ name: e.name, file: e.file, url: e.url, ref: e.ref, mode: e.mode && e.mode !== 'create' ? e.mode : undefined }))));
+	put(out, 'review', field(raw.review, p.review, was.review, (v, r) => (v ? review_yaml(v, r) : undefined)));
+	put(out, 'team', field(raw.team, p.team, was.team));
+	// A team phase's values for its sub-team go in `args`; values the builder can't show (not text) stay.
+	put(out, 'args', field(raw.args, p.inputs, was.inputs, (v, r) => {
+		const keep = r && typeof r === 'object' ? Object.fromEntries(Object.entries(r as Rec).filter(([, x]) => typeof x !== 'string')) : {};
+		const merged = { ...keep, ...(v ?? {}) };
+		return Object.keys(merged).length ? merged : undefined;
+	}));
+	return ordered(out, PHASE_KEYS);
+}
+
+/** The team as a team.yml mapping: what it had when opened, plus what was changed in the builder. */
+export function team_doc(team: ExportTeamData): Rec {
+	const raw = team.source ?? {};
+	const was = team.source ? team_fields_of(team.source) : { description: '', agents: [] as ExportAgent[] } as ReturnType<typeof team_fields_of>;
 	const clean_name = team.name.replace(/^@[^/]+\//, '');
-	const lines: string[] = [
-		`name: ${clean_name}`,
-		`description: "${team.description.replace(/"/g, '\\"')}"`,
-	];
+	const out: Rec = team.source ? { ...raw } : {};
+	// The name stays as written (e.g. `@scope/name`) unless the team was renamed.
+	out.name = typeof raw.name === 'string' && raw.name.replace(/^@[^/]+\//, '') === clean_name ? raw.name : clean_name;
+	put(out, 'description', field(raw.description, team.description, was.description));
+	put(out, 'tags', field(raw.tags, team.tags, was.tags));
+	put(out, 'inputs', field(raw.inputs, team.inputs, was.inputs, (v, r) => rows(v, was.inputs, r, (i) => ({ name: i.name, description: i.description }))));
+	put(out, 'use_when', field(raw.use_when, team.use_when, was.use_when));
+	put(out, 'not_for', field(raw.not_for, team.not_for, was.not_for));
+	put(out, 'agents', field(raw.agents, team.agents ?? [], was.agents, (v, r) => {
+		const src = r && typeof r === 'object' && !Array.isArray(r) ? r as Rec : {};
+		if (!v.length) return undefined;
+		return Object.fromEntries(v.map((a) => {
+			const o: Rec = { ...(src[a.name] && typeof src[a.name] === 'object' ? src[a.name] as Rec : {}) };
+			put(o, 'entry', a.entry);
+			put(o, 'env', a.env);
+			return [a.name, o];
+		}));
+	}));
+	out.phases = team.phases.filter((p) => !p.is_support).map(phase_doc);
+	put(out, 'support', team.phases.filter((p) => p.is_support).map(phase_doc));
+	return ordered(out, TEAM_KEYS);
+}
 
-	if (team.tags?.length) {
-		lines.push(`tags: [${team.tags.join(', ')}]`);
+/**
+ * team.yml for a team. A team opened from team.yml and not changed is returned exactly as it was
+ * (comments too); otherwise it is the opened file with the builder's changes, nothing else dropped.
+ */
+export function build_team_yml(team: ExportTeamData): string {
+	const doc = team_doc(team);
+	if (team.source_text) {
+		try { if (same(doc, yaml.load(team.source_text))) return team.source_text; } catch { /* written below */ }
 	}
-	if (team.inputs?.length) {
-		lines.push('inputs:');
-		for (const inp of team.inputs) {
-			lines.push(`  - name: ${inp.name}`);
-			if (inp.description) lines.push(`    description: "${inp.description.replace(/"/g, '\\"')}"`);
-		}
-	}
-	if (team.use_when?.length) {
-		lines.push('use_when:');
-		for (const item of team.use_when) lines.push(`  - ${item}`);
-	}
-	if (team.not_for?.length) {
-		lines.push('not_for:');
-		for (const item of team.not_for) lines.push(`  - ${item}`);
-	}
-
-	if (team.agents?.length) {
-		lines.push('agents:');
-		for (const a of team.agents) {
-			lines.push(`  ${a.name}:`);
-			if (a.entry) lines.push(`    entry: ${a.entry}`);
-			if (a.env?.length) {
-				lines.push('    env:');
-				for (const v of a.env) lines.push(`      - ${v}`);
-			}
-		}
-	}
-
-	const main_phases = team.phases.filter(p => !p.is_support);
-	const support_phases = team.phases.filter(p => p.is_support);
-
-	lines.push('phases:');
-	for (const p of main_phases) {
-		serialize_phase(lines, p, '  ');
-	}
-	if (support_phases.length > 0) {
-		lines.push('support:');
-		for (const p of support_phases) {
-			serialize_phase(lines, p, '  ');
-		}
-	}
-
-	return lines.join('\n');
+	return yaml.dump(doc, { lineWidth: -1, noRefs: true });
 }
 
 export async function generate_team_zip(team: ExportTeamData): Promise<Blob> {

@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { parse_team_yml_text } from '@/lib/team_yml_parse';
 import type { GeneratedTeam } from '@/lib/builder/store';
+import yaml from 'js-yaml';
 import { build_team_yml } from '@/lib/team_export';
+import { builder_team_from_detail } from '@/lib/team_builder';
 
 const base_team: GeneratedTeam = {
 	name: 'demo',
@@ -84,9 +86,8 @@ describe('HUG gate review block (builder ↔ daemon)', () => {
 				{ name: 'approve', type: 'gate', agent: 'hug', depends_on: ['build'], review: { reviewer: ['elan', 'ops'], artifacts: ['.cliq/design/*.md'], timeout: '60' } },
 			],
 		} as never);
-		expect(yml).toContain('      reviewers:\n        - policy: any\n          channels: [elan, ops]');
-		expect(yml).not.toMatch(/^\s+reviewer:/m);
-		expect(yml).toContain('      artifacts:\n        - .cliq/design/*.md');
+		const review = (yaml.load(yml) as { phases: Array<{ review?: Record<string, unknown> }> }).phases[1].review;
+		expect(review).toEqual({ reviewers: [{ policy: 'any', channels: ['elan', 'ops'] }], artifacts: ['.cliq/design/*.md'], timeout: '60' });
 
 		const { team } = parse_team_yml_text(yml, base_team);
 		expect(team?.phases[1]?.review).toMatchObject({ reviewer: 'elan, ops', artifacts: ['.cliq/design/*.md'] });
@@ -113,8 +114,98 @@ describe('a team phase passes values to its sub-team in `args`', () => {
 	it('writes `args` (the daemon reads nothing else)', () => {
 		const { team } = parse_team_yml_text('name: x\ndescription: d\nphases:\n  - name: sync\n    type: team\n    team: "@m/git-sync"\n    args:\n      mode: "ensure"\n', base_team);
 		const out = build_team_yml({ ...team!, agents: [] });
-		expect(out).toContain('    args:\n      mode: "ensure"');
-		expect(out).not.toMatch(/team_inputs:|^\s+inputs:\s*$/m);
+		const sync = (yaml.load(out) as { phases: Array<Record<string, unknown>> }).phases[0];
+		expect(sync.args).toEqual({ mode: 'ensure' });
+		expect(sync).not.toHaveProperty('inputs');
+		expect(sync).not.toHaveProperty('team_inputs');
 	});
 });
 
+
+describe('the builder keeps team.yml: nothing it doesn\'t edit is lost', () => {
+	// The shape of @measureone/architect: a jira action, sub-teams with args, an unnamed multi-line
+	// command with escalate_on_fail, a timeout, outputs and required inputs — and comments.
+	const ARCHITECT = `name: "@measureone/architect"
+version: "0.1.29"
+description: "One run"
+tags: [architect, lld]
+inputs:
+  - name: jira_key
+    description: "Epic or story key"
+    required: true
+  - name: create_stories
+    required: false
+    default: "false"
+outputs:
+  - name: dispatch
+    description: "dispatch.json jobs"
+phases:
+  - name: fetch
+    type: standard
+    agent: jira
+    action: get_issue_tree
+    sources:
+      - name: ticket.json
+        ref: "{{inputs.jira_key}}"
+
+  - name: ensure-clones
+    type: team
+    team: "@measureone/git-sync"
+    depends_on: [fetch]
+    args:
+      mode: "ensure"
+      index: "false"
+
+  # create_issue hardcodes issuetype Story
+  - name: create-stories
+    type: standard
+    agent: exec
+    depends_on: [ensure-clones]
+    timeout: -1
+    commands:
+      - escalate_on_fail: true
+        run: |
+          set -e
+          python3 "$SRC/create_stories.py"
+`;
+	const detail = { name: 'architect', scope: 'measureone', description: 'One run', raw_manifest: ARCHITECT, roles: [], workflow: { phases: [] } };
+	const open = () => builder_team_from_detail(detail, { label: '@measureone/architect', version: '0.1.29' })!;
+
+	it('opens a published team from its team.yml: the action, sub-team and args are there', () => {
+		const t = open();
+		expect(t.phases.find((p) => p.name === 'fetch')).toMatchObject({ agent: 'jira', action: 'get_issue_tree' });
+		expect(t.phases.find((p) => p.name === 'ensure-clones')).toMatchObject({ type: 'team', team: '@measureone/git-sync', inputs: { mode: 'ensure', index: 'false' } });
+	});
+
+	it('saved without changes, team.yml is exactly what was opened (comments too)', () => {
+		expect(build_team_yml(open())).toBe(ARCHITECT);
+	});
+
+	it('an edit changes only that field; everything else is kept as written', () => {
+		const t = open();
+		const edited = { ...t, description: 'One run, edited', phases: t.phases.map((p) => (p.name === 'fetch' ? { ...p, action: 'get_issue' } : p)) };
+		const doc = yaml.load(build_team_yml(edited)) as Record<string, any>;
+		const before = yaml.load(ARCHITECT) as Record<string, any>;
+		expect(doc.description).toBe('One run, edited');
+		expect(doc.phases[0].action).toBe('get_issue');
+		expect({ ...doc, description: before.description, phases: doc.phases.map((p: any) => (p.name === 'fetch' ? { ...p, action: 'get_issue_tree' } : p)) }).toEqual(before);
+		expect(doc.phases[2].commands[0]).toEqual({ escalate_on_fail: true, run: 'set -e\npython3 "$SRC/create_stories.py"\n' });
+		expect(doc.phases[2].timeout).toBe(-1);
+		expect(doc.inputs[0].required).toBe(true);
+		expect(doc.outputs).toEqual(before.outputs);
+	});
+
+	it('editing a sub-team value keeps the others; a new phase is written in full', () => {
+		const t = open();
+		const edited = {
+			...t,
+			phases: [
+				...t.phases.map((p) => (p.name === 'ensure-clones' ? { ...p, inputs: { ...p.inputs, mode: 'full' } } : p)),
+				{ name: 'notify', type: 'standard' as const, agent: 'exec', depends_on: ['create-stories'], commands: [{ name: 'say', run: 'echo done' }] },
+			],
+		};
+		const doc = yaml.load(build_team_yml(edited)) as Record<string, any>;
+		expect(doc.phases[1].args).toEqual({ mode: 'full', index: 'false' });
+		expect(doc.phases[3]).toEqual({ name: 'notify', type: 'standard', agent: 'exec', depends_on: ['create-stories'], commands: [{ name: 'say', run: 'echo done' }] });
+	});
+});

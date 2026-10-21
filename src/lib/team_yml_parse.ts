@@ -20,13 +20,14 @@ function map_commands(raw: unknown): GeneratedPhase['commands'] {
 	for (const item of raw) {
 		if (!item || typeof item !== 'object') continue;
 		const row = item as Record<string, unknown>;
-		const name = as_string(row.name);
+		// A command's name is optional in team.yml.
+		const name = as_string(row.name) ?? '';
 		const run = typeof row.run === 'string' ? row.run : '';
-		if (!name) continue;
+		if (!name && !run) continue;
 		const command: NonNullable<GeneratedPhase['commands']>[number] = { name, run };
 		const scope = as_string(row.scope);
 		if (scope) command.scope = scope;
-		if (row.escalate_on_fail === false) command.escalate_on_fail = false;
+		if (typeof row.escalate_on_fail === 'boolean') command.escalate_on_fail = row.escalate_on_fail;
 		commands.push(command);
 	}
 	if (commands.length === 0) return undefined;
@@ -104,7 +105,8 @@ function map_review(raw: unknown): GeneratedPhase['review'] {
 	return review;
 }
 
-function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
+/** The builder's view of one team.yml phase (its original YAML kept in `source`). */
+export function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
 	if (!raw || typeof raw !== 'object') return null;
 	const row = raw as Record<string, unknown>;
 	const name = as_string(row.name);
@@ -126,6 +128,7 @@ function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
 		type,
 		depends_on,
 		...(is_support ? { is_support: true } : {}),
+		source: row,
 	};
 
 	const agent = as_string(row.agent);
@@ -169,7 +172,7 @@ function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
 	return phase;
 }
 
-function map_agents(raw: unknown): GeneratedAgent[] {
+export function map_agents(raw: unknown): GeneratedAgent[] {
 	if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
 	const agents: GeneratedAgent[] = [];
 	for (const [name, def] of Object.entries(raw as Record<string, unknown>)) {
@@ -187,7 +190,7 @@ function map_agents(raw: unknown): GeneratedAgent[] {
 	return agents;
 }
 
-function map_inputs(raw: unknown): GeneratedTeam['inputs'] {
+export function map_inputs(raw: unknown): GeneratedTeam['inputs'] {
 	if (!Array.isArray(raw)) return undefined;
 	const inputs: NonNullable<GeneratedTeam['inputs']> = [];
 	for (const item of raw) {
@@ -294,7 +297,21 @@ export function parse_team_yml_text(
 			phases,
 			roles,
 			agents,
+			source: root,
+			source_text: text,
 		},
 		error: null,
+	};
+}
+
+/** The team-level fields the builder edits, as it reads them from a team.yml mapping. */
+export function team_fields_of(root: Record<string, unknown>): Pick<GeneratedTeam, 'description' | 'tags' | 'inputs' | 'use_when' | 'not_for' | 'agents'> {
+	return {
+		description: as_string(root.description) ?? '',
+		tags: Array.isArray(root.tags) ? as_string_list(root.tags) : undefined,
+		inputs: map_inputs(root.inputs),
+		use_when: Array.isArray(root.use_when) ? as_string_list(root.use_when) : undefined,
+		not_for: Array.isArray(root.not_for) ? as_string_list(root.not_for) : undefined,
+		agents: root.agents != null ? map_agents(root.agents) : [],
 	};
 }
