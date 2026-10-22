@@ -57,6 +57,11 @@ export interface Notif_event_rule {
 	enabled: boolean;
 	locked: boolean;
 	lock_reason: string | null;
+	/** A rule to a person — they get it their way. */
+	person?: boolean;
+	/** An org rule in a realm view: the realm switched it off for itself, and the override to undo that. */
+	off_here?: boolean;
+	override_rule_id?: string | null;
 }
 
 /**

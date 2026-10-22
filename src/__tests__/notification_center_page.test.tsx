@@ -223,12 +223,33 @@ describe('Realm › Notifications › Events — the org\'s channels and the rea
 		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-prod'] }));
 	});
 
-	it('the switch covers only this realm\'s own; + add saves a rule for this realm', async () => {
+	it('in a realm the switch covers its own and the org\'s default: off switches the org\'s off here; Use the org\'s undoes it', async () => {
+		const calls = route_fetch(() => {
+			const d = realm_center();
+			d.events = (d.events ?? []).map((g) => ({ ...g, events: g.events.map((r) => (r.event === 'run.started'
+				? { ...r, org: [er('o-start', 'run.started', 'ch-eng', '#eng-alerts', 'org', { off_here: true, override_rule_id: 'r-ov' })] }
+				: r)) }));
+			return d;
+		}, targets);
+		render_panel(true);
+		// run.failed: the org's #eng-alerts and the realm's #prod-alerts — switching off covers both, here only.
+		fireEvent.click(within(await screen.findByTestId('event-run.failed')).getByRole('switch'));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [
+			{ event: 'run.failed', channel_id: 'ch-prod', enabled: false }, { event: 'run.failed', channel_id: 'ch-eng', enabled: false },
+		] }));
+		// run.started: the org's default is off here — say so, and Use the org's removes the realm's override.
+		const started = row('event-run.started');
+		expect(within(started).getByTestId('off-here')).toHaveTextContent('Off here · the org sends it');
+		fireEvent.click(within(started).getByRole('button', { name: 'Use the org’s' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-ov'] }));
+	});
+
+	it('a realm\'s own switched-off rule turns back on; + add saves a rule for this realm', async () => {
 		const calls = route_fetch(realm_center, targets);
 		render_panel(true);
 		const dmn = await screen.findByTestId('event-daemon.offline');
 		fireEvent.click(within(dmn).getByRole('switch'));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'daemon.offline', channel_id: 'ch-prod', enabled: true }] }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'daemon.offline', channel_id: 'ch-prod', enabled: true }], remove: [] }));
 		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'Edit where Run started goes' }));
 		const drawer = screen.getByRole('dialog', { name: 'Run started goes to…' });
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets')?.body).toMatchObject({ org_id: ORG_A, realm_id: 'r-prod' }));

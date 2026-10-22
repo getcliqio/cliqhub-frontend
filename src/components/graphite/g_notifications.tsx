@@ -43,14 +43,15 @@ export type Notif_view = 'events' | 'channels';
  * org's channel in a realm (read-only there); a wildcard notes it covers the whole family.
  */
 function Chip({ r, event, org = false, busy = false, on_remove }: { r: Notif_event_rule; event: string; org?: boolean; busy?: boolean; on_remove?: () => void }) {
-	const dead = !r.enabled || !r.channel_enabled;
+	const dead = !r.enabled || !r.channel_enabled || Boolean(r.off_here);
 	const wide = r.selector !== event;
 	const why = !r.channel_enabled ? 'This channel is off — nothing sends to it'
+		: r.off_here ? 'Off in this realm — other realms still get it'
 		: !r.enabled ? 'Switched off'
 			: wide ? `Set for ${event_label(r.selector).toLowerCase()}s` : org ? 'The org’s — applies in every realm' : undefined;
 	return (
 		<span
-			className={`mb-1 mr-1 inline-flex items-center gap-1 rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] px-1.5 py-px text-[12px] ${dead ? 'text-[var(--g-ink-3)] line-through' : ''} ${org ? 'opacity-75' : ''}`}
+			className={`mb-1 mr-1 inline-flex items-center gap-1 rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] px-1.5 py-px text-[12px] ${dead ? 'opacity-50' : ''} ${org ? 'opacity-75' : ''}`}
 			title={why}
 			data-testid="event-chip"
 		>
@@ -263,11 +264,24 @@ function Event_row({ row, in_realm, can_edit, busy, write, on_edit }: {
 	write: (w: Write, done: string) => Promise<void>; on_edit: () => void;
 }) {
 	const e = row.event;
-	// This level's channels for exactly this event: what ✕ and the switch act on.
+	// This level's channels for exactly this event: what ✕ acts on.
 	const mine = (in_realm ? row.realm : row.org).filter((x) => x.selector === e);
 	const others = [...(in_realm ? row.org : []), ...(in_realm ? row.realm : row.org).filter((x) => x.selector !== e)];
-	const on = mine.some((x) => x.enabled);
+	// In a realm the switch also covers the org's defaults: off switches them off here (other realms keep them).
+	const org_here = in_realm ? row.org : [];
+	const org_off = org_here.filter((x) => x.off_here);
+	const on = mine.some((x) => x.enabled) || org_here.some((x) => !x.off_here && x.enabled);
+	const has_switch = mine.length > 0 || org_here.length > 0;
 	const editable = can_edit && !row.fixed;
+	function set_on(next: boolean) {
+		const label = event_label(e);
+		if (next) {
+			void write({ items: mine.map((x) => ({ event: e, channel_id: x.channel_id, enabled: true })), remove: org_off.map((x) => x.override_rule_id!).filter(Boolean) }, `${label} is on.`);
+		} else {
+			const org_live = org_here.filter((x) => !x.off_here);
+			void write({ items: [...mine.map((x) => ({ event: e, channel_id: x.channel_id, enabled: false })), ...org_live.map((x) => ({ event: e, channel_id: x.channel_id, enabled: false }))] }, in_realm && org_live.length ? `${label} is off in this realm. Other realms still get the org’s default.` : `${label} is off.`);
+		}
+	}
 	return (
 		<div className="border-b border-[var(--g-line-2)] last:border-b-0" data-testid={`event-${e}`}>
 			<div role="row" className={ROW}>
@@ -278,14 +292,19 @@ function Event_row({ row, in_realm, can_edit, busy, write, on_edit }: {
 						<Chip key={x.rule_id} r={x} event={e} busy={busy} on_remove={editable && !x.locked ? () => void write({ remove: [x.rule_id] }, `${x.channel_name ?? 'Channel'} no longer gets ${event_label(e)}.`) : undefined} />
 					))}
 					{!row.sent && mine.length + others.length === 0 ? <span className="text-[12.5px] text-[var(--g-ink-3)]">Not sent</span> : null}
+					{org_off.length ? (
+						<span className="text-[12px] text-[var(--g-ink-3)]" data-testid="off-here">
+							Off here · the org sends it{editable ? <> · <button type="button" disabled={busy} className={LINK} onClick={() => void write({ remove: org_off.map((x) => x.override_rule_id!).filter(Boolean) }, `${event_label(e)} follows the org again.`)}>Use the org’s</button></> : null}
+						</span>
+					) : null}
 				</div>
-				{mine.length ? (
+				{has_switch ? (
 					<Switch
 						on={on}
 						label={`${event_label(e)} on`}
 						disabled={!editable || busy}
 						title={row.fixed ? 'Fixed — always sent' : undefined}
-						on_change={(next) => void write({ items: mine.map((x) => ({ event: e, channel_id: x.channel_id, enabled: next })) }, next ? `${event_label(e)} is on.` : `${event_label(e)} is off${in_realm && row.org.length ? ' here (the org’s channels still get it)' : ''}.`)}
+						on_change={set_on}
 					/>
 				) : <span />}
 				<div className="flex justify-end">
