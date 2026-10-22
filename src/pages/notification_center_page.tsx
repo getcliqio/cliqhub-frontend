@@ -97,6 +97,9 @@ export function Drawer({ title, on_close, children, label }: { title: string; on
 /* ------------------------------------------------------------------ */
 /* Channels                                                            */
 
+/** What a channel name may use (Core's rule): letters, digits, - and _, up to 64. */
+const CHANNEL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
 /** A destination being added; for `channel_ref` the value is a channel's or a person's name. */
 export type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook' | 'channel_ref'; value: string; cc?: string; bcc?: string };
 
@@ -413,7 +416,8 @@ export function New_channel_drawer({ data, scope, on_close, on_saved }: {
 	const org_id = scope.kind === 'org' ? scope.org.id : scope.realm.org_id;
 	const allowed = realm ? can_edit_realm(data, realm.id) : can_edit_org_channels(data, org_id);
 	const where = scope.kind === 'realm' ? scope.realm.slug : scope.org.display_name;
-	const ready = allowed && Boolean(name.trim()) && drafts.length > 0;
+	const name_ok = CHANNEL_NAME.test(name.trim());
+	const ready = allowed && name_ok && drafts.length > 0;
 
 	async function save() {
 		set_busy(true);
@@ -431,8 +435,9 @@ export function New_channel_drawer({ data, scope, on_close, on_saved }: {
 			{!allowed ? <p className="text-[12.5px] text-[var(--g-ink-3)]">{realm ? 'Only this realm’s admins can add its channels.' : 'Only org owners and admins can add the org’s channels.'}</p> : null}
 			<div>
 				<label className={LABEL} htmlFor="nc-name">Name</label>
-				<input id="nc-name" autoFocus value={name} onChange={(e) => set_name(e.target.value)} placeholder="#prod-oncall" className={INPUT} />
-				<p className="mt-1.5 text-[12px] text-[var(--g-ink-3)]" data-testid="nc-where">For the <b className="font-medium text-[var(--g-ink-2)]">{where}</b> {realm ? 'realm' : 'org'}.</p>
+				<input id="nc-name" autoFocus value={name} onChange={(e) => set_name(e.target.value)} placeholder="prod-oncall" aria-invalid={Boolean(name.trim()) && !name_ok} aria-describedby="nc-name-rule" className={INPUT} />
+				<p id="nc-name-rule" className={`mt-1.5 text-[12px] ${name.trim() && !name_ok ? 'text-[var(--g-bad)]' : 'text-[var(--g-ink-3)]'}`}>Letters, digits, - and _ only. Teams use this name in team.yml.</p>
+				<p className="mt-1 text-[12px] text-[var(--g-ink-3)]" data-testid="nc-where">For the <b className="font-medium text-[var(--g-ink-2)]">{where}</b> {realm ? 'realm' : 'org'}.</p>
 			</div>
 			<div>
 				<span className={LABEL}>Destinations</span>
@@ -447,7 +452,7 @@ export function New_channel_drawer({ data, scope, on_close, on_saved }: {
 			<div className="flex items-center gap-2">
 				<button type="button" disabled={!ready || busy} onClick={() => void save()} className={PRIMARY}>{busy ? 'Creating…' : 'Create channel'}</button>
 				<button type="button" onClick={on_close} className={ROW_ACTION_CLS}>Cancel</button>
-				{allowed && !ready ? <span className="text-[12px] text-[var(--g-ink-3)]">{!name.trim() ? 'Needs a name.' : 'Needs a destination.'}</span> : null}
+				{allowed && !ready ? <span className="text-[12px] text-[var(--g-ink-3)]">{!name.trim() ? 'Needs a name.' : !name_ok ? 'Use letters, digits, - and _ in the name.' : 'Needs a destination.'}</span> : null}
 			</div>
 		</Drawer>
 	);

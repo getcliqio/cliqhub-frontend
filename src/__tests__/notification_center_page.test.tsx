@@ -285,7 +285,12 @@ describe('Notifications — channels', () => {
 		const drawer = screen.getByRole('dialog', { name: 'New channel' });
 		expect(within(drawer).queryByRole('radio')).toBeNull();
 		expect(within(drawer).getByTestId('nc-where')).toHaveTextContent('For the prod-us realm.');
+		// Letters, digits, - and _ only: a # or a space is refused before anything is sent.
+		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: '#platform team' } });
+		expect(within(drawer).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'true');
+		expect(within(drawer).getByText('Use letters, digits, - and _ in the name.')).toBeInTheDocument();
 		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Platform' } });
+		expect(within(drawer).getByLabelText('Name')).toHaveAttribute('aria-invalid', 'false');
 		expect(within(drawer).getByRole('button', { name: 'Create channel' })).toBeDisabled();
 		expect(within(drawer).getByText('Needs a destination.')).toBeInTheDocument();
 		// Email: To, Cc and Bcc; Add with no address says what's missing.
