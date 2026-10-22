@@ -11,7 +11,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router';
 import { Plus } from 'lucide-react';
-import { useAuth } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago, month_year } from '@/lib/admin';
@@ -23,6 +23,8 @@ import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 import { Destinations_editor, draft_to_destination } from '@/pages/notification_center_page';
+import { Switch } from '@/components/graphite/g_switch';
+import { event_label } from '@/lib/notification_center';
 
 type Tab = 'profile' | 'password' | 'tokens' | 'notifications' | 'scopes';
 const TABS: Array<[Tab, string, string]> = [['profile', 'Profile', 'Account'], ['password', 'Password', 'Account'], ['tokens', 'Security', 'Account'], ['notifications', 'Notifications', 'Account'], ['scopes', 'My scopes', 'Publishing']];
@@ -288,12 +290,122 @@ function my_label(d: Record<string, unknown>, my_email: string | null): string {
 	return String(d.type);
 }
 
+/** My own on / off per event (Core: on my personal channel) and what reaches me. */
+type Person = {
+	my_runs_events: string[];
+	settings: Array<{ scope: 'my_runs' | 'all'; event: string; state: 'on' | 'off' }>;
+	reaches_me: Array<{ event: string; via: string[] }>;
+};
+type Person_change = Array<{ scope: 'my_runs' | 'all'; event: string; state: 'on' | 'off' | null }>;
+
+const ROW_CLS = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_44px] items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-2.5 last:border-b-0';
+
+/**
+ * The person layer (PLAN-notification-layers D): "Runs I start" — about runs I started, one switch per event — and
+ * "What reaches me" — each event that comes to me, with what it comes through; one switch for me everywhere I'm a
+ * member; "+ add" brings in an event nobody sends me. My choice wins over the realm and the org, for me.
+ */
+function Person_layer({ person, save }: { person: Person; save: (c: Person_change) => Promise<string | null> }) {
+	const [busy, set_busy] = useState(false);
+	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
+	const [adding, set_adding] = useState('');
+	const [types, set_types] = useState<string[] | null>(null);
+	const auth_fetch = useAuthFetch();
+	const state = (scope: 'my_runs' | 'all', event: string) => person.settings.find((s) => s.scope === scope && s.event === event)?.state;
+
+	async function apply(c: Person_change, done: string) {
+		set_busy(true);
+		set_msg(null);
+		const err = await save(c);
+		set_busy(false);
+		set_msg(err ? { tone: 'bad', text: err } : { tone: 'ok', text: done });
+	}
+	async function open_add() {
+		if (types) return;
+		try {
+			const res = await auth_fetch('/v1/events/types/list', { method: 'POST', body: '{}' });
+			const body = await res.json() as { types?: string[] };
+			set_types(body.types ?? []);
+		} catch {
+			set_types([]);
+		}
+	}
+
+	// What reaches me: what comes to me, and what I brought in myself (on for me, though nothing sends it).
+	const reach = new Map(person.reaches_me.map((r) => [r.event, r.via]));
+	const mine_on = person.settings.filter((s) => s.scope === 'all' && s.state === 'on' && !reach.has(s.event)).map((s) => s.event);
+	const mine_off = person.settings.filter((s) => s.scope === 'all' && s.state === 'off' && !reach.has(s.event)).map((s) => s.event);
+	const reach_rows = [...person.reaches_me.map((r) => r.event), ...mine_on, ...mine_off];
+	const addable = (types ?? []).filter((t) => !reach_rows.includes(t));
+
+	return (
+		<>
+			<section aria-label="Runs I start" className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5" data-testid="runs-i-start">
+				<div>
+					<h2 className="text-[15px] font-semibold">Runs I start</h2>
+					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">About your own runs, wherever they run. CliqHub switched on the ones that mean trouble.</p>
+				</div>
+				<div className="overflow-hidden rounded-md border border-[var(--g-line)]">
+					{person.my_runs_events.map((e) => {
+						const on = state('my_runs', e) === 'on';
+						return (
+							<div key={e} className={ROW_CLS}>
+								<div className="min-w-0"><b className="block text-[13px] font-semibold">{event_label(e)}</b><span className="g-mono text-[11px] text-[var(--g-ink-3)]">{e}</span></div>
+								<span />
+								<Switch on={on} label={`${event_label(e)} about my runs`} disabled={busy} on_change={(next) => void apply([{ scope: 'my_runs', event: e, state: next ? 'on' : 'off' }], `${event_label(e)} about your runs is ${next ? 'on' : 'off'}.`)} />
+							</div>
+						);
+					})}
+				</div>
+			</section>
+			<section aria-label="What reaches me" className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5" data-testid="reaches-me">
+				<div>
+					<h2 className="text-[15px] font-semibold">What reaches me</h2>
+					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">Everything else that comes to you from your org and realms. Switch one off and it stops for you only. “+ add” brings in an event nobody sends you.</p>
+				</div>
+				<div className="overflow-hidden rounded-md border border-[var(--g-line)]">
+					{reach_rows.length === 0 ? <p className="px-4 py-3 text-[12.5px] text-[var(--g-ink-3)]">Nothing reaches you yet.</p> : null}
+					{reach_rows.map((e) => {
+						const via = reach.get(e);
+						const mine_state = state('all', e);
+						const on = via ? mine_state !== 'off' : mine_state === 'on';
+						return (
+							<div key={e} className={`${ROW_CLS} ${on ? '' : 'opacity-60'}`} data-testid={`reach-${e}`}>
+								<div className="min-w-0"><b className="block text-[13px] font-semibold">{event_label(e)}</b><span className="g-mono text-[11px] text-[var(--g-ink-3)]">{e}</span></div>
+								<div className="flex min-w-0 flex-wrap items-center gap-1">
+									{via ? via.map((v) => <span key={v} className="rounded-md border border-[var(--g-line)] bg-[var(--g-soft)] px-2 py-px text-[12px]">{v}</span>) : <span className="text-[12px] text-[var(--g-ink-3)]">added by you</span>}
+									{via && mine_state === 'off' ? <span className="text-[12px] text-[var(--g-ink-3)]">· off for you</span> : null}
+								</div>
+								<Switch
+									on={on} label={`${event_label(e)} for me`} disabled={busy}
+									on_change={(next) => void apply(
+										// Back to what reaches me = follow the realm and org again; a brought-in event off = gone.
+										[{ scope: 'all', event: e, state: via ? (next ? null : 'off') : (next ? 'on' : null) }],
+										`${event_label(e)} is ${next ? 'on' : 'off'} for you.`,
+									)}
+								/>
+							</div>
+						);
+					})}
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<select aria-label="Add an event" value={adding} onFocus={() => void open_add()} onChange={(e) => set_adding(e.target.value)} className={`${G_INPUT} w-auto`}>
+						<option value="">+ add an event…</option>
+						{addable.map((t) => <option key={t} value={t}>{event_label(t)}</option>)}
+					</select>
+					{adding ? <button type="button" disabled={busy} className={G_PRIMARY} onClick={() => { const e = adding; set_adding(''); void apply([{ scope: 'all', event: e, state: 'on' }], `${event_label(e)} now reaches you.`); }}>Add</button> : null}
+				</div>
+				{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
+			</section>
+		</>
+	);
+}
+
 /** Settings › Notifications — how to reach me (my personal channel), and what reaches me. */
 function My_notifications() {
 	const { user } = useAuth();
-	const overview = use_overview();
 	const post = use_post();
-	const read = use_bff_read<Array<{ id: string; name: string; destinations: Array<Record<string, unknown>> }>>('/v1/notification_channels/get', { mine: true }, { fallback_error: 'Could not load your notification settings.' });
+	const read = use_bff_read<Array<{ id: string; name: string; destinations: Array<Record<string, unknown>>; person?: Person }>>('/v1/notification_channels/get', { mine: true }, { fallback_error: 'Could not load your notification settings.' });
 	const mine = read.data?.[0] ?? null;
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const items = (mine?.destinations ?? []).map((d) => ({ type: String(d.type), label: my_label(d, user?.email ?? null) }));
@@ -313,7 +425,6 @@ function My_notifications() {
 		const d = r.data as { delivered?: number; errors?: string[] } | null;
 		set_msg(d?.errors?.length ? { tone: 'bad', text: `Sent to ${d.delivered ?? 0}; ${d.errors.join('; ')}` } : { tone: 'ok', text: `Test sent to ${d?.delivered ?? 0} destination${d?.delivered === 1 ? '' : 's'}.` });
 	}
-	const orgs = overview.data?.orgs ?? [];
 	return (
 		<div className="flex flex-col gap-4">
 			<section aria-label="How to reach me" className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5">
@@ -336,20 +447,7 @@ function My_notifications() {
 				{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 				{mine ? <div><button type="button" onClick={() => void test()} className={G_BTN}>Send test</button></div> : null}
 			</section>
-			<section aria-label="What reaches me" className="flex flex-col gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-5">
-				<div>
-					<h2 className="text-[15px] font-semibold">What reaches me</h2>
-					<p className="mt-1 text-[12.5px] text-[var(--g-ink-3)]">These reach everyone in an org or realm — you included, through the destinations above.</p>
-				</div>
-				<ul className="flex flex-col gap-1.5 text-[12.5px]" data-testid="reaches-me">
-					{orgs.map((o) => (
-						<li key={o.id} className="flex flex-col gap-1.5">
-							<span className="flex items-center gap-2 rounded-md border border-[var(--g-line-2)] px-3 py-2"><b className="font-medium">All org members</b><span className="ml-auto text-[var(--g-ink-3)]">{o.display_name}</span></span>
-							{o.realms.map((r) => <span key={r.id} className="flex items-center gap-2 rounded-md border border-[var(--g-line-2)] px-3 py-2"><b className="font-medium">All realm members</b><span className="ml-auto text-[var(--g-ink-3)]">{r.slug} · {o.display_name}</span></span>)}
-						</li>
-					))}
-				</ul>
-			</section>
+			{mine?.person ? <Person_layer person={mine.person} save={(person_settings) => change({ person_settings })} /> : null}
 		</div>
 	);
 }

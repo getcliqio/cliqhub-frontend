@@ -390,7 +390,12 @@ describe('Settings page', () => {
 
 	it('Settings › Notifications: how to reach me — in-app locked on; add and remove a destination on my own channel; send a test', async () => {
 		const calls = route_fetch({
-			'/v1/notification_channels/get': () => ({ ok: true, data: [{ id: 'me', name: 'sapan', destinations: [{ type: 'cliqhub' }, { type: 'email', account: true }] }] }),
+			'/v1/notification_channels/get': () => ({ ok: true, data: [{ id: 'me', name: 'sapan', destinations: [{ type: 'cliqhub' }, { type: 'email', account: true }], person: {
+				my_runs_events: ['run.failed', 'run.completed'],
+				settings: [{ scope: 'my_runs', event: 'run.failed', state: 'on' }, { scope: 'all', event: 'phase.idle', state: 'off' }],
+				reaches_me: [{ event: 'run.failed', via: ['All realm members'] }, { event: 'phase.idle', via: ['oncall names you'] }],
+			} }] }),
+			'/v1/events/types/list': () => ({ ok: true, types: ['run.failed', 'phase.idle', 'run.started'] }),
 			'/v1/notification_channels/update': () => ({ ok: true, data: { id: 'me', destinations: [] } }),
 			'/v1/notification_channels/test': () => ({ ok: true, data: { delivered: 2 } }),
 		});
@@ -410,8 +415,40 @@ describe('Settings page', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', add_destinations: [{ type: 'slack', webhook_url: 'https://hooks.slack.com/services/T/B/me' }] } }));
 		fireEvent.click(screen.getByRole('button', { name: 'Send test' }));
 		expect(await screen.findByText('Test sent to 2 destinations.')).toBeInTheDocument();
-		// What reaches me: the built-ins of my orgs and realms.
-		expect(within(screen.getByTestId('reaches-me')).getAllByText('All org members').length).toBeGreaterThan(0);
+	});
+
+	it('Settings › Notifications: Runs I start and What reaches me — one switch each, saved on my own channel; + add brings an event in', async () => {
+		const calls = route_fetch({
+			'/v1/notification_channels/get': () => ({ ok: true, data: [{ id: 'me', name: 'sapan', destinations: [{ type: 'cliqhub' }], person: {
+				my_runs_events: ['run.failed', 'run.completed'],
+				settings: [{ scope: 'my_runs', event: 'run.failed', state: 'on' }, { scope: 'all', event: 'phase.idle', state: 'off' }],
+				reaches_me: [{ event: 'run.failed', via: ['All realm members'] }, { event: 'phase.idle', via: ['oncall names you'] }],
+			} }] }),
+			'/v1/notification_channels/update': () => ({ ok: true, data: { id: 'me', destinations: [] } }),
+			'/v1/events/types/list': () => ({ ok: true, types: ['run.failed', 'phase.idle', 'run.started'] }),
+		});
+		open_settings('/settings?tab=notifications');
+		const runs = await screen.findByTestId('runs-i-start');
+		expect(within(runs).getByRole('switch', { name: 'Run failed about my runs' })).toHaveAttribute('aria-checked', 'true');
+		fireEvent.click(within(runs).getByRole('switch', { name: 'Run completed about my runs' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', person_settings: [{ scope: 'my_runs', event: 'run.completed', state: 'on' }] } }));
+
+		const reach = screen.getByTestId('reaches-me');
+		expect(within(reach).getByText('All realm members')).toBeInTheDocument();
+		expect(within(reach).queryByText(/@/)).toBeNull();
+		// Run failed reaches me: switching it off is my choice; Phase idle is off for me: back on = follow the realm again.
+		fireEvent.click(within(reach).getByRole('switch', { name: 'Run failed for me' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', person_settings: [{ scope: 'all', event: 'run.failed', state: 'off' }] } }));
+		expect(within(reach).getByRole('switch', { name: 'Phase idle for me' })).toHaveAttribute('aria-checked', 'false');
+		fireEvent.click(within(reach).getByRole('switch', { name: 'Phase idle for me' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', person_settings: [{ scope: 'all', event: 'phase.idle', state: null }] } }));
+
+		const add = within(reach).getByLabelText('Add an event');
+		fireEvent.focus(add);
+		await within(reach).findByRole('option', { name: 'Run started' });
+		fireEvent.change(add, { target: { value: 'run.started' } });
+		fireEvent.click(within(reach).getByRole('button', { name: 'Add' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', person_settings: [{ scope: 'all', event: 'run.started', state: 'on' }] } }));
 	});
 
 	it('old tabs redirect', async () => {
