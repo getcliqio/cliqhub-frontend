@@ -16,24 +16,21 @@
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Lock, X } from 'lucide-react';
-import { useAuth } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { View_scope } from '@/lib/view_scope';
 import {
 	event_family, event_label,
-	type Notif_channel, type Notif_event_group, type Notif_event_row, type Notif_event_rule, type Notification_center_data,
+	type Notif_event_group, type Notif_event_row, type Notif_event_rule, type Notification_center_data,
 } from '@/lib/notification_center';
 import { use_post } from '@/components/graphite/g_agents';
-import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { Channel_picker } from '@/components/graphite/g_channel_picker';
 import { Custom_events_panel } from '@/components/graphite/g_custom_events';
-import { Channels_tab, New_channel_drawer } from '@/pages/notification_center_page';
+import { Channels_tab, New_channel_form } from '@/pages/notification_center_page';
+import { Send_to_drawer } from '@/components/graphite/g_send_to';
 import { Switch } from '@/components/graphite/g_switch';
 
 export { Switch };
 
-const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 const LINK = 'text-[12.5px] font-semibold text-[var(--g-acc)] hover:underline disabled:opacity-40 disabled:no-underline';
 /** Event · Goes to · On · + channel — the same columns on every row. */
 const ROW = 'grid grid-cols-[minmax(0,1.1fr)_minmax(0,2fr)_44px_92px] items-center gap-3 px-4 py-2.5';
@@ -175,18 +172,31 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 			{view === 'events' ? (
 				<>
 					<Events
-						groups={d.events ?? []} in_realm={Boolean(realm)} can_edit={can_edit} busy={busy} write={write} channels={channels}
-						new_channel={scope ? (event, done) => (
-							<New_channel_drawer
-								data={d} scope={scope}
-								on_close={done}
-								on_saved={async (created) => {
-									done();
-									if (created) await write({ items: [{ event, channel_id: created.id }] }, `${created.name} created; ${event_label(event)} goes there.`);
-									else await read.reload();
+						groups={d.events ?? []} in_realm={Boolean(realm)} can_edit={can_edit} busy={busy} write={write}
+						send_to={(r, mine, close) => (
+							<Send_to_drawer
+								title={`${event_label(r.event)} goes to…`}
+								sub={realm ? `Realm ${realm.slug} · ${r.event}` : `${scope?.org?.display_name ?? 'This org'} · every realm · ${r.event}`}
+								org_id={org_id} realm_id={realm?.id} key_by="id"
+								current={mine.map((x) => ({ key: x.channel_id, label: x.channel_name ?? 'channel' }))}
+								note={realm
+									? 'This realm’s channels and the org’s, and this realm’s members. A person gets it in-app and however they chose in their Settings.'
+									: 'The org’s channels and its members. A realm’s own channels are chosen on that realm’s Events. A person gets it in-app and however they chose in their Settings.'}
+								on_close={close}
+								on_save={async (adds, removes) => {
+									close();
+									const rule_of = (key: string) => mine.find((x) => x.channel_id === key)!.rule_id;
+									await write(
+										{ items: adds.map((t) => ({ event: r.event, channel_id: t.key })), remove: removes.map((c) => rule_of(c.key)) },
+										`${event_label(r.event)}: ${[adds.length && `${adds.length} added`, removes.length && `${removes.length} removed`].filter(Boolean).join(', ')}.`,
+									);
+									return null;
 								}}
+								new_channel={scope ? (created) => (
+									<New_channel_form data={d} scope={scope} on_cancel={() => {}} on_saved={(c) => { if (c) created(c); }} />
+								) : undefined}
 							/>
-						) : null}
+						)}
 					/>
 					{realm ? (
 						<section aria-label="Custom events" data-testid="notif-custom">
@@ -212,18 +222,16 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
  * org's in an org; the realm's own in a realm): those get ✕ and the switch. A channel set for the whole
  * family (`run.*`) or, in a realm, by the org shows read-only.
  */
-function Events({ groups, in_realm, can_edit, busy, write, channels, new_channel }: {
-	groups: Notif_event_group[]; in_realm: boolean; can_edit: boolean; busy: boolean; channels: Notif_channel[];
+function Events({ groups, in_realm, can_edit, busy, write, send_to }: {
+	groups: Notif_event_group[]; in_realm: boolean; can_edit: boolean; busy: boolean;
 	write: (w: Write, done: string) => Promise<void>;
-	/** The New channel drawer for an event (the channel is added to it once made); null when it can't open. */
-	new_channel: ((event: string, done: () => void) => ReactNode) | null;
+	/** The "Send to…" drawer for an event: this level's own rules for it, and how to close it. */
+	send_to: (row: Notif_event_row, mine: Notif_event_rule[], close: () => void) => ReactNode;
 }) {
-	const { user } = useAuth();
-	const [adding_to, set_adding_to] = useState<string | null>(null);
-	const [creating_for, set_creating_for] = useState<string | null>(null);
-	const [pick, set_pick] = useState('');
+	const [editing, set_editing] = useState<Notif_event_row | null>(null);
 	const rows = groups.flatMap((g) => g.events);
 	const sent = rows.filter((r) => r.sent).length;
+	const own = (r: Notif_event_row) => (in_realm ? r.realm : r.org).filter((x) => x.selector === r.event && !x.locked);
 
 	return (
 		<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Events" data-testid="notif-events">
@@ -240,41 +248,19 @@ function Events({ groups, in_realm, can_edit, busy, write, channels, new_channel
 					<div key={g.family} role="rowgroup">
 						<Group_head group={g} in_realm={in_realm} can_edit={can_edit} busy={busy} write={write} />
 						{g.events.map((r) => (
-							<Event_row
-								key={r.event}
-								row={r}
-								in_realm={in_realm}
-								can_edit={can_edit}
-								busy={busy}
-								adding={adding_to === r.event}
-								on_add_toggle={() => { set_adding_to(adding_to === r.event ? null : r.event); set_pick(''); }}
-								write={write}
-								picker={(
-									<div className="flex items-center gap-2 px-4 pb-2.5 pl-7">
-										<div className="w-[280px]">
-											<Channel_picker
-												channels={channels.filter((c) => ![...r.org, ...r.realm].some((x) => x.channel_id === c.id && x.selector === r.event))}
-												value={pick} on_change={set_pick} me_id={user ? String(user.id) : null} label="Add a channel"
-											/>
-										</div>
-										<button type="button" disabled={!pick || busy} onClick={() => { void write({ items: [{ event: r.event, channel_id: pick }] }, `${event_label(r.event)} now goes there too.`); set_adding_to(null); set_pick(''); }} className={PRIMARY}>Add</button>
-										<button type="button" onClick={() => { set_adding_to(null); set_pick(''); }} className={ROW_ACTION_CLS}>Cancel</button>
-										{new_channel ? <button type="button" onClick={() => { set_creating_for(r.event); set_adding_to(null); set_pick(''); }} className={LINK}>New channel…</button> : null}
-									</div>
-								)}
-							/>
+							<Event_row key={r.event} row={r} in_realm={in_realm} can_edit={can_edit} busy={busy} write={write} on_edit={() => set_editing(r)} />
 						))}
 					</div>
 				))}
 			</div>
-			{creating_for && new_channel ? new_channel(creating_for, () => set_creating_for(null)) : null}
+			{editing ? send_to(editing, own(editing), () => set_editing(null)) : null}
 		</section>
 	);
 }
 
-function Event_row({ row, in_realm, can_edit, busy, adding, on_add_toggle, write, picker }: {
-	row: Notif_event_row; in_realm: boolean; can_edit: boolean; busy: boolean; adding: boolean;
-	on_add_toggle: () => void; write: (w: Write, done: string) => Promise<void>; picker: ReactNode;
+function Event_row({ row, in_realm, can_edit, busy, write, on_edit }: {
+	row: Notif_event_row; in_realm: boolean; can_edit: boolean; busy: boolean;
+	write: (w: Write, done: string) => Promise<void>; on_edit: () => void;
 }) {
 	const e = row.event;
 	// This level's channels for exactly this event: what ✕ and the switch act on.
@@ -305,10 +291,9 @@ function Event_row({ row, in_realm, can_edit, busy, adding, on_add_toggle, write
 				<div className="flex justify-end">
 					{row.fixed
 						? <span className="inline-flex items-center gap-1 text-[12px] text-[var(--g-ink-3)]" title={[...row.org, ...row.realm].find((x) => x.locked)?.lock_reason ?? undefined}><Lock aria-hidden className="h-3 w-3" />fixed</span>
-						: can_edit ? <button type="button" onClick={on_add_toggle} className={LINK} aria-expanded={adding}>+ channel</button> : null}
+						: can_edit ? <button type="button" onClick={on_edit} className={LINK} aria-label={`${mine.length ? 'Edit where' : 'Choose where'} ${event_label(e)} goes`}>{mine.length ? 'Edit' : '+ add'}</button> : null}
 				</div>
 			</div>
-			{adding && editable ? picker : null}
 		</div>
 	);
 }

@@ -91,6 +91,13 @@ function route_fetch(data: () => Notification_center_data = center, write: (u: s
 	});
 	return calls;
 }
+/** What "Send to…" finds: channels and people (each person with their personal channel). */
+const targets = (u: string) => (u === '/v1/orgs/get_reviewable_targets'
+	? { body: { ok: true, data: {
+		channels: { items: [{ id: 'ch-eng', name: '#eng-alerts', level: 'org' }, { id: 'ch-runs', name: '#eng-runs', level: 'org' }], total: 2 },
+		people: { items: [{ user_id: 'u-elan', username: 'elan', display_name: 'Elan Rao', channel_id: 'pc-elan' }], total: 3 },
+	} } }
+	: null);
 const writes = (calls: Call[]) => calls.filter((c) => c.url === '/v1/notification_center/set_rules').map((c) => c.body);
 
 function Where() {
@@ -147,19 +154,38 @@ describe('Org › Notifications › Events', () => {
 		expect(screen.queryByTestId('built-in-messages')).toBeNull();
 	});
 
-	it('✕ removes a channel from the event; the switch turns it off; + channel adds one', async () => {
-		const calls = route_fetch();
+	it('✕ removes a channel from the event; the switch turns it off; + add opens Send to — channels and people, ticked, saved together', async () => {
+		const calls = route_fetch(center, targets);
 		render_panel(false);
 		const failed = await screen.findByTestId('event-run.failed');
 		fireEvent.click(within(failed).getByRole('button', { name: 'Remove #eng-alerts from Run failed' }));
 		await waitFor(() => expect(writes(calls)).toContainEqual({ org_id: ORG_A, remove: ['o-failed'] }));
 		fireEvent.click(within(row('event-run.failed')).getByRole('switch'));
 		await waitFor(() => expect(writes(calls)).toContainEqual({ org_id: ORG_A, items: [{ event: 'run.failed', channel_id: 'ch-eng', enabled: false }] }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: '+ channel' }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: /Add a channel/ }));
-		fireEvent.mouseDown(await screen.findByRole('option', { name: /#eng-runs/ }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'Add' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ org_id: ORG_A, items: [{ event: 'run.started', channel_id: 'ch-runs' }] }));
+
+		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'Choose where Run started goes' }));
+		const drawer = screen.getByRole('dialog', { name: 'Run started goes to…' });
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets')?.body).toEqual({ org_id: ORG_A, limit: 20, query: '' }));
+		expect(within(drawer).getByTestId('send-changes')).toHaveTextContent('No changes');
+		fireEvent.click(await within(drawer).findByRole('option', { name: /#eng-runs/ }));
+		fireEvent.click(within(drawer).getByRole('option', { name: /Elan Rao/ }));
+		expect(within(drawer).getByTestId('send-changes')).toHaveTextContent('2 to add');
+		expect(within(within(drawer).getByTestId('send-people')).getByRole('button', { name: 'Show more (2)' })).toBeTruthy();
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ org_id: ORG_A, items: [{ event: 'run.started', channel_id: 'ch-runs' }, { event: 'run.started', channel_id: 'pc-elan' }], remove: [] }));
+	});
+
+	it('Edit: what an event goes to starts ticked — untick it to remove it (the seeded default too)', async () => {
+		const calls = route_fetch(center, targets);
+		render_panel(false);
+		fireEvent.click(within(await screen.findByTestId('event-run.failed')).getByRole('button', { name: 'Edit where Run failed goes' }));
+		const drawer = screen.getByRole('dialog', { name: 'Run failed goes to…' });
+		const eng = await within(drawer).findByRole('option', { name: /#eng-alerts/ });
+		expect(eng).toHaveAttribute('aria-selected', 'true');
+		fireEvent.click(eng);
+		expect(within(drawer).getByTestId('send-changes')).toHaveTextContent('1 to remove');
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ org_id: ORG_A, items: [], remove: ['o-failed'] }));
 	});
 
 	it('a fixed event is locked: no ✕, no switch to change, no + channel', async () => {
@@ -197,17 +223,18 @@ describe('Realm › Notifications › Events — the org\'s channels and the rea
 		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-prod'] }));
 	});
 
-	it('the switch covers only this realm\'s own; + channel adds this realm\'s', async () => {
-		const calls = route_fetch(realm_center);
+	it('the switch covers only this realm\'s own; + add saves a rule for this realm', async () => {
+		const calls = route_fetch(realm_center, targets);
 		render_panel(true);
 		const dmn = await screen.findByTestId('event-daemon.offline');
 		fireEvent.click(within(dmn).getByRole('switch'));
 		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'daemon.offline', channel_id: 'ch-prod', enabled: true }] }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: '+ channel' }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: /Add a channel/ }));
-		fireEvent.mouseDown(await screen.findByRole('option', { name: /#eng-alerts/ }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'Add' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-eng' }] }));
+		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'Edit where Run started goes' }));
+		const drawer = screen.getByRole('dialog', { name: 'Run started goes to…' });
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets')?.body).toMatchObject({ org_id: ORG_A, realm_id: 'r-prod' }));
+		fireEvent.click(await within(drawer).findByRole('option', { name: /#eng-alerts/ }));
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-eng' }], remove: [] }));
 	});
 
 	it('a failed write says why and keeps the list', async () => {
@@ -319,19 +346,23 @@ describe('Notifications — channels', () => {
 		} }));
 	});
 
-	it('New channel from an event: the new channel is added to that event', async () => {
-		const calls = route_fetch(realm_center, (u) => (u.endsWith('/notification_channels/create') ? { body: { ok: true, data: { id: 'ch-new', name: 'Oncall' } } } : null));
+	it('New channel inside Send to: made in place, then ticked; Save adds it to the event', async () => {
+		const calls = route_fetch(realm_center, (u) => (u.endsWith('/notification_channels/create') ? { body: { ok: true, data: { id: 'ch-new', name: 'Oncall' } } } : targets(u)));
 		render_panel(true);
-		fireEvent.click(within(await screen.findByTestId('event-run.started')).getByRole('button', { name: '+ channel' }));
-		fireEvent.click(within(row('event-run.started')).getByRole('button', { name: 'New channel…' }));
-		const drawer = screen.getByRole('dialog', { name: 'New channel' });
-		fireEvent.change(within(drawer).getByLabelText('Add destination'), { target: { value: 'cliqhub' } });
-		expect(within(drawer).getByTestId('nc-in-app')).toHaveTextContent('Everyone in prod-us sees these messages in their CliqHub inbox.');
-		fireEvent.click(within(drawer).getByRole('button', { name: 'Add' }));
-		fireEvent.change(within(drawer).getByLabelText('Name'), { target: { value: 'Oncall' } });
-		fireEvent.click(await within(drawer).findByRole('button', { name: 'Create channel' }));
-		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-new' }] }));
+		fireEvent.click(within(await screen.findByTestId('event-run.started')).getByRole('button', { name: 'Edit where Run started goes' }));
+		const drawer = screen.getByRole('dialog', { name: 'Run started goes to…' });
+		fireEvent.click(within(drawer).getByRole('button', { name: '+ New channel' }));
+		const form = within(drawer).getByTestId('new-channel-form');
+		fireEvent.change(within(form).getByLabelText('Add destination'), { target: { value: 'cliqhub' } });
+		expect(within(form).getByTestId('nc-in-app')).toHaveTextContent('Everyone in prod-us sees these messages in their CliqHub inbox.');
+		fireEvent.click(within(form).getByRole('button', { name: 'Add' }));
+		fireEvent.change(within(form).getByLabelText('Name'), { target: { value: 'Oncall' } });
+		fireEvent.click(await within(form).findByRole('button', { name: 'Create channel' }));
+		await waitFor(() => expect(within(drawer).queryByTestId('new-channel-form')).toBeNull());
 		expect(calls.find((c) => c.url === '/v1/notification_channels/create')?.body).toEqual({ name: 'Oncall', realm_id: 'r-prod', destinations: [{ type: 'cliqhub' }] });
+		expect(within(drawer).getByTestId('send-changes')).toHaveTextContent('1 to add');
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', items: [{ event: 'run.started', channel_id: 'ch-new' }], remove: [] }));
 	});
 
 	it('a channel\'s details: add a destination and remove one, each saved (the BFF fills in the rest of the list)', async () => {
@@ -351,15 +382,15 @@ describe('Notifications — channels', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, remove_destination: { index: 1, type: 'email' } } }));
 	});
 
-	it('a channel\'s details: channels and people — search, pick several (two groups, one already added), add them at once', async () => {
+	it('a channel\'s details: Channels or people opens Send to — search, tick several, untick one to remove it, save', async () => {
 		const calls = route_fetch(() => {
 			const d = center();
 			d.channels = d.channels.map((c) => (c.id === 'ch-eng' ? { ...c, destinations: [{ type: 'slack', label: 'Slack ••••1234' }, { type: 'channel_ref', label: 'oncall' }] } : c));
 			return d;
 		}, (u) => (u === '/v1/orgs/get_reviewable_targets'
 			? { body: { ok: true, data: {
-				channels: { items: [{ id: 'c-on', name: 'oncall', level: 'org' }, { id: 'c-rel', name: 'release', level: 'org' }], total: 2 },
-				people: { items: [{ user_id: 'u-elan', username: 'elan', display_name: 'Elan Rao' }], total: 3 },
+				channels: { items: [{ id: 'ch-eng', name: '#eng-alerts', level: 'org' }, { id: 'c-on', name: 'oncall', level: 'org' }, { id: 'c-rel', name: 'release', level: 'org' }], total: 3 },
+				people: { items: [{ user_id: 'u-elan', username: 'elan', display_name: 'Elan Rao', channel_id: 'pc-elan' }], total: 1 },
 			} } }
 			: u.endsWith('/notification_channels/update') ? { body: { ok: true, data: { id: 'ch-eng', destinations: [] } } } : null));
 		render_panel(false, 'channels');
@@ -367,18 +398,20 @@ describe('Notifications — channels', () => {
 		const panel = screen.getByRole('complementary', { name: 'Channel details' });
 		expect(within(panel).queryByText(/event/)).toBeNull();
 		fireEvent.change(within(panel).getByLabelText('Add destination'), { target: { value: 'channel_ref' } });
-		const search = within(panel).getByRole('combobox', { name: 'Search channels or people…' });
-		fireEvent.focus(search);
-		fireEvent.change(search, { target: { value: 'el' } });
-		const people = await within(panel).findByTestId('picker-people');
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets' && c.body.query === 'el')?.body).toMatchObject({ org_id: ORG_A, limit: 20 }));
-		expect(within(people).getByRole('button', { name: 'Show more (2)' })).toBeTruthy();
-		const channels = within(panel).getByTestId('picker-channels');
-		expect(within(channels).getByRole('option', { name: /oncall/ })).toBeDisabled();
+		const drawer = screen.getByRole('dialog', { name: '#eng-alerts passes it on to…' });
+		fireEvent.change(within(drawer).getByRole('searchbox', { name: 'Search channels or people' }), { target: { value: 'e' } });
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets' && c.body.query === 'e')?.body).toMatchObject({ org_id: ORG_A, limit: 20 }));
+		const channels = await within(drawer).findByTestId('send-channels');
+		// A channel can't pass to itself; what it passes to now starts ticked.
+		expect(within(channels).queryByRole('option', { name: /#eng-alerts/ })).toBeNull();
+		expect(within(channels).getByRole('option', { name: /oncall/ })).toHaveAttribute('aria-selected', 'true');
 		fireEvent.click(within(channels).getByRole('option', { name: /release/ }));
-		fireEvent.click(await within(panel).findByRole('option', { name: /Elan Rao/ }));
-		fireEvent.click(within(panel).getByRole('button', { name: 'Add 2' }));
+		fireEvent.click(within(drawer).getByRole('option', { name: /Elan Rao/ }));
+		fireEvent.click(within(channels).getByRole('option', { name: /oncall/ }));
+		expect(within(drawer).getByTestId('send-changes')).toHaveTextContent('2 to add · 1 to remove');
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Save' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, add_destinations: [{ type: 'channel_ref', name: 'release' }, { type: 'channel_ref', name: 'elan' }] } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, remove_destination: { index: 1, type: 'channel_ref' } } }));
 	});
 
 	it('a channel\'s only destination can\'t be removed; a built-in channel has no editor', async () => {
