@@ -95,6 +95,8 @@ export interface Notif_event_row {
 /** Events of one family (`run`, `phase`, …), in catalog order. */
 export interface Notif_event_group {
 	family: string;
+	/** Rules for the whole family (`run.*`): the org's, and in a realm view the realm's own. */
+	family_rules?: { org: Notif_event_rule[]; realm: Notif_event_rule[] };
 	events: Notif_event_row[];
 }
 

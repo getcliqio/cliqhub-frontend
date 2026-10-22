@@ -79,8 +79,39 @@ function Event_name({ event }: { event: string }) {
 	);
 }
 
-function Group_head({ family }: { family: string }) {
-	return <div role="row" className="bg-[var(--g-bg)] px-4 pb-1 pt-2.5 text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{event_family(`${family}.x`)}</div>;
+/**
+ * A family's heading, with the rules set for the whole family (`run.*` — "Any run event"): this level's with ✕
+ * and a switch, the org's (in a realm) read-only. Each event row below shows them greyed, "set for any … event".
+ */
+function Group_head({ group, in_realm, can_edit, busy, write }: {
+	group: Notif_event_group; in_realm: boolean; can_edit: boolean; busy: boolean; write: (w: Write, done: string) => Promise<void>;
+}) {
+	const selector = `${group.family}.*`;
+	const mine = (in_realm ? group.family_rules?.realm : group.family_rules?.org) ?? [];
+	const org = in_realm ? group.family_rules?.org ?? [] : [];
+	const label = event_label(selector);
+	return (
+		<div role="row" className="flex flex-wrap items-center gap-x-3 gap-y-1 bg-[var(--g-bg)] px-4 pb-1 pt-2.5" data-testid={`family-${group.family}`}>
+			<span className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">{event_family(`${group.family}.x`)}</span>
+			{mine.length + org.length ? (
+				<span className="flex min-w-0 flex-wrap items-center gap-1 text-[12px]">
+					<span className="text-[var(--g-ink-3)]">{label} →</span>
+					{org.map((x) => <Chip key={x.rule_id} r={x} event={selector} org />)}
+					{mine.map((x) => (
+						<Chip key={x.rule_id} r={x} event={selector} busy={busy} on_remove={can_edit && !x.locked ? () => void write({ remove: [x.rule_id] }, `${x.channel_name ?? 'Channel'} no longer gets ${label.toLowerCase()}.`) : undefined} />
+					))}
+					{mine.length ? (
+						<Switch
+							on={mine.some((x) => x.enabled)}
+							label={`${label} on`}
+							disabled={!can_edit || busy}
+							on_change={(next) => void write({ items: mine.map((x) => ({ event: selector, channel_id: x.channel_id, enabled: next })) }, next ? `${label} is on.` : `${label} is off.`)}
+						/>
+					) : null}
+				</span>
+			) : null}
+		</div>
+	);
 }
 
 type Write = { items?: Array<{ event: string; channel_id: string; enabled?: boolean }>; remove?: string[] };
@@ -166,8 +197,8 @@ export function Notifications_panel({ org_id, realm, view = 'events' }: { org_id
 				</>
 			) : scope ? (
 				<section aria-label="Channels" data-testid="notif-channels">
-					{/* The org lists every channel in it — its own and each realm's; a realm, its own and the org's. */}
-					<Channels_tab data={{ ...d, channels: realm ? channels : d.channels.filter((c) => c.owner.kind !== 'personal' && c.owner.org_id === org_id) }} scope={scope} reload={read.reload} />
+					{/* The org lists its own channels; a realm, its own and the org's — each next to the events that use them. */}
+					<Channels_tab data={{ ...d, channels }} scope={scope} reload={read.reload} />
 				</section>
 			) : null}
 		</div>
@@ -207,7 +238,7 @@ function Events({ groups, in_realm, can_edit, busy, write, channels, new_channel
 				{rows.length === 0 ? <p className="px-4 py-8 text-center text-[13px] text-[var(--g-ink-3)]">No events to show.</p> : null}
 				{groups.map((g) => (
 					<div key={g.family} role="rowgroup">
-						<Group_head family={g.family} />
+						<Group_head group={g} in_realm={in_realm} can_edit={can_edit} busy={busy} write={write} />
 						{g.events.map((r) => (
 							<Event_row
 								key={r.event}

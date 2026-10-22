@@ -328,7 +328,7 @@ function My_notifications() {
 						<Destinations_editor
 							items={items} where="you"
 							locked={(d) => (d.type === 'cliqhub' ? 'Always on — you always get it in your CliqHub inbox' : null)}
-							on_add={(d) => change({ add_destination: draft_to_destination(d) })}
+							on_add={(ds) => change({ add_destinations: ds.map(draft_to_destination) })}
 							on_remove={(i) => change({ remove_destination: { index: i, type: items[i]!.type } })}
 						/>
 					</div>

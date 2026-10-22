@@ -407,7 +407,7 @@ describe('Settings page', () => {
 		fireEvent.change(within(mine).getByLabelText('Add destination'), { target: { value: 'slack' } });
 		fireEvent.change(within(mine).getByLabelText('Slack webhook URL'), { target: { value: 'https://hooks.slack.com/services/T/B/me' } });
 		fireEvent.click(within(mine).getByRole('button', { name: 'Add' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', add_destination: { type: 'slack', webhook_url: 'https://hooks.slack.com/services/T/B/me' } } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'me', add_destinations: [{ type: 'slack', webhook_url: 'https://hooks.slack.com/services/T/B/me' }] } }));
 		fireEvent.click(screen.getByRole('button', { name: 'Send test' }));
 		expect(await screen.findByText('Test sent to 2 destinations.')).toBeInTheDocument();
 		// What reaches me: the built-ins of my orgs and realms.

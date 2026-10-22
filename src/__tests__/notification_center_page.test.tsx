@@ -236,7 +236,7 @@ describe('Notifications — channels', () => {
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/remove', body: { id: 'ch-off' } }));
 	});
 
-	it('the org lists every channel — its own and each realm\'s — with where it belongs; built-ins first; a switch on the rest', async () => {
+	it('the org lists only its own channels (a realm\'s are on that realm\'s page); built-ins first; a switch on the rest', async () => {
 		const calls = route_fetch(() => {
 			const d = center();
 			d.channels = [...d.channels, { ...ch('ch-built', 'All org members'), system_key: 'org.in_app', locked: true, lock_reason: 'Built in' }];
@@ -246,14 +246,28 @@ describe('Notifications — channels', () => {
 		await screen.findByTestId('channel-ch-built');
 		const rows = screen.getAllByTestId(/^channel-/).map((r) => r.getAttribute('data-testid'));
 		expect(rows[0]).toBe('channel-ch-built');
-		expect(rows).toContain('channel-ch-prod');
+		expect(rows).not.toContain('channel-ch-prod');
 		expect(rows).not.toContain('channel-ch-mine');
-		expect(within(row('channel-ch-prod')).getByTestId('belongs-to')).toHaveTextContent('Realm · prod-us');
 		expect(within(row('channel-ch-eng')).getByTestId('belongs-to')).toHaveTextContent('Org');
 		expect(within(row('channel-ch-built')).queryByRole('switch')).toBeNull();
 		fireEvent.click(within(row('channel-ch-eng')).getByRole('switch', { name: '#eng-alerts on' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', enabled: false } }));
 		expect(screen.queryByText(/rules?\b/i)).toBeNull();
+	});
+
+	it('a family rule (Any run event) shows once on its group, with ✕ and a switch; each run event shows it read-only', async () => {
+		const calls = route_fetch(() => {
+			const d = realm_center();
+			const wide = { rule_id: 'r-wide', selector: 'run.*', tier: 'realm', channel_id: 'ch-prod', channel_name: '#prod', channel_enabled: true, enabled: true, locked: false, lock_reason: null };
+			d.events = (d.events ?? []).map((g) => (g.family === 'run' ? { ...g, family_rules: { org: [], realm: [wide] }, events: g.events.map((e) => ({ ...e, realm: [...e.realm, wide] })) } : g)) as typeof d.events;
+			return d;
+		});
+		render_panel(true);
+		const head = await screen.findByTestId('family-run');
+		expect(head).toHaveTextContent('#prod');
+		expect(within(head).getByRole('switch')).toBeTruthy();
+		fireEvent.click(within(head).getByRole('button', { name: /Remove #prod/ }));
+		await waitFor(() => expect(writes(calls)).toContainEqual({ realm_id: 'r-prod', remove: ['r-wide'] }));
 	});
 
 	it('a realm lists its own and the org\'s: its own as This realm', async () => {
@@ -327,9 +341,39 @@ describe('Notifications — channels', () => {
 		fireEvent.change(within(panel).getByLabelText('Add destination'), { target: { value: 'webhook' } });
 		fireEvent.change(within(panel).getByLabelText('URL'), { target: { value: 'https://pd.example/hook' } });
 		fireEvent.click(within(panel).getByRole('button', { name: 'Add' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, add_destination: { type: 'webhook', url: 'https://pd.example/hook' } } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, add_destinations: [{ type: 'webhook', url: 'https://pd.example/hook' }] } }));
 		fireEvent.click(within(panel).getByRole('button', { name: 'Remove Email destination' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, remove_destination: { index: 1, type: 'email' } } }));
+	});
+
+	it('a channel\'s details: channels and people — search, pick several (two groups, one already added), add them at once', async () => {
+		const calls = route_fetch(() => {
+			const d = center();
+			d.channels = d.channels.map((c) => (c.id === 'ch-eng' ? { ...c, destinations: [{ type: 'slack', label: 'Slack ••••1234' }, { type: 'channel_ref', label: 'oncall' }] } : c));
+			return d;
+		}, (u) => (u === '/v1/orgs/get_reviewable_targets'
+			? { body: { ok: true, data: {
+				channels: { items: [{ id: 'c-on', name: 'oncall', level: 'org' }, { id: 'c-rel', name: 'release', level: 'org' }], total: 2 },
+				people: { items: [{ user_id: 'u-elan', username: 'elan', display_name: 'Elan Rao' }], total: 3 },
+			} } }
+			: u.endsWith('/notification_channels/update') ? { body: { ok: true, data: { id: 'ch-eng', destinations: [] } } } : null));
+		render_panel(false, 'channels');
+		fireEvent.click(await screen.findByRole('button', { name: '#eng-alerts' }));
+		const panel = screen.getByRole('complementary', { name: 'Channel details' });
+		expect(within(panel).queryByText(/event/)).toBeNull();
+		fireEvent.change(within(panel).getByLabelText('Add destination'), { target: { value: 'channel_ref' } });
+		const search = within(panel).getByRole('combobox', { name: 'Search channels or people…' });
+		fireEvent.focus(search);
+		fireEvent.change(search, { target: { value: 'el' } });
+		const people = await within(panel).findByTestId('picker-people');
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/get_reviewable_targets' && c.body.query === 'el')?.body).toMatchObject({ org_id: ORG_A, limit: 20 }));
+		expect(within(people).getByRole('button', { name: 'Show more (2)' })).toBeTruthy();
+		const channels = within(panel).getByTestId('picker-channels');
+		expect(within(channels).getByRole('option', { name: /oncall/ })).toBeDisabled();
+		fireEvent.click(within(channels).getByRole('option', { name: /release/ }));
+		fireEvent.click(await within(panel).findByRole('option', { name: /Elan Rao/ }));
+		fireEvent.click(within(panel).getByRole('button', { name: 'Add 2' }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/notification_channels/update', body: { id: 'ch-eng', org_id: ORG_A, add_destinations: [{ type: 'channel_ref', name: 'release' }, { type: 'channel_ref', name: 'elan' }] } }));
 	});
 
 	it('a channel\'s only destination can\'t be removed; a built-in channel has no editor', async () => {

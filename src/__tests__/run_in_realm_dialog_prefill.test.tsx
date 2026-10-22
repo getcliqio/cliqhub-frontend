@@ -174,7 +174,7 @@ describe('Run_in_realm_dialog — channel inputs (PLAN-notifications-v2 B4.2)', 
     it('the channel picker lists the channels the run\'s realm can use (sends the realm)', async () => {
         auth_fetch.mockImplementation(async (url: string) => ({
             json: async () => (url === '/v1/orgs/get_reviewable_targets'
-                ? { ok: true, data: { users: [], channels: [{ id: 'c1', name: 'ops' }] } }
+                ? { ok: true, data: { people: { items: [], total: 0 }, channels: { items: [{ id: 'c1', name: 'ops', level: 'realm' }], total: 1 } } }
                 : stub_team_inputs([{ name: 'reviewers', type: 'channel', required: true }])),
         }));
         render_dialog();

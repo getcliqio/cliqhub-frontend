@@ -18,11 +18,11 @@ import {
 	can_edit_org_channels,
 	can_edit_realm,
 	event_label,
-	scope_text,
 	type Notif_channel,
 	type Notification_center_data,
 } from '@/lib/notification_center';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
+import { ChannelUserPicker } from '@/components/channel_user_picker';
 import { Switch } from '@/components/graphite/g_switch';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
@@ -97,7 +97,8 @@ export function Drawer({ title, on_close, children, label }: { title: string; on
 /* ------------------------------------------------------------------ */
 /* Channels                                                            */
 
-export type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook'; value: string; cc?: string; bcc?: string };
+/** A destination being added; for `channel_ref` the value is a channel's or a person's name. */
+export type Dest_draft = { type: 'cliqhub' | 'slack' | 'email' | 'webhook' | 'channel_ref'; value: string; cc?: string; bcc?: string };
 
 /** A comma-separated address list, tidied (empty → undefined). */
 function addresses(v: string | undefined): string | undefined {
@@ -113,6 +114,7 @@ export function draft_to_destination(d: Dest_draft): Record<string, unknown> {
 		return { type: 'email', address: addresses(d.value) ?? '', ...(cc ? { cc } : {}), ...(bcc ? { bcc } : {}) };
 	}
 	if (d.type === 'webhook') return { type: 'webhook', url: d.value.trim() };
+	if (d.type === 'channel_ref') return { type: 'channel_ref', name: d.value.trim() };
 	return { type: 'cliqhub' };
 }
 
@@ -133,7 +135,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 		: c.owner.kind === 'personal' ? 'A person'
 			: scope.kind === 'realm' && c.owner.realm_id === scope.realm.id ? 'This realm' : `Realm · ${c.owner.realm_slug ?? 'unknown'}`;
 	const open = channels.find((c) => c.id === open_id) ?? null;
-	const used_by = open ? data.rules.filter((r) => r.channel_id === open.id) : [];
 
 	async function act(path: string, body: Record<string, unknown>, done: string) {
 		set_msg(null);
@@ -180,7 +181,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 									<th className="px-4 py-2.5 font-semibold">Channel</th>
 									<th className="px-4 py-2.5 font-semibold">Belongs to</th>
 									<th className="px-4 py-2.5 font-semibold">Destinations</th>
-									<th className="px-4 py-2.5 font-semibold">Gets</th>
 									<th className="px-4 py-2.5 font-semibold">On</th>
 								</tr>
 							</thead>
@@ -199,7 +199,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 										</td>
 										<td className="px-4 py-2.5 text-[var(--g-ink-2)]" data-testid="belongs-to">{belongs(c)}</td>
 										<td className="px-4 py-2.5"><span className="inline-flex items-center gap-2"><Dest_icons destinations={c.destinations} />{MEMBERS_KEYS.has(c.system_key ?? '') ? <span className="text-[11.5px] text-[var(--g-ink-3)]" data-testid="members-their-way">each member, their way</span> : null}</span></td>
-										<td className="px-4 py-2.5 text-[var(--g-ink-2)]">{c.rule_count} event{c.rule_count === 1 ? '' : 's'}</td>
 										<td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
 											{c.locked
 												? <span title={c.lock_reason ?? 'Built in — always on'}><Lock aria-label="Built in" className="h-3 w-3 text-[var(--g-ink-3)]" /></span>
@@ -220,13 +219,14 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 							<h2 className="text-[16px] font-semibold">{open.name}</h2>
 							<button type="button" aria-label="Close details" onClick={() => set_open_id(null)} className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-4 w-4" /></button>
 						</div>
-						<p className="text-[12.5px] text-[var(--g-ink-3)]">{belongs(open)} · gets {open.rule_count} event{open.rule_count === 1 ? '' : 's'}</p>
+						<p className="text-[12.5px] text-[var(--g-ink-3)]">{belongs(open)}</p>
 						<div>
 							<span className={LABEL}>Destinations</span>
 							{!open.locked && can_edit_channel(data, open) && open.owner.kind !== 'personal' ? (
 								<Destinations_editor
 									key={open.id} items={open.destinations} where={open.owner.kind === 'realm' ? open.owner.realm_slug ?? 'this realm' : scope.org?.display_name ?? 'this org'}
-									on_add={(d) => change_destinations(open, { add_destination: draft_to_destination(d) }, `${DEST_NAME[d.type]} destination added.`)}
+									picker={{ org_id: open.owner.kind === 'realm' ? (scope.kind === 'realm' ? scope.realm.org_id : scope.org.id) : open.owner.org_id ?? '', realm_id: open.owner.kind === 'realm' ? open.owner.realm_id ?? undefined : undefined }}
+									on_add={(ds) => change_destinations(open, { add_destinations: ds.map(draft_to_destination) }, ds.length === 1 ? `${DEST_NAME[ds[0]!.type]} destination added.` : `${ds.length} destinations added.`)}
 									on_remove={(i) => open.destinations.length === 1
 										? Promise.resolve('A channel needs at least one destination. Add another first, or delete the channel.')
 										: change_destinations(open, { remove_destination: { index: i, type: open.destinations[i]!.type } }, `${DEST_NAME[open.destinations[i]!.type] ?? 'The'} destination removed.`)}
@@ -238,14 +238,6 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 									))}
 								</ul>
 							)}
-						</div>
-						<div>
-							<span className={LABEL}>Gets</span>
-							{used_by.length ? (
-								<ul className="text-[12.5px] text-[var(--g-ink-2)]">
-									{used_by.map((r) => <li key={r.id}>{event_label(r.event)} · {scope_text(r.scope)}</li>)}
-								</ul>
-							) : <p className="text-[12.5px] text-[var(--g-ink-3)]">No events go here yet — add it to an event on the Events page.</p>}
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						{open.locked ? (
@@ -266,7 +258,7 @@ export function Channels_tab({ data, scope, reload, realm_filter }: { data: Noti
 						{confirm_delete && open.rule_count > 0 ? <p className="text-[12px] text-[var(--g-warn-text)]">{open.rule_count} event{open.rule_count === 1 ? '' : 's'} go to this channel; they stop going here.</p> : null}
 					</div>
 				) : (
-					<p className="text-[12.5px] text-[var(--g-ink-3)]">Select a channel to see its destinations, which events go to it, and to send a test.</p>
+					<p className="text-[12.5px] text-[var(--g-ink-3)]">Select a channel to see and change its destinations, and to send a test.</p>
 				)}
 			</aside>
 
@@ -281,44 +273,51 @@ const DEST_TYPES: Array<{ type: Dest_draft['type']; label: string; hint: string 
 	{ type: 'email', label: 'Email', hint: 'To one or more addresses' },
 	{ type: 'slack', label: 'Slack', hint: 'Post in a Slack channel' },
 	{ type: 'webhook', label: 'Webhook', hint: 'Send to another tool' },
+	{ type: 'channel_ref', label: 'Channels or people', hint: 'Pass it on to other channels, or to people their way' },
 ];
-const DEST_NAME: Record<string, string> = { cliqhub: 'In-app', email: 'Email', slack: 'Slack', webhook: 'Webhook', http: 'HTTP', jira: 'Jira', channel_ref: 'Channel' };
+const DEST_NAME: Record<string, string> = { cliqhub: 'In-app', email: 'Email', slack: 'Slack', webhook: 'Webhook', http: 'HTTP', jira: 'Jira', channel_ref: 'Channel or person' };
 
 /** How a destination not yet saved reads in the list. */
 function draft_label(d: Dest_draft): string {
 	if (d.type === 'cliqhub') return 'CliqHub inbox';
+	if (d.type === 'channel_ref') return d.value.trim();
 	if (d.type === 'email') return [addresses(d.value), addresses(d.cc) && `cc ${addresses(d.cc)}`, addresses(d.bcc) && `bcc ${addresses(d.bcc)}`].filter(Boolean).join(' · ');
 	try { return `${new URL(d.value.trim()).host}/…`; } catch { return d.value.trim(); }
 }
 
 /**
  * A channel's destinations: one row each with ✕ to remove it, and "Add destination…" — pick a type, fill
- * in only its fields, Add. Used by New channel (nothing saved until Create) and a channel's details
+ * in only its fields, Add. "Channels or people" (with `picker`) searches the org's / realm's channels and
+ * people and adds several at once. Used by New channel (nothing saved until Create) and a channel's details
  * (each add / remove is saved). `on_add` / `on_remove` return an error to show, or null.
  */
-export function Destinations_editor({ items, where, on_add, on_remove, locked }: {
+export function Destinations_editor({ items, where, on_add, on_remove, locked, picker }: {
 	items: Array<{ type: string; label: string }>;
 	/** Who sees in-app messages, e.g. "prod-us" or "Acme". */
 	where: string;
-	on_add: (draft: Dest_draft) => Promise<string | null>;
+	on_add: (drafts: Dest_draft[]) => Promise<string | null>;
 	on_remove: (index: number) => Promise<string | null>;
 	/** A destination that can't be removed (shown with a lock and why), e.g. a personal channel's in-app. */
 	locked?: (item: { type: string; label: string }) => string | null;
+	/** Where to search for channels and people (an org's or realm's channel); without it they can't be added. */
+	picker?: { org_id: string; realm_id?: string };
 }) {
 	const [type, set_type] = useState<Dest_draft['type'] | ''>('');
+	const [names, set_names] = useState<string[]>([]);
 	const [value, set_value] = useState('');
 	const [cc, set_cc] = useState('');
 	const [bcc, set_bcc] = useState('');
 	const [error, set_error] = useState<string | null>(null);
 	const [busy, set_busy] = useState(false);
-	const reset = () => { set_type(''); set_value(''); set_cc(''); set_bcc(''); set_error(null); };
+	const reset = () => { set_type(''); set_value(''); set_cc(''); set_bcc(''); set_names([]); set_error(null); };
 
 	async function add() {
 		if (!type) return;
-		if (type !== 'cliqhub' && !value.trim()) { set_error(type === 'email' ? 'Enter at least one address.' : 'Enter the URL.'); return; }
+		if (type === 'channel_ref' && names.length === 0) { set_error('Pick at least one channel or person.'); return; }
+		if (type !== 'cliqhub' && type !== 'channel_ref' && !value.trim()) { set_error(type === 'email' ? 'Enter at least one address.' : 'Enter the URL.'); return; }
 		if (type === 'cliqhub' && items.some((d) => d.type === 'cliqhub')) { set_error('This channel already goes to the CliqHub inbox.'); return; }
 		set_busy(true);
-		const err = await on_add({ type, value, cc, bcc });
+		const err = await on_add(type === 'channel_ref' ? names.map((n) => ({ type, value: n })) : [{ type, value, cc, bcc }]);
 		set_busy(false);
 		if (err) set_error(err); else reset();
 	}
@@ -346,10 +345,21 @@ export function Destinations_editor({ items, where, on_add, on_remove, locked }:
 				</ul>
 			) : <p className="rounded-md border border-dashed border-[var(--g-line)] px-2.5 py-2 text-[12.5px] text-[var(--g-ink-3)]">No destinations yet. Add one below.</p>}
 			<div className={`flex flex-col gap-2 rounded-md border p-2.5 ${type ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)]' : 'border-dashed border-[var(--g-line-strong)]'}`}>
-				<select aria-label="Add destination" value={type} onChange={(e) => { set_type(e.target.value as Dest_draft['type'] | ''); set_value(''); set_cc(''); set_bcc(''); set_error(null); }} className={INPUT}>
+				<select aria-label="Add destination" value={type} onChange={(e) => { set_type(e.target.value as Dest_draft['type'] | ''); set_value(''); set_cc(''); set_bcc(''); set_names([]); set_error(null); }} className={INPUT}>
 					<option value="">+ Add destination…</option>
-					{DEST_TYPES.map((t) => <option key={t.type} value={t.type}>{t.label} — {t.hint}</option>)}
+					{DEST_TYPES.filter((t) => t.type !== 'channel_ref' || picker).map((t) => <option key={t.type} value={t.type}>{t.label} — {t.hint}</option>)}
 				</select>
+				{type === 'channel_ref' && picker ? (
+					<div data-testid="nc-refs">
+						<ChannelUserPicker
+							selected={names} on_change={(next) => { set_names(next); set_error(null); }}
+							org_id={picker.org_id} realm_id={picker.realm_id}
+							taken={items.filter((d) => d.type === 'channel_ref').map((d) => d.label)}
+							placeholder="Search channels or people…"
+						/>
+						<p className="mt-1.5 text-[11.5px] text-[var(--g-ink-3)]">Pick as many as you like. A person gets it their way — in-app, and wherever they chose in their settings. If a channel and a person share a name, both get it.</p>
+					</div>
+				) : null}
 				{type === 'cliqhub' ? <p className="text-[12.5px] text-[var(--g-ink-3)]" data-testid="nc-in-app">Everyone in {where} sees these messages in their CliqHub inbox.</p> : null}
 				{type === 'email' ? (
 					<div className="grid gap-2" data-testid="nc-email" onKeyDown={keys}>
@@ -375,7 +385,7 @@ export function Destinations_editor({ items, where, on_add, on_remove, locked }:
 				) : null}
 				{type ? (
 					<div className="flex gap-2">
-						<button type="button" disabled={busy} onClick={() => void add()} className={PRIMARY}>{busy ? 'Adding…' : 'Add'}</button>
+						<button type="button" disabled={busy} onClick={() => void add()} className={PRIMARY}>{busy ? 'Adding…' : type === 'channel_ref' && names.length > 1 ? `Add ${names.length}` : 'Add'}</button>
 						<button type="button" onClick={reset} className={ROW_ACTION_CLS}>Cancel</button>
 					</div>
 				) : null}
@@ -428,7 +438,8 @@ export function New_channel_drawer({ data, scope, on_close, on_saved }: {
 				<span className={LABEL}>Destinations</span>
 				<Destinations_editor
 					items={drafts.map((d) => ({ type: d.type, label: draft_label(d) }))} where={where}
-					on_add={async (d) => { set_drafts((prev) => [...prev, d]); return null; }}
+					picker={{ org_id, realm_id: realm?.id }}
+					on_add={async (ds) => { set_drafts((prev) => [...prev, ...ds.filter((d) => d.type !== 'channel_ref' || !prev.some((p) => p.type === 'channel_ref' && p.value.trim().toLowerCase() === d.value.trim().toLowerCase()))]); return null; }}
 					on_remove={async (i) => { set_drafts((prev) => prev.filter((_, j) => j !== i)); return null; }}
 				/>
 			</div>

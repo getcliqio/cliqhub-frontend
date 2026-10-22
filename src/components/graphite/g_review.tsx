@@ -204,7 +204,7 @@ export function Field_input({ f, value, on_change, invalid }: { f: Field_spec; v
 		return (
 			<div className="flex flex-col gap-1.5">
 				{label}
-				<div className="rounded-lg bg-white/95 p-1 text-slate-900"><ChannelUserPicker selected={selected} on_change={(next) => on_change(next.join(','))} placeholder={f.placeholder || 'Search users or channels…'} /></div>
+				<ChannelUserPicker selected={selected} on_change={(next) => on_change(next.join(','))} placeholder={f.placeholder || 'Search channels or people…'} />
 				{help}
 			</div>
 		);
