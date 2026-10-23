@@ -209,3 +209,26 @@ phases:
 		expect(doc.phases[3]).toEqual({ name: 'notify', type: 'standard', agent: 'exec', depends_on: ['create-stories'], commands: [{ name: 'say', run: 'echo done' }] });
 	});
 });
+
+describe('team input types (builder ↔ team.yml)', () => {
+	const yml = [
+		'name: demo', 'description: d',
+		'inputs:',
+		'  - name: index', '    type: boolean', '    default: false', '    description: run GitNexus',
+		'  - name: mode', '    type: select', '    choices: [sync, ensure]',
+		'phases:', '  - name: a', '    type: standard', '    agent: exec', '    commands:', '      - run: "true"', '',
+	].join('\n');
+
+	it('reads an input\'s type and choices; saving unchanged keeps the file; changing the type writes it', () => {
+		const { team, error } = parse_team_yml_text(yml, base_team);
+		expect(error).toBeNull();
+		expect(team.inputs).toEqual([
+			{ name: 'index', description: 'run GitNexus', type: 'boolean' },
+			{ name: 'mode', type: 'select', choices: ['sync', 'ensure'] },
+		]);
+		const changed = build_team_yml({ ...team, inputs: team.inputs!.map((i) => (i.name === 'mode' ? { ...i, type: 'text', choices: undefined } : i)) });
+		const doc = yaml.load(changed) as { inputs: Array<Record<string, unknown>> };
+		expect(doc.inputs[0]).toMatchObject({ name: 'index', type: 'boolean', default: false });
+		expect(doc.inputs[1]).toEqual({ name: 'mode', type: 'text' });
+	});
+});

@@ -51,7 +51,8 @@ export interface GeneratedTeam {
 	description: string;
 	version?: string;
 	tags?: string[];
-	inputs?: { name: string; description?: string }[];
+	/** A team input: its type is what the run form shows and what the daemon converts the value to. */
+	inputs?: { name: string; description?: string; type?: string; choices?: string[] }[];
 	use_when?: string[];
 	not_for?: string[];
 	phases: GeneratedPhase[];

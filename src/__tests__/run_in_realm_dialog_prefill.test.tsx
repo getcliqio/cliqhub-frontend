@@ -9,7 +9,7 @@
  *   • no prefill = blank fields (original behaviour intact)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
 const auth_fetch = vi.fn();
@@ -186,5 +186,33 @@ describe('Run_in_realm_dialog — channel inputs (PLAN-notifications-v2 B4.2)', 
             expect(JSON.parse(call![1].body)).toMatchObject({ org_id: 'org-acme', realm_id: 'realm-1' });
         });
         expect(await screen.findByText('ops')).toBeTruthy();
+    });
+});
+
+describe('Run_in_realm_dialog — typed team inputs', () => {
+    beforeEach(() => auth_fetch.mockReset());
+
+    it('a boolean is a checkbox (sent as true / false; untouched = the team default), a number a number, a select a dropdown', async () => {
+        auth_fetch.mockImplementation(async (url: string) => ({
+            json: async () => (url === '/v1/runs/enqueue'
+                ? { ok: true, data: { run_id: 'r1' } }
+                : { ok: true, data: { inputs: [
+                    { name: 'index', type: 'boolean', default: false },
+                    { name: 'strict', type: 'boolean', default: true, required: true },
+                    { name: 'limit', type: 'number' },
+                    { name: 'mode', type: 'select', choices: ['sync', 'ensure'] },
+                ] } }),
+        }));
+        render_dialog();
+        const index = await screen.findByTestId('input-index');
+        expect(within(index).getByRole('checkbox')).not.toBeChecked();
+        expect(within(screen.getByTestId('input-strict')).getByRole('checkbox')).toBeChecked();
+        fireEvent.click(within(index).getByRole('checkbox'));
+        fireEvent.change(screen.getByText('limit').closest('label')!.querySelector('input')!, { target: { value: '3' } });
+        fireEvent.change(screen.getByText('mode').closest('label')!.querySelector('select')!, { target: { value: 'ensure' } });
+        fireEvent.click(screen.getByRole('button', { name: /Start run/ }));
+        await waitFor(() => expect(auth_fetch.mock.calls.some((c) => c[0] === '/v1/runs/enqueue')).toBe(true));
+        const body = JSON.parse(auth_fetch.mock.calls.find((c) => c[0] === '/v1/runs/enqueue')![1].body);
+        expect(body.payload.inputs).toEqual({ index: true, strict: true, limit: 3, mode: 'ensure' });
     });
 });

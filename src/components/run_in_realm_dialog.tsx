@@ -17,6 +17,30 @@ interface Input_spec {
 	type?: string;
 	label?: string;
 	help?: string;
+	/** For `select`: the values allowed. */
+	choices?: string[];
+	/** The team's default (a boolean starts ticked when it's true). */
+	default?: unknown;
+}
+
+/** A spec's `choices` and `default` from the raw declaration. */
+function spec_extras(raw: unknown): Pick<Input_spec, 'choices' | 'default'> {
+	const r = (raw ?? {}) as { choices?: unknown; default?: unknown };
+	return {
+		...(Array.isArray(r.choices) ? { choices: r.choices.filter((c): c is string => typeof c === 'string') } : {}),
+		...(r.default !== undefined ? { default: r.default } : {}),
+	};
+}
+
+/**
+ * A form value in the type the team declares: a boolean true / false, a number, a channel list; else text. The
+ * daemon converts and checks again for every run, however it was started; this is what the form sends.
+ */
+function typed_value(spec: Input_spec, val: string): unknown {
+	if (spec.type === 'boolean') return val === 'true';
+	if (spec.type === 'number' && /^-?\d+(\.\d+)?$/.test(val)) return Number(val);
+	if (spec.type === 'channel') return val.split(',').map((v) => v.trim()).filter(Boolean);
+	return val;
 }
 
 /**
@@ -109,6 +133,7 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 				type: typeof (i as { type?: unknown }).type === 'string' ? (i as { type: string }).type : undefined,
 				label: typeof (i as { label?: unknown }).label === 'string' ? (i as { label: string }).label : undefined,
 				help: typeof (i as { help?: unknown }).help === 'string' ? (i as { help: string }).help : undefined,
+				...spec_extras(i),
 			}));
 	}
 	if (typeof raw === 'object') {
@@ -121,6 +146,7 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 			type: typeof (meta as { type?: unknown })?.type === 'string' ? (meta as { type: string }).type : undefined,
 			label: typeof (meta as { label?: unknown })?.label === 'string' ? (meta as { label: string }).label : undefined,
 			help: typeof (meta as { help?: unknown })?.help === 'string' ? (meta as { help: string }).help : undefined,
+			...spec_extras(meta),
 		}));
 	}
 	return [];
@@ -277,6 +303,13 @@ export function Run_in_realm_dialog({
 
 	const selected_realm = realms.find((r) => r.id === selected) ?? fixed_realm ?? null;
 
+	/** An input's value as sent; a checkbox never touched sends what it shows (the team's default, else false). */
+	const value_of = (s: Input_spec) => {
+		const v = (input_values[s.name] ?? '').trim();
+		if (s.type === 'boolean' && !v) return s.default === true || s.default === 'true' ? 'true' : 'false';
+		return v;
+	};
+
 	async function submit() {
 		if (!selected_realm) return;
 		set_submitting(true);
@@ -286,7 +319,7 @@ export function Run_in_realm_dialog({
 			const missing = inputs_spec
 				.filter((s) => {
 					if (!s.required) return false;
-					const val = (input_values[s.name] ?? '').trim();
+					const val = value_of(s);
 					/** Channel inputs are comma-separated — empty after split = missing. */
 					if (s.type === 'channel') {
 						return val.split(',').map((v) => v.trim()).filter(Boolean).length === 0;
@@ -303,13 +336,9 @@ export function Run_in_realm_dialog({
 			/** Build the declared inputs, converting channel values to arrays. */
 			const declared: Record<string, unknown> = {};
 			for (const spec of inputs_spec) {
-				const val = (input_values[spec.name] ?? '').trim();
+				const val = value_of(spec);
 				if (!val) continue;
-				if (spec.type === 'channel') {
-					declared[spec.name] = val.split(',').map((v) => v.trim()).filter(Boolean);
-				} else {
-					declared[spec.name] = val;
-				}
+				declared[spec.name] = typed_value(spec, val);
 			}
 			const extras = parse_run_inputs_text(extra_inputs_text);
 			const inputs = { ...declared, ...extras };
@@ -518,6 +547,44 @@ export function Run_in_realm_dialog({
 												);
 											}
 
+											const set_value = (v: string) => set_input_values((prev) => ({ ...prev, [spec.name]: v }));
+
+											/** A boolean is a checkbox (sent as true / false); it starts as the team's default. */
+											if (spec.type === 'boolean') {
+												const raw = input_values[spec.name];
+												const on = raw === undefined || raw === '' ? spec.default === true || spec.default === 'true' : raw === 'true';
+												return (
+													<label key={spec.name} className="flex items-start gap-2" data-testid={`input-${spec.name}`}>
+														<input type="checkbox" checked={on} onChange={(e) => set_value(e.target.checked ? 'true' : 'false')} className="mt-0.5" />
+														<span>
+															<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">{display_label}</span>
+															{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500">{help_text}</span> : null}
+														</span>
+													</label>
+												);
+											}
+
+											/** A select is a dropdown of its choices. */
+											if (spec.type === 'select' && spec.choices?.length) {
+												return (
+													<label key={spec.name} className="block">
+														<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
+															{display_label}
+															{spec.required ? <span className="ml-1 text-red-500" title="Required">*</span> : null}
+														</span>
+														{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500">{help_text}</span> : null}
+														<select
+															value={input_values[spec.name] ?? (typeof spec.default === 'string' ? spec.default : '')}
+															onChange={(e) => set_value(e.target.value)}
+															className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+														>
+															<option value="">{spec.required ? 'Choose…' : '(team default)'}</option>
+															{spec.choices.map((c) => <option key={c} value={c}>{c}</option>)}
+														</select>
+													</label>
+												);
+											}
+
 											return (
 												<label key={spec.name} className="block">
 													<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
@@ -541,7 +608,7 @@ export function Run_in_realm_dialog({
 														/>
 													) : (
 														<input
-															type="text"
+															type={spec.type === 'number' ? 'number' : 'text'}
 															value={input_values[spec.name] ?? ''}
 															onChange={(e) => set_input_values((prev) => ({
 																...prev,
@@ -596,7 +663,7 @@ export function Run_in_realm_dialog({
 								|| !selected
 								|| inputs_spec.some((s) => {
 									if (!s.required) return false;
-									const val = (input_values[s.name] ?? '').trim();
+									const val = value_of(s);
 									if (s.type === 'channel') return val.split(',').map((v) => v.trim()).filter(Boolean).length === 0;
 									return !val;
 								})

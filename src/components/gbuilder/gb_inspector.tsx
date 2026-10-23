@@ -279,6 +279,11 @@ export function Phase_panel({ team, name, on_change, on_select, on_close }: { te
 	);
 }
 
+/** The types a team input can have (what the run form shows; the daemon converts the value to it). */
+const INPUT_TYPES: ReadonlyArray<readonly [string, string]> = [
+	['', 'text'], ['textarea', 'long text'], ['boolean', 'true / false'], ['number', 'number'], ['select', 'one of…'], ['channel', 'channels / people'],
+];
+
 export function Team_panel({ team, on_change, on_ask_ai, focus_inputs, on_close }: { team: GeneratedTeam; on_change: (t: GeneratedTeam) => void; on_ask_ai: (prompt: string) => void; focus_inputs: number; on_close?: () => void }) {
 	const inputs_ref = useRef<HTMLDivElement>(null);
 	useEffect(() => { if (focus_inputs) { inputs_ref.current?.scrollIntoView?.({ block: 'center' }); inputs_ref.current?.querySelector<HTMLInputElement>('input')?.focus(); } }, [focus_inputs]);
@@ -319,6 +324,15 @@ export function Team_panel({ team, on_change, on_ask_ai, focus_inputs, on_close 
 									<input aria-label={`Input ${i + 1} name`} value={inp.name} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })} className={`${IN} g-mono`} />
 									<input aria-label={`Input ${i + 1} description`} value={inp.description ?? ''} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, description: e.target.value || undefined } : x)) })} placeholder="what it is" className={IN} />
 									<button type="button" aria-label={`Remove input ${inp.name}`} onClick={() => on_change({ ...team, inputs: inputs.filter((_, j) => j !== i) })} className="px-1.5 text-[var(--g-ink-3)] hover:text-[var(--g-bad)]">✕</button>
+								</div>
+								{/* The type: what the run form shows (a checkbox for a boolean…) and what the run gets. */}
+								<div className="grid grid-cols-[110px_1fr] gap-1.5">
+									<select aria-label={`Input ${i + 1} type`} value={inp.type ?? ''} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, type: e.target.value || undefined, choices: e.target.value === 'select' ? x.choices : undefined } : x)) })} className={IN}>
+										{INPUT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+									</select>
+									{inp.type === 'select' ? (
+										<input aria-label={`Input ${i + 1} choices`} value={(inp.choices ?? []).join(', ')} onChange={(e) => on_change({ ...team, inputs: inputs.map((x, j) => (j === i ? { ...x, choices: e.target.value.split(',').map((c) => c.trim()).filter(Boolean) } : x)) })} placeholder="choices, comma-separated" className={IN} />
+									) : <span />}
 								</div>
 								{/* Where it's referenced: the phases that use {{inputs.name}} / $(inputs.name). */}
 								<p className="flex flex-wrap items-center gap-1 pl-0.5 text-[11.5px] text-[var(--g-ink-3)]" data-testid={`input-refs-${inp.name}`}>

@@ -198,9 +198,13 @@ export function map_inputs(raw: unknown): GeneratedTeam['inputs'] {
 		const row = item as Record<string, unknown>;
 		const name = as_string(row.name);
 		if (!name) continue;
+		const type = as_string(row.type);
+		const choices = Array.isArray(row.choices) ? row.choices.filter((c): c is string => typeof c === 'string') : undefined;
 		inputs.push({
 			name,
 			description: as_string(row.description),
+			...(type ? { type } : {}),
+			...(choices?.length ? { choices } : {}),
 		});
 	}
 	if (inputs.length === 0) return undefined;

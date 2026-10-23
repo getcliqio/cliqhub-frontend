@@ -45,7 +45,7 @@ export interface ExportTeamData {
 	name: string;
 	description: string;
 	tags?: string[];
-	inputs?: { name: string; description?: string }[];
+	inputs?: { name: string; description?: string; type?: string; choices?: string[] }[];
 	use_when?: string[];
 	not_for?: string[];
 	phases: ExportPhase[];
@@ -157,7 +157,7 @@ export function team_doc(team: ExportTeamData): Rec {
 	out.name = typeof raw.name === 'string' && raw.name.replace(/^@[^/]+\//, '') === clean_name ? raw.name : clean_name;
 	put(out, 'description', field(raw.description, team.description, was.description));
 	put(out, 'tags', field(raw.tags, team.tags, was.tags));
-	put(out, 'inputs', field(raw.inputs, team.inputs, was.inputs, (v, r) => rows(v, was.inputs, r, (i) => ({ name: i.name, description: i.description }))));
+	put(out, 'inputs', field(raw.inputs, team.inputs, was.inputs, (v, r) => rows(v, was.inputs, r, (i) => ({ name: i.name, description: i.description, type: i.type, choices: i.type === 'select' ? i.choices : undefined }))));
 	put(out, 'use_when', field(raw.use_when, team.use_when, was.use_when));
 	put(out, 'not_for', field(raw.not_for, team.not_for, was.not_for));
 	put(out, 'agents', field(raw.agents, team.agents ?? [], was.agents, (v, r) => {
