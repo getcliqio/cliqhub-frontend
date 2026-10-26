@@ -92,7 +92,7 @@ describe('Shell nav', () => {
 		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
 		// measureone: you're the owner → Org admin.
 		const admin = within(nav).getByTestId('nav-org-admin');
-		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Agents', 'Notifications', 'Org settings']);
+		expect(within(admin).getAllByRole('link').map((a) => a.textContent)).toEqual(['Members', 'Scopes', 'Agents', 'Notifications', 'Org settings']);
 		expect(within(nav).queryByRole('link', { name: /Marketplace/ })).toBeNull();
 		// No Marketplace button in the top bar for now.
 		expect(screen.queryByTestId('marketplace-link')).toBeNull();

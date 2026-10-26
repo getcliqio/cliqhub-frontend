@@ -1,7 +1,7 @@
 /**
  * Manage › Organization (Graphite) — /orgs/:id?tab=members|notifications|settings|roles|scopes|integrations|a2a
- * Members (no tab) and Notifications open on their own (each has its own sidebar entry); Org settings
- * (?tab=settings) has tabs General · Roles · Scopes · Integrations · A2A.
+ * Members (no tab), Scopes and Notifications open on their own (each has its own sidebar entry). A page's parts
+ * are vertical tabs on its left: Notifications › Events · Channels; Org settings › General · Roles · Integrations · A2A.
  * For a customer org's owners/admins (members see a read-only view).
  * Read: `POST /v1/org_page/get` (org with member statuses + pending invites + permission catalogue).
  * The header shows a Waiting-for-owner banner (who, when the invite expires) until the owner accepts.
@@ -28,6 +28,7 @@ import { G_BTN, G_INPUT, G_PRIMARY, use_post } from '@/components/graphite/g_age
 import { Scope_slug_field, scope_slug } from '@/components/graphite/g_scope_slug';
 import { Member_status_pill, Org_invite_form, Org_status_pill, use_invite, Waiting_owner_banner } from '@/components/graphite/g_invites';
 import { Org_mesh_panel } from '@/components/graphite/g_mesh';
+import { Side_tabs } from '@/components/graphite/g_side_tabs';
 import { Notifications_panel } from '@/components/graphite/g_notifications';
 import { Secret_reveal } from '@/components/graphite/g_secret';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
@@ -441,25 +442,26 @@ function Settings({ data, can_manage, reload }: { data: Org_page_data; can_manag
 
 export function Component() {
 	const { id = '' } = useParams();
-	const [sp, set_sp] = useSearchParams();
+	const [sp] = useSearchParams();
 	const overview = use_overview();
 	const { user } = useAuth();
 	const read = use_bff_read<Org_page_data>('/v1/org_page/get', id ? { org_id: id } : null, { fallback_error: 'Could not load the organization.' });
 	const d = read.data;
-	// Org settings' tabs. Members and Notifications are their own views (sidebar), not tabs here.
-	const tabs: Array<[Tab, string]> = [['settings', 'General'], ['roles', 'Roles'], ['scopes', 'Scopes'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A']];
-	// Notifications is Events and Channels (sidebar); the old ?tab=notifications is Events.
+	// Org settings' parts. Members, Scopes and Notifications are their own views (sidebar).
+	const tabs: Array<[Tab, string]> = [['settings', 'General'], ['roles', 'Roles'], ...(JIRA_ON ? [['integrations', 'Integrations'] as [Tab, string]] : []), ['a2a', 'A2A']];
+	// Notifications is Events and Channels; the old ?tab=notifications is Events.
 	const raw_tab = sp.get('tab') === 'notifications' ? 'events' : sp.get('tab');
-	const tab = (raw_tab === 'events' || raw_tab === 'channels' || tabs.some(([k]) => k === raw_tab) ? raw_tab : 'members') as Tab;
+	const tab = (raw_tab === 'events' || raw_tab === 'channels' || raw_tab === 'scopes' || tabs.some(([k]) => k === raw_tab) ? raw_tab : 'members') as Tab;
 	const in_notifications = tab === 'events' || tab === 'channels';
-	const in_settings = tab !== 'members' && !in_notifications;
+	const in_settings = tabs.some(([k]) => k === tab);
+	const org_href = (k: Tab) => `/orgs/${encodeURIComponent(id)}?tab=${k}`;
 	const my_role = d?.org.my_role ?? '';
 	const can_manage = my_role === 'owner' || my_role === 'admin' || my_role === 'site_admin' || user?.role === 'admin';
 	const can_invite_owner = my_role === 'owner' || my_role === 'site_admin' || user?.role === 'admin';
 	const member_count = d ? d.org.members.filter((m) => m.status === 'active').length : 0;
 	const reload = async () => { await read.reload(); };
 	return (
-		<Graphite_shell data={overview.data} title={tab === 'members' ? 'Members' : tab === 'events' ? 'Events' : tab === 'channels' ? 'Channels' : 'Org settings'}>
+		<Graphite_shell data={overview.data} title={tab === 'members' ? 'Members' : tab === 'scopes' ? 'Scopes' : in_notifications ? 'Notifications' : 'Org settings'}>
 			<div className="flex flex-col gap-4 px-7 py-6">
 				{read.status === 'error' && !d ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="organization" /> : null}
 				{!d && read.status !== 'error' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" /> : null}
@@ -472,21 +474,27 @@ export function Component() {
 							<Link to={`/realms?org=${encodeURIComponent(d.org.slug)}`} className={`${G_BTN} ml-auto`}>Realms →</Link>
 						</header>
 						{d.org.status === 'waiting_for_owner' ? <Waiting_owner_banner invite={d.org.pending_owner_invite} /> : null}
-						{in_settings ? (
-							<div role="tablist" aria-label="Org settings" className="flex gap-1 border-b border-[var(--g-line)]">
-								{tabs.map(([k, l]) => (
-									<button key={k} role="tab" type="button" aria-selected={tab === k} onClick={() => set_sp({ tab: k }, { replace: true })} className={`-mb-px border-b-2 px-3 py-2 text-[13px] font-semibold ${tab === k ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>{l}</button>
-								))}
-							</div>
-						) : tab === 'members' ? <h2 className="text-[14px] font-semibold">Members</h2> : null}
+						{tab === 'members' ? <h2 className="text-[14px] font-semibold">Members</h2> : null}
+						{tab === 'scopes' ? <h2 className="text-[14px] font-semibold">Scopes</h2> : null}
 						{!can_manage && tab !== 'settings' ? <p className="text-[12.5px] text-[var(--g-ink-3)]">You can see this organization; its owners and admins manage it.</p> : null}
 						{tab === 'members' ? <Members data={d} can_manage={can_manage} can_invite_owner={can_invite_owner} reload={reload} /> : null}
-						{tab === 'roles' ? <Roles data={d} can_manage={can_manage} reload={reload} /> : null}
 						{tab === 'scopes' ? <Scopes data={d} can_manage={can_manage} reload={reload} /> : null}
-						{tab === 'integrations' ? <Integrations /> : null}
-						{tab === 'a2a' ? <Org_mesh_panel org_id={d.org.id} can_edit={can_manage} /> : null}
-						{in_notifications ? <Notifications_panel org_id={d.org.id} realm={null} view={tab === 'channels' ? 'channels' : 'events'} /> : null}
-						{tab === 'settings' ? <Settings data={d} can_manage={can_manage} reload={reload} /> : null}
+						{in_settings ? (
+							<Side_tabs label="Org settings" tabs={tabs.map(([k, l]) => ({ id: k, label: l, to: org_href(k), active: tab === k }))}>
+								{tab === 'roles' ? <Roles data={d} can_manage={can_manage} reload={reload} /> : null}
+								{tab === 'integrations' ? <Integrations /> : null}
+								{tab === 'a2a' ? <Org_mesh_panel org_id={d.org.id} can_edit={can_manage} /> : null}
+								{tab === 'settings' ? <Settings data={d} can_manage={can_manage} reload={reload} /> : null}
+							</Side_tabs>
+						) : null}
+						{in_notifications ? (
+							<Side_tabs label="Notifications" tabs={[
+								{ id: 'events', label: 'Events', to: org_href('events'), active: tab === 'events' },
+								{ id: 'channels', label: 'Channels', to: org_href('channels'), active: tab === 'channels' },
+							]}>
+								<Notifications_panel org_id={d.org.id} realm={null} view={tab === 'channels' ? 'channels' : 'events'} />
+							</Side_tabs>
+						) : null}
 					</>
 				) : null}
 			</div>

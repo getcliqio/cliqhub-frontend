@@ -29,6 +29,7 @@ import {
 	type LucideIcon,
 	Bot,
 	Building2,
+	FolderTree,
 	Hand,
 	Layers,
 	LayoutDashboard,
@@ -282,8 +283,6 @@ interface Nav_item {
 	badge?: number;
 	/** Set when the link's place depends on `?tab=` (NavLink only matches the path). */
 	active?: boolean;
-	/** Its parts, listed under it while it's current (e.g. Notifications › Events, Channels). */
-	parts?: Array<{ to: string; label: string; active: boolean; id: string }>;
 }
 
 function Side_link({ item, compact = false }: { item: Nav_item; compact?: boolean }) {
@@ -525,17 +524,13 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	// Members, Notifications and Org settings are views of the org page (`?tab=`): only the one open is current.
 	const org_tab = view_org && location.pathname === `/orgs/${view_org.id}` ? (new URLSearchParams(location.search).get('tab') ?? 'members') : null;
 	const notif_tab = org_tab === 'notifications' || org_tab === 'events' || org_tab === 'channels';
+	// Each entry is one page; its parts (Events · Channels, General · Roles · …) are vertical tabs on that page.
 	const org_admin: Nav_item[] = view_org ? [
 		{ to: `/orgs/${view_org.id}`, label: 'Members', icon: UserCog, active: org_tab === 'members' },
+		{ to: `/orgs/${view_org.id}?tab=scopes`, label: 'Scopes', icon: FolderTree, active: org_tab === 'scopes' },
 		{ to: view_href('/agents', scope, multi_org), label: 'Agents', icon: Bot },
-		{
-			to: `/orgs/${view_org.id}?tab=events`, label: 'Notifications', icon: Bell, active: notif_tab,
-			parts: [
-				{ id: 'events', to: `/orgs/${view_org.id}?tab=events`, label: 'Events', active: org_tab === 'events' || org_tab === 'notifications' },
-				{ id: 'channels', to: `/orgs/${view_org.id}?tab=channels`, label: 'Channels', active: org_tab === 'channels' },
-			],
-		},
-		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings, active: org_tab !== null && org_tab !== 'members' && !notif_tab },
+		{ to: `/orgs/${view_org.id}?tab=events`, label: 'Notifications', icon: Bell, active: notif_tab },
+		{ to: `/orgs/${view_org.id}?tab=settings`, label: 'Org settings', icon: Settings, active: org_tab !== null && org_tab !== 'members' && org_tab !== 'scopes' && !notif_tab },
 	] : [];
 
 	function enter_admin() {
@@ -636,16 +631,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 							<div data-testid="nav-org-admin">
 								<div className={`${SECTION_CLS} mt-5`}>Org admin</div>
 								<div className="space-y-0.5">{org_admin.map((item) => (
-									<div key={item.label}>
-										<Side_link item={item} />
-										{item.parts && item.active ? (
-											<div className="mb-1 ml-[18px] border-l border-[var(--g-line-2)] pl-1.5" data-testid="sidebar-notif-parts">
-												{item.parts.map((p) => (
-													<Link key={p.id} to={p.to} aria-current={p.active ? 'page' : undefined} className={`block rounded-md px-2 py-1 text-[12.5px] ${p.active ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-2)] hover:bg-[var(--g-soft)] hover:text-[var(--g-ink)]'}`} data-testid={`sidebar-notif-${p.id}`}>{p.label}</Link>
-												))}
-											</div>
-										) : null}
-									</div>
+									<Side_link key={item.label} item={item} />
 								))}</div>
 							</div>
 						) : null}

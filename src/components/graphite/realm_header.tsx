@@ -17,8 +17,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { CheckCircle2 } from 'lucide-react';
-import { useAuth, useAuthFetch } from '@/lib/auth_context';
-import { is_personal_default_realm } from '@/lib/realm_settings';
+import { useAuthFetch } from '@/lib/auth_context';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { relative_time } from '@/lib/overview';
 import type { Overview_realm } from '@/lib/overview';
@@ -97,13 +96,6 @@ type Section = 'teams' | 'runs' | 'daemons' | 'agents' | 'notifications' | 'sett
 const SECTION_OF: Record<string, Section> = {
 	teams: 'teams', runs: 'runs', settings: 'settings', agents: 'agents', notifications: 'notifications', daemons: 'daemons', workspaces: 'daemons',
 };
-/** Notifications' parts, listed under Notifications while you're in it. */
-const NOTIF_PARTS: Array<{ id: string; label: string }> = [{ id: 'events', label: 'Events' }, { id: 'channels', label: 'Channels' }];
-/** Settings' parts, listed under Settings while you're in it. */
-const SETTINGS_PARTS: Array<{ id: string; label: string }> = [
-	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Security' }, { id: 'a2a', label: 'A2A' },
-	{ id: 'general', label: 'General' }, { id: 'danger', label: 'Danger zone' },
-];
 
 function Attention({ count, title }: { count: boolean; title: string }) {
 	if (!count) return null;
@@ -127,7 +119,6 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const d = fetched ?? LAST.get(key) ?? null;
 	useEffect(() => { if (d) LAST.set(key, d); }, [key, d]);
 	const [editing, set_editing] = useState(false);
-	const { user, default_realm_id } = useAuth();
 	const location = useLocation();
 	const navigate = useNavigate();
 	const { pathname, search } = location;
@@ -135,7 +126,6 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const sub = pathname.startsWith(`${base}/`) ? pathname.slice(base.length + 1).split('/')[0] : '';
 	const current: Section | null = SECTION_OF[sub] ?? null;
 	const at_list = Boolean(current) && !item;
-	const settings_part = new URLSearchParams(search).get('section') ?? 'members';
 	// Right after New realm: what was set up and the enrollment token — shown once.
 	const created = (location.state as Realm_created_state | null)?.created ?? null;
 	const dismiss_created = () => navigate(`${pathname}${search}`, { replace: true, state: null });
@@ -181,19 +171,9 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 					<Link to={`${base}/daemons`} aria-current={current === 'daemons' && !item ? 'page' : undefined} className={link(current === 'daemons' && !item)} data-testid="go-daemons">Daemons{online === null ? null : online > 0 ? <Dot tone="ok" title={`${online} online`} /> : <Dot tone="off" title="No daemon online" />}</Link>
 					{nested('daemons')}
 					<Link to={`${base}/agents`} aria-current={current === 'agents' && !item ? 'page' : undefined} className={link(current === 'agents' && !item)} data-testid="go-agents">Agents<Attention count={missing > 0} title={`${missing} team${missing === 1 ? ' is' : 's are'} missing agent config`} /></Link>
-					<Link to={`${base}/notifications/events`} className={link(false)} data-testid="go-notifications">Notifications</Link>
-					{/* Notifications' parts — Events and Channels — listed under it while you're in it. */}
-					{current === 'notifications' ? NOTIF_PARTS.map((p) => {
-						const on = pathname === `${base}/notifications/${p.id}`;
-						return <Link key={p.id} to={`${base}/notifications/${p.id}`} aria-current={on ? 'page' : undefined} className={link(on, true)} data-testid={`notifications-${p.id}`}>{p.label}</Link>;
-					}) : null}
-					{/* In Settings, the part you're on is the one marked (they're listed below). */}
-					<Link to={`${base}/settings`} className={link(false)} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
-					{current === 'settings' ? SETTINGS_PARTS.filter((p) => p.id !== 'danger' || !(d && is_personal_default_realm({ id: d.realm.id, slug, org_slug }, { username: user?.username, default_realm_id }))).map((p) => {
-						const to = `${base}/settings${p.id === 'members' ? '' : `?section=${p.id}`}`;
-						const on = settings_part === p.id;
-						return <Link key={p.id} to={to} aria-current={on ? 'page' : undefined} className={`${link(on, true)} ${p.id === 'danger' ? 'text-[var(--g-bad)]' : ''}`} data-testid={`settings-${p.id}`}>{p.label}</Link>;
-					}) : null}
+					{/* Notifications and Settings show their parts as vertical tabs on their page. */}
+					<Link to={`${base}/notifications/events`} aria-current={current === 'notifications' ? 'page' : undefined} className={link(current === 'notifications')} data-testid="go-notifications">Notifications</Link>
+					<Link to={`${base}/settings`} aria-current={current === 'settings' ? 'page' : undefined} className={link(current === 'settings')} data-testid="go-settings">Settings<Attention count={only_member} title="You’re the only member" /></Link>
 				</nav>
 				<div className="min-w-0">
 					{created ? (

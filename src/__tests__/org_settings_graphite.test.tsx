@@ -86,27 +86,35 @@ describe('Organization page', () => {
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/users/update_role')?.body).toEqual({ org_id: 'o1', user_id: 'u2', role_id: 'ro-admin' }));
 	});
 
-	it('Members and Notifications open on their own (sidebar entries); Org settings has General · Roles · Scopes · A2A tabs, not them', async () => {
+	it('Members, Scopes and Notifications open on their own (sidebar entries); a page\'s parts are vertical tabs on it', async () => {
 		const empty = { orgs: [{ id: 'o1', slug: 'measureone', display_name: 'MeasureOne', role: 'owner', status: 'ok', error: null, can_edit: true, can_edit_channels: true }], realms: [], channels: [], rules: [], event_types: [], realm_events: null, realm_page: { offset: 0, limit: 1, total: 0, q: null, status: 'ok', error: null }, partial: false };
 		const calls = route_fetch({ '/v1/org_page/get': () => ({ ok: true, data: org_data() }), '/v1/notification_center/get': () => ({ ok: true, data: empty }) });
 		const first = open_org('/orgs/o1');
 		await screen.findByTestId('member-maya');
-		expect(screen.queryByRole('tablist')).toBeNull();
+		expect(screen.queryByTestId('side-tabs')).toBeNull();
 		expect(screen.getByRole('heading', { level: 2, name: 'Members' })).toBeInTheDocument();
 		first.unmount();
 
+		const scopes = open_org('/orgs/o1?tab=scopes');
+		expect(await screen.findByRole('heading', { level: 2, name: 'Scopes' })).toBeInTheDocument();
+		expect(screen.queryByTestId('side-tabs')).toBeNull();
+		scopes.unmount();
+
 		const settings = open_org('/orgs/o1?tab=settings');
-		const tabs = await screen.findByRole('tablist', { name: 'Org settings' });
-		const names = within(tabs).getAllByRole('tab').map((t) => t.textContent);
+		const names = within(await screen.findByRole('navigation', { name: 'Org settings' })).getAllByRole('link').map((t) => t.textContent);
 		expect(names[0]).toBe('General');
-		expect(names).toEqual(expect.arrayContaining(['General', 'Roles', 'Scopes', 'A2A']));
+		expect(names).toEqual(expect.arrayContaining(['General', 'Roles', 'A2A']));
+		expect(names).not.toContain('Scopes');
 		expect(names).not.toContain('Members');
-		expect(names).not.toContain('Notifications');
+		expect(screen.getByTestId('side-tab-settings')).toHaveAttribute('aria-current', 'page');
 		settings.unmount();
 
 		open_org('/orgs/o1?tab=notifications');
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/notification_center/get' && c.body.org_id === 'o1')).toBe(true));
-		expect(screen.queryByRole('tablist', { name: 'Org settings' })).toBeNull();
+		const notif = within(screen.getByRole('navigation', { name: 'Notifications' })).getAllByRole('link').map((t) => t.textContent);
+		expect(notif).toEqual(['Events', 'Channels']);
+		expect(screen.getByTestId('side-tab-events')).toHaveAttribute('aria-current', 'page');
+		expect(screen.queryByRole('navigation', { name: 'Org settings' })).toBeNull();
 	});
 
 	it('members: picking Owner makes the member an owner through orgs/update', async () => {

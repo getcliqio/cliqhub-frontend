@@ -22,6 +22,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import { use_invite } from '@/components/graphite/g_invites';
+import { Side_tabs, type Side_tab } from '@/components/graphite/g_side_tabs';
 
 const INPUT = 'h-9 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[13px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 const PRIMARY = 'rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
@@ -324,6 +325,12 @@ function Danger({ data, admin, post }: { data: Realm_settings_data; admin: boole
 /* ------------------------------------------------------------------ */
 
 
+/** Settings' parts, in order. */
+const SETTINGS_PARTS: Array<{ id: Settings_section; label: string }> = [
+	{ id: 'members', label: 'Members' }, { id: 'tokens', label: 'Security' }, { id: 'a2a', label: 'A2A' },
+	{ id: 'general', label: 'General' }, { id: 'danger', label: 'Danger zone' },
+];
+
 export function Component() {
 	const { org = '', slug = '' } = useParams();
 	const overview = use_overview();
@@ -344,6 +351,19 @@ export function Component() {
 	const org_role = overview.data?.orgs.find((o) => o.slug === org)?.role ?? null;
 	// Realm admins, org owners/admins and site admins can change settings (Core enforces on write).
 	const admin = Boolean(data?.you.is_admin || org_role === 'owner' || org_role === 'admin');
+	const { user, default_realm_id } = useAuth();
+	const settings_base = `/o/${encodeURIComponent(org)}/realms/${encodeURIComponent(slug)}/settings`;
+	// The page's parts, as vertical tabs on its left: Notifications › Events · Channels, or Settings' parts.
+	const personal = Boolean(data && is_personal_default_realm({ id: data.realm.id, slug, org_slug: org }, { username: user?.username, default_realm_id }));
+	const tabs: Side_tab[] = at_notifications
+		? [
+			{ id: 'events', label: 'Events', to: `${notif_base}/events`, active: notif_view === 'events' },
+			{ id: 'channels', label: 'Channels', to: `${notif_base}/channels`, active: notif_view === 'channels' },
+		]
+		: SETTINGS_PARTS.filter((p) => p.id !== 'danger' || !personal).map((p) => ({
+			id: p.id, label: p.label, danger: p.id === 'danger', active: section === p.id,
+			to: p.id === 'members' ? settings_base : `${settings_base}?section=${p.id}`,
+		}));
 
 	if (raw === 'notifications' && !at_notifications) return <Navigate to={`${notif_base}/events`} replace />;
 	if (at_notifications && pathname.endsWith('/notifications')) {
@@ -355,7 +375,7 @@ export function Component() {
 		<Graphite_shell
 			data={overview.data}
 			current_realm_id={realm_id}
-			title={at_notifications ? (notif_view === 'events' ? 'Events' : 'Channels') : 'Settings'}
+			title={at_notifications ? 'Notifications' : 'Settings'}
 			actions={<button type="button" onClick={() => void read.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><RefreshCw className="h-3.5 w-3.5" /></button>}
 		>
 			<Realm_nav org_slug={org} slug={slug} realm={sidebar_realm}>
@@ -363,8 +383,7 @@ export function Component() {
 				{read.status === 'loading' ? <div className="h-[360px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading settings" /> : null}
 				{read.status === 'error' && !data ? <Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="realm" /> : null}
 				{data ? (
-					<div className="flex gap-6">
-						{/* Settings' parts are listed under Settings in the realm's left nav. */}
+					<Side_tabs label={at_notifications ? 'Notifications' : 'Settings'} tabs={tabs}>
 						<div className="min-w-0 flex-1">
 							{section === 'general' ? <General data={data} admin={admin} post={post} reload={read.reload} /> : null}
 							{section === 'members' ? <Members data={data} admin={admin} post={post} reload={read.reload} /> : null}
@@ -373,7 +392,7 @@ export function Component() {
 							{section === 'notifications' && sidebar_realm ? <Notifications_panel org_id={sidebar_realm.org_id} realm={{ id: data.realm.id, slug: data.realm.slug, org_slug: org }} view={notif_view} /> : null}
 							{section === 'danger' ? <Danger data={data} admin={admin} post={post} /> : null}
 						</div>
-					</div>
+					</Side_tabs>
 				) : null}
 			</div>
 			</Realm_nav>

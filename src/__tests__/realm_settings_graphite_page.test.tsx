@@ -75,7 +75,10 @@ describe('Realm settings page', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
 		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/invitations/revoke', body: { invite_id: 'i1' } }));
 		// Settings' parts are listed under it in the realm's left nav.
-		expect(screen.getByTestId('settings-members')).toHaveAttribute('aria-current', 'page');
+		// Settings' parts are vertical tabs on the page; Members is open by default.
+		const parts = within(screen.getByRole('navigation', { name: 'Settings' })).getAllByRole('link').map((l) => l.textContent);
+		expect(parts).toEqual(['Members', 'Security', 'A2A', 'General', 'Danger zone']);
+		expect(screen.getByTestId('side-tab-members')).toHaveAttribute('aria-current', 'page');
 		expect(screen.getByTestId('go-notifications')).toHaveAttribute('href', '/o/measureone/realms/prod-us/notifications/events');
 	});
 

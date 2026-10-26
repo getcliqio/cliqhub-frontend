@@ -154,13 +154,13 @@ describe('Realm layout', () => {
 		expect(screen.queryByTestId('attention')).toBeNull();
 	});
 
-	it('in Settings, its parts are listed under it; the current one is marked', async () => {
+	it('in Settings, the nav lists only the sections (Settings marked); its parts are vertical tabs on the page', async () => {
 		route_fetch(inbox());
 		const slug = render_layout('/o/measureone/realms/prod-us/settings?section=a2a');
 		await screen.findByRole('heading', { name: 'Prod US' });
-		expect(within(nav()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Teams!', 'Runs!', 'Daemons', 'Agents!', 'Notifications', 'Settings', 'Members', 'Security', 'A2A', 'General', 'Danger zone']);
-		expect(screen.getByTestId('settings-a2a')).toHaveAttribute('aria-current', 'page');
-		expect(screen.getByTestId('settings-members')).toHaveAttribute('href', `/o/measureone/realms/${slug}/settings`);
+		expect(within(nav()).getAllByRole('link').map((l) => l.textContent)).toEqual(['Teams!', 'Runs!', 'Daemons', 'Agents!', 'Notifications', 'Settings']);
+		expect(screen.getByTestId('go-settings')).toHaveAttribute('aria-current', 'page');
+		expect(screen.getByTestId('go-notifications')).not.toHaveAttribute('aria-current');
 		expect(screen.getByTestId('go-agents')).toHaveAttribute('href', `/o/measureone/realms/${slug}/agents`);
 		expect(screen.getByTestId('go-notifications')).toHaveAttribute('href', `/o/measureone/realms/${slug}/notifications/events`);
 	});
