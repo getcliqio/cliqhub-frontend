@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
+import yaml from 'js-yaml';
 
 import { build_team_yml, type ExportTeamData } from '../src/lib/team_export';
+
+
+/** The exported team.yml, read back (the checks are on values, not on how the YAML is laid out). */
+function phase_of(yml: string, name: string): Record<string, any> {
+	const doc = yaml.load(yml) as { phases: Array<Record<string, any>> };
+	return doc.phases.find((p) => p.name === name)!;
+}
 
 
 function base_team(overrides?: Partial<ExportTeamData>): ExportTeamData {
@@ -39,10 +47,10 @@ describe('build_team_yml — sources/target_entries serialization', () => {
 		}));
 
 		expect(yml).toContain('sources:');
-		expect(yml).toContain('url: "https://example.com/doc"');
-		expect(yml).toContain('name: spec');
-		expect(yml).toContain('url: "$(inputs.data_url)"');
-		expect(yml).toContain('name: raw-data');
+		expect(phase_of(yml, 'research').sources).toEqual([
+			{ url: 'https://example.com/doc', name: 'spec' },
+			{ url: '$(inputs.data_url)', name: 'raw-data' },
+		]);
 	});
 
 	it('serializes sources without url when only name is given', () => {
@@ -72,11 +80,9 @@ describe('build_team_yml — sources/target_entries serialization', () => {
 			}],
 		}));
 
-		expect(yml).toContain('target_entries:');
-		expect(yml).toContain('file: output/report.md');
-		expect(yml).toContain('url: "gdoc://abc123"');
-		expect(yml).toContain('mode: replace');
-		expect(yml).toContain('name: Final Report');
+		expect(phase_of(yml, 'publish').target_entries).toEqual([
+			{ name: 'Final Report', file: 'output/report.md', url: 'gdoc://abc123', mode: 'replace' },
+		]);
 	});
 
 	it('omits mode when create (default)', () => {
@@ -163,7 +169,7 @@ describe('build_team_yml — gate phase serialization', () => {
 		expect(yml).toContain('review:');
 		// The HUG gate reads reviewer groups (`reviewer:` is rejected by cliqd).
 		expect(yml).toContain('reviewers:');
-		expect(yml).toContain('channels: [senior-devs]');
+		expect(phase_of(yml, 'human-review').review.reviewers).toEqual([{ policy: 'any', channels: ['senior-devs'] }]);
 		expect(yml).toContain('artifacts:');
 		expect(yml).toContain('- src/');
 		expect(yml).toContain('- docs/design.md');
@@ -185,7 +191,7 @@ describe('build_team_yml — gate phase serialization', () => {
 		expect(yml).toContain('type: gate');
 		expect(yml).toContain('review:');
 		expect(yml).toContain('- policy: any');
-		expect(yml).toContain('channels: [architects]');
+		expect(phase_of(yml, 'review').review.reviewers).toEqual([{ policy: 'any', channels: ['architects'] }]);
 		expect(yml).not.toContain('artifacts:');
 		expect(yml).not.toContain('timeout:');
 		expect(yml).not.toContain('remind_every:');
@@ -204,7 +210,7 @@ describe('build_team_yml — gate phase serialization', () => {
 
 		expect(yml).toContain('review:');
 		expect(yml).not.toMatch(/^\s+reviewer:/m);
-		expect(yml).toContain('channels: [senior-devs, architects]');
+		expect(phase_of(yml, 'review').review.reviewers).toEqual([{ policy: 'any', channels: ['senior-devs', 'architects'] }]);
 	});
 
 	it('omits reviewer when not present on gate phase', () => {
