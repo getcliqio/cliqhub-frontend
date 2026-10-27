@@ -96,6 +96,19 @@ export interface Overview_data {
 
 export const OVERVIEW_REFRESH_MS = 30_000;
 
+/** Fired when something changed the overview's counts (a Hug answered): every overview reloads. */
+export const OVERVIEW_STALE_EVENT = 'cliq:overview-stale';
+/**
+ * When to reload after {@link OVERVIEW_STALE_EVENT}: now, then again while the change settles — an
+ * answered Hug stays open until its requester closes it through cliqd, usually a few seconds later.
+ */
+export const OVERVIEW_STALE_RELOAD_MS = [0, 3_000, 10_000] as const;
+
+/** Tell every mounted overview (the nav's HUG count among them) to reload. */
+export function mark_overview_stale(): void {
+	try { window.dispatchEvent(new CustomEvent(OVERVIEW_STALE_EVENT)); } catch { /* no window */ }
+}
+
 type State =
 	| { status: 'loading'; data: null; error: null }
 	| { status: 'ready'; data: Overview_data; error: null }
@@ -140,9 +153,14 @@ export function use_overview(refresh_ms: number = OVERVIEW_REFRESH_MS) {
 		// Opening the inbox or the bell resets the count — refresh right away.
 		const on_seen = () => void load();
 		window.addEventListener(INBOX_SEEN_EVENT, on_seen);
+		const pending: Array<ReturnType<typeof setTimeout>> = [];
+		const on_stale = () => { for (const ms of OVERVIEW_STALE_RELOAD_MS) pending.push(setTimeout(() => void load(), ms)); };
+		window.addEventListener(OVERVIEW_STALE_EVENT, on_stale);
 		const t = refresh_ms > 0 ? setInterval(() => void load(), refresh_ms) : null;
 		return () => {
 			window.removeEventListener(INBOX_SEEN_EVENT, on_seen);
+			window.removeEventListener(OVERVIEW_STALE_EVENT, on_stale);
+			for (const p of pending) clearTimeout(p);
 			if (t) clearInterval(t);
 		};
 	}, [load, refresh_ms]);

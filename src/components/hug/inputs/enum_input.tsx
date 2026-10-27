@@ -1,11 +1,13 @@
 /**
- * An `enum` input. One choice: buttons (`ui.display: 'buttons'`, or a few choices) or a select;
- * `multiple`: checkboxes.
+ * An `enum` input. One choice: radio buttons, or a select when there are many choices;
+ * `multiple`: checkboxes. Display hints (`ui.display`) are not read — every Hug looks alike
+ * (PLAN-hug-requests §13).
  */
 import { G_INPUT } from '@/components/graphite/g_agents';
 import { Field, control_id, invalid_cls, type Input_props } from './field';
 
-const CHIP = (on: boolean) => `rounded-full border px-3 py-1 text-[12.5px] disabled:opacity-40 ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
+/** Up to this many choices are radio buttons; more are a select. */
+const RADIO_MAX = 8;
 
 export function Enum_input({ input, value, on_change, error, disabled }: Input_props<string | string[]>) {
 	if (input.type !== 'enum') return null;
@@ -27,15 +29,15 @@ export function Enum_input({ input, value, on_change, error, disabled }: Input_p
 		);
 	}
 	const v = typeof value === 'string' ? value : '';
-	const as_buttons = input.ui?.display === 'buttons' || (input.ui?.display !== 'select' && input.choices.length <= 5);
-	if (as_buttons) {
+	if (input.choices.length <= RADIO_MAX) {
 		return (
 			<Field input={input} error={error} as_label={false}>
-				<div role="radiogroup" aria-labelledby={`${id}-label`} className="flex flex-wrap gap-1.5">
+				<div role="radiogroup" aria-labelledby={`${id}-label`} className="flex flex-col gap-1.5">
 					{input.choices.map((c) => (
-						<button key={c.value} type="button" role="radio" aria-checked={v === c.value} disabled={disabled} onClick={() => on_change(c.value)} className={CHIP(v === c.value)}>
+						<label key={c.value} className="flex items-center gap-2 text-[13px]">
+							<input type="radio" name={id} value={c.value} checked={v === c.value} disabled={disabled} onChange={() => on_change(c.value)} />
 							{c.label ?? c.value}
-						</button>
+						</label>
 					))}
 				</div>
 			</Field>

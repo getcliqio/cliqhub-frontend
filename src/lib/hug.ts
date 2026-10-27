@@ -8,6 +8,8 @@
  * step with the SDK). Core's 422 problems are shown the same way, per input.
  */
 
+import { mark_overview_stale } from '@/lib/overview';
+
 // ── What Core sends ────────────────────────────────────────────────────────
 
 interface Input_common {
@@ -74,8 +76,41 @@ export interface Hug {
 	responses: Hug_response[];
 }
 
+/** One phase of the Hug's run (for the workflow graph). */
+export interface Hug_run_phase {
+	name: string;
+	type: string | null;
+	agent: string | null;
+	status: string;
+	depends_on: string[];
+}
+
+/** The Hug's run: its team and how far it has got; null when it couldn't be read. */
+export interface Hug_run {
+	run_id: string;
+	run_name: string | null;
+	state: string;
+	team_label: string | null;
+	team_version: string | null;
+	phases: Hug_run_phase[];
+}
+
 export interface Hug_page_data {
 	hug: Hug;
+	/** Absent from an older BFF. */
+	run?: Hug_run | null;
+}
+
+/** Inputs a response must have, and the rest (a boolean always has a value, so it is never missing). */
+export function split_inputs(inputs: readonly Requested_input[]): { required: Requested_input[]; optional: Requested_input[] } {
+	const required = inputs.filter((i) => i.required !== false && i.type !== 'boolean');
+	return { required, optional: inputs.filter((i) => !required.includes(i)) };
+}
+
+/** How many required inputs the form doesn't have a value for yet. */
+export function missing_required(inputs: readonly Requested_input[], form: Form_values): number {
+	const values = to_values(inputs, form);
+	return split_inputs(inputs).required.filter((i) => values[i.name] === undefined).length;
 }
 
 /** A file uploaded for a `file` input (what the value holds). */
@@ -260,7 +295,11 @@ export async function respond(auth_fetch: Auth_fetch, hug_id: string, values: Re
 	if (comment.trim()) body.comment = comment.trim();
 	const res = await auth_fetch('/v1/hugs/respond', { method: 'POST', body: JSON.stringify(body) });
 	const d = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } | string } | null;
-	if (res.ok && d?.ok) return { ok: true };
+	if (res.ok && d?.ok) {
+		// The nav's HUG count (and any overview on screen) reloads.
+		mark_overview_stale();
+		return { ok: true };
+	}
 	const message = typeof d?.error === 'string' ? d.error : d?.error?.message ?? 'Could not send your answer.';
 	return { ok: false, status: res.status, message };
 }

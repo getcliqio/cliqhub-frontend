@@ -51,7 +51,7 @@ export const PAGE_HELP = {
 		docs_href: DOCS.agents,
 	},
 	reviews: {
-		help: 'HUGs waiting on you in the realms you can see: reviews, and agents asking a question. Open one to answer — anyone who can view the run can see it.',
+		help: 'HUGs waiting on you in the realms you can see: reviews, and agents asking a question. Open one to respond — anyone who can view the run can see it.',
 		docs_href: DOCS.gates,
 	},
 	builder: {
