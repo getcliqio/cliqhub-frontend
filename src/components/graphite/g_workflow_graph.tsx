@@ -2,12 +2,14 @@
  * Workflow graph (Graphite). Layered DAG from a team version's phases:
  * nodes coloured by phase type, gradient edges with flowing dots, gate
  * loop-backs as dashed arcs, human review as a badge, and an optional run
- * overlay (status dot per phase). Pure SVG; scales to its container.
+ * overlay (status dot per phase). Pure SVG; scales to its container but never below
+ * MIN_SCALE (it scrolls sideways instead). Long flows wrap into bands of a few steps,
+ * like lines of text, with a connector from the end of one band to the start of the next.
  * With `start`, the flow begins at a "Run inputs" node (the inputs Run asks for) instead of a dot.
  */
 import { useId, type KeyboardEvent, type ReactElement } from 'react';
 import {
-	REVIEW_COLOR, layout_phases, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle, type Team_phase,
+	REVIEW_COLOR, layout_phases, wrap_columns, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle, type Team_phase,
 } from '@/lib/team_page';
 
 const W = 148;
@@ -15,6 +17,10 @@ const H = 58;
 const PITCH_X = 196;
 const PITCH_Y = 78;
 const MARGIN_X = 72;
+/** Smallest the graph is drawn at; narrower containers scroll. */
+const MIN_SCALE = 0.8;
+/** Space between bands for the wrap connectors (plus room for route-back arcs). */
+const BAND_GAP = 44;
 
 function hexa(hex: string, a: number): string {
 	const n = Number.parseInt(hex.slice(1), 16);
@@ -64,12 +70,22 @@ export function Workflow_graph({
 	}
 	const top_pad = L.loops.length ? 64 : 34;
 	const shift = start ? START_SHIFT : 0;
-	const w = MARGIN_X * 2 + shift + (L.cols - 1) * PITCH_X + W;
-	const h = Math.max(height, top_pad + L.rows * PITCH_Y + 34);
-	const cy = top_pad + ((h - top_pad - 34) / 2);
+	const wrap = wrap_columns(L);
+	const bands = wrap[wrap.length - 1].band + 1;
+	const band_cols = Math.max(...wrap.map((c) => c.col)) + 1;
+	const band_h = L.rows * PITCH_Y;
+	const band_pitch = band_h + BAND_GAP + (L.loops.length ? 40 : 0);
+	const w = MARGIN_X * 2 + shift + (band_cols - 1) * PITCH_X + W;
+	const h = Math.max(height, top_pad + band_h + (bands - 1) * band_pitch + 34);
+	const cy0 = top_pad + ((h - top_pad - 34 - (bands - 1) * band_pitch) / 2);
+	const band_cy = (b: number) => cy0 + b * band_pitch;
+	/** Bottom edge of a band's lowest node. */
+	const band_bottom = (b: number) => band_cy(b) + ((L.rows - 1) / 2) * PITCH_Y + H / 2;
+	const cy = band_cy(0);
 	const at = (n: string) => {
 		const p = L.pos[n];
-		return { x: MARGIN_X + shift + p.col * PITCH_X, y: cy + p.row * PITCH_Y - H / 2 };
+		const c = wrap[p.col];
+		return { x: MARGIN_X + shift + c.col * PITCH_X, y: band_cy(c.band) + p.row * PITCH_Y - H / 2, band: c.band };
 	};
 	const by_name = new Map(phases.map((p) => [p.name, p]));
 	const roots = phases.filter((p) => !p.depends_on.some((d) => by_name.has(d)));
@@ -86,10 +102,12 @@ export function Workflow_graph({
 			const ca = phase_kind(by_name.get(d)!).color; const cb = phase_kind(p).color;
 			const x1 = a.x + W; const y1 = a.y + H / 2; const x2 = b.x - 2; const y2 = b.y + H / 2;
 			const id = `${uid}e${i++}`;
-			const path = bez(x1, y1, x2, y2);
-			defs.push(<linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" x1={x1} y1={0} x2={x2} y2={0}><stop offset="0" stopColor={ca} stopOpacity={0.75} /><stop offset="1" stopColor={cb} stopOpacity={0.75} /></linearGradient>);
+			const wraps = b.band > a.band;
+			const path = wraps ? wrap_path(x1, y1, x2, y2, band_bottom(a.band) + 20) : bez(x1, y1, x2, y2);
+			const g = wraps ? { x1: 0, y1, x2: 0, y2 } : { x1, y1: 0, x2, y2: 0 };
+			defs.push(<linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" {...g}><stop offset="0" stopColor={ca} stopOpacity={0.75} /><stop offset="1" stopColor={cb} stopOpacity={0.75} /></linearGradient>);
 			edges.push(
-				<g key={`${d}->${p.name}`} data-edge={`${d}->${p.name}`}>
+				<g key={`${d}->${p.name}`} data-edge={`${d}->${p.name}`} data-wrap={wraps ? 'true' : undefined}>
 					<path d={path} stroke={ca} strokeOpacity={0.1} strokeWidth={7} fill="none" />
 					<path d={path} stroke={`url(#${id})`} strokeWidth={1.6} fill="none" />
 					<path d={`M${x2 - 6} ${y2 - 4} L${x2} ${y2} L${x2 - 6} ${y2 + 4}`} stroke={cb} strokeWidth={1.6} fill="none" strokeLinecap="round" strokeLinejoin="round" />
@@ -100,142 +118,155 @@ export function Workflow_graph({
 	}
 
 	return (
-		<svg role="group" aria-label={label} viewBox={`0 0 ${w} ${h}`} width="100%" height={h} preserveAspectRatio="xMidYMid meet" style={{ display: 'block', maxHeight: h }}>
-			<defs>
-				<pattern id={`${uid}dots`} width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" style={{ fill: 'var(--g-graph-dot)' }} /></pattern>
-				<radialGradient id={`${uid}aura`} cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#7c6cff" stopOpacity={0.1} /><stop offset="1" stopColor="#7c6cff" stopOpacity={0} /></radialGradient>
-				<linearGradient id={`${uid}nf`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: 'var(--g-node-top)' }} /><stop offset="1" style={{ stopColor: 'var(--g-node-bot)' }} /></linearGradient>
-				<filter id={`${uid}soft`} x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="6" stdDeviation="8" style={{ floodColor: 'var(--g-node-shadow)', floodOpacity: 'var(--g-node-shadow-op)' }} /></filter>
-				{[...new Set(phases.map((p) => phase_kind(p).color))].map((c) => (
-					<filter key={c} id={`${uid}gl${c.slice(1)}`} x="-40%" y="-60%" width="180%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="9" floodColor={c} floodOpacity={0.45} /></filter>
-				))}
-				{defs}
-			</defs>
-			<style>{'@media (prefers-reduced-motion: reduce){.g-flow{display:none}.g-march{animation:none}}'}</style>
-			<rect width={w} height={h} fill={`url(#${uid}dots)`} />
-			<ellipse cx={w / 2} cy={h / 2} rx={w * 0.45} ry={h * 0.6} fill={`url(#${uid}aura)`} />
-
-			{/* start / end terminals */}
-			{start ? (() => {
-				const shown = start.inputs.slice(0, START_LINES);
-				const more = start.inputs.length - shown.length;
-				const sh = 30 + Math.max(1, shown.length + (more > 0 ? 1 : 0)) * 14;
-				const sx = MARGIN_X - 30; const sy = cy - sh / 2;
-				return (
-					<g data-start="inputs">
-						{roots.map((r) => { const a = at(r.name); const path = bez(sx + START_W, cy, a.x - 2, a.y + H / 2); return (
-							<g key={`start-${r.name}`} aria-hidden>
-								<path d={path} strokeWidth={1.5} strokeDasharray="3 4" fill="none" style={{ stroke: 'var(--g-line-strong)' }} />
-								<path d={`M${a.x - 8} ${a.y + H / 2 - 4} L${a.x - 2} ${a.y + H / 2} L${a.x - 8} ${a.y + H / 2 + 4}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-line-strong)' }} />
+		<div className="overflow-x-auto">
+			<svg role="group" aria-label={label} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="xMidYMid meet" style={{ display: 'block', width: '100%', minWidth: Math.round(w * MIN_SCALE), maxWidth: w, height: 'auto', margin: '0 auto' }}>
+				<defs>
+					<pattern id={`${uid}dots`} width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" style={{ fill: 'var(--g-graph-dot)' }} /></pattern>
+					<radialGradient id={`${uid}aura`} cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#7c6cff" stopOpacity={0.1} /><stop offset="1" stopColor="#7c6cff" stopOpacity={0} /></radialGradient>
+					<linearGradient id={`${uid}nf`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" style={{ stopColor: 'var(--g-node-top)' }} /><stop offset="1" style={{ stopColor: 'var(--g-node-bot)' }} /></linearGradient>
+					<filter id={`${uid}soft`} x="-20%" y="-40%" width="140%" height="180%"><feDropShadow dx="0" dy="6" stdDeviation="8" style={{ floodColor: 'var(--g-node-shadow)', floodOpacity: 'var(--g-node-shadow-op)' }} /></filter>
+					{[...new Set(phases.map((p) => phase_kind(p).color))].map((c) => (
+						<filter key={c} id={`${uid}gl${c.slice(1)}`} x="-40%" y="-60%" width="180%" height="220%"><feDropShadow dx="0" dy="0" stdDeviation="9" floodColor={c} floodOpacity={0.45} /></filter>
+					))}
+					{defs}
+				</defs>
+				<style>{'@media (prefers-reduced-motion: reduce){.g-flow{display:none}.g-march{animation:none}}'}</style>
+				<rect width={w} height={h} fill={`url(#${uid}dots)`} />
+				<ellipse cx={w / 2} cy={h / 2} rx={w * 0.45} ry={h * 0.6} fill={`url(#${uid}aura)`} />
+	
+				{/* start / end terminals */}
+				{start ? (() => {
+					const shown = start.inputs.slice(0, START_LINES);
+					const more = start.inputs.length - shown.length;
+					const sh = 30 + Math.max(1, shown.length + (more > 0 ? 1 : 0)) * 14;
+					const sx = MARGIN_X - 30; const sy = cy - sh / 2;
+					return (
+						<g data-start="inputs">
+							{roots.map((r) => { const a = at(r.name); const path = bez(sx + START_W, cy, a.x - 2, a.y + H / 2); return (
+								<g key={`start-${r.name}`} aria-hidden>
+									<path d={path} strokeWidth={1.5} strokeDasharray="3 4" fill="none" style={{ stroke: 'var(--g-line-strong)' }} />
+									<path d={`M${a.x - 8} ${a.y + H / 2 - 4} L${a.x - 2} ${a.y + H / 2} L${a.x - 8} ${a.y + H / 2 + 4}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-line-strong)' }} />
+								</g>
+							); })}
+							<g
+								transform={`translate(${sx},${sy})`}
+								role={start.on_select ? 'button' : undefined}
+								tabIndex={start.on_select ? 0 : undefined}
+								aria-label={`Run inputs: ${start.inputs.length ? start.inputs.map((i) => `${i.name}${i.required ? ' (required)' : ''}`).join(', ') : 'none'}`}
+								aria-pressed={start.on_select ? Boolean(start.selected) : undefined}
+								onClick={start.on_select}
+								onKeyDown={start.on_select ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start.on_select?.(); } } : undefined}
+								style={{ cursor: start.on_select ? 'pointer' : 'default', outline: 'none' }}
+							>
+								<rect width={START_W} height={sh} rx={12} strokeWidth={start.selected ? 1.5 : 1.2} strokeDasharray={start.selected ? undefined : '4 3'} style={{ fill: 'var(--g-input)', stroke: start.selected ? 'var(--g-acc)' : 'var(--g-ink-3)' }} />
+								<text x={12} y={18} fontSize={9.5} fontWeight={700} letterSpacing=".06em" style={{ fill: 'var(--g-acc)' }} fontFamily="var(--g-font)">▶ RUN INPUTS</text>
+								{shown.length ? shown.map((i, n) => (
+									<text key={i.name} x={12} y={36 + n * 14} fontSize={11.5} fontFamily="var(--g-mono)" style={{ fill: i.required ? 'var(--g-ink)' : 'var(--g-ink-2)' }} fontWeight={i.required ? 600 : 400}>
+										{i.name.length > 15 ? `${i.name.slice(0, 14)}…` : i.name}{i.required ? <tspan style={{ fill: 'var(--g-bad)' }}>*</tspan> : null}
+									</text>
+								)) : <text x={12} y={36} fontSize={11.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">none</text>}
+								{more > 0 ? <text x={12} y={36 + shown.length * 14} fontSize={11} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">+{more} more</text> : null}
 							</g>
-						); })}
+						</g>
+					);
+				})() : roots.map((r) => { const a = at(r.name); const sx = a.x - 34; const sy = a.y + H / 2; return (
+					<g key={`start-${r.name}`} aria-hidden>
+						<path d={`M${sx + 7} ${sy} H${a.x}`} strokeWidth={1.5} strokeDasharray="3 4" style={{ stroke: 'var(--g-line-strong)' }} />
+						<circle cx={sx} cy={sy} r={7} stroke="var(--g-acc)" style={{ fill: 'var(--g-input)', stroke: 'var(--g-acc)' }} strokeWidth={2} /><circle cx={sx} cy={sy} r={2.5} fill="var(--g-acc)" />
+					</g>
+				); })}
+				{leaves.map((r) => { const a = at(r.name); const ex = a.x + W + 30; const ey = a.y + H / 2; return (
+					<g key={`end-${r.name}`} aria-hidden>
+						<path d={`M${a.x + W} ${ey} H${ex - 8}`} strokeWidth={1.5} strokeDasharray="3 4" style={{ stroke: 'var(--g-line-strong)' }} />
+						<circle cx={ex} cy={ey} r={8} strokeWidth={2} style={{ fill: 'var(--g-input)', stroke: 'var(--g-ok)' }} />
+						<path d={`M${ex - 3.5} ${ey} l2.5 2.5 l4.5 -5`} strokeWidth={1.8} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-ok)' }} />
+					</g>
+				); })}
+	
+				{edges}
+	
+				{L.loops.map((lp) => {
+					const g = at(lp.from); const t = at(lp.to);
+					const gx = g.x + W / 2; const tx = t.x + W / 2;
+					const peak = Math.min(g.y, t.y) - 50;
+					const mx = (gx + tx) / 2;
+					return (
+						<g key={`loop-${lp.from}`} data-loop={`${lp.from}->${lp.to}`}>
+							<path className="g-march" d={`M${gx} ${g.y - 2} C${gx} ${peak}, ${tx} ${peak}, ${tx} ${t.y - 2}`} strokeWidth={1.5} strokeDasharray="5 5" fill="none" opacity={0.9} style={{ stroke: 'var(--g-warn)', animation: 'g-march 1.2s linear infinite' }} />
+							<path d={`M${tx - 4} ${t.y - 9} L${tx} ${t.y - 3} L${tx + 4} ${t.y - 9}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-warn)' }} />
+							<g transform={`translate(${mx - 58},${peak + 1})`}>
+								<rect width={116} height={22} rx={11} strokeOpacity={0.55} style={{ fill: 'var(--g-warn-chip)', stroke: 'var(--g-warn)' }} />
+								<text x={58} y={15} textAnchor="middle" fontSize={10.5} style={{ fill: 'var(--g-warn-text)' }} fontWeight={600} fontFamily="var(--g-font)">↺ route back{lp.max ? ` · ≤ ${lp.max}` : ''}</text>
+							</g>
+						</g>
+					);
+				})}
+	
+				{phases.map((p) => {
+					const { x, y } = at(p.name);
+					const k = phase_kind(p);
+					const badge = p.review && k.id !== 'human';
+					const is_sel = selected === p.name;
+					const st = statuses ? overlay_state(statuses[p.name]) : null;
+					const title = p.name.length > 15 ? `${p.name.slice(0, 14)}…` : p.name;
+					const sub = phase_subtitle(p);
+					return (
 						<g
-							transform={`translate(${sx},${sy})`}
-							role={start.on_select ? 'button' : undefined}
-							tabIndex={start.on_select ? 0 : undefined}
-							aria-label={`Run inputs: ${start.inputs.length ? start.inputs.map((i) => `${i.name}${i.required ? ' (required)' : ''}`).join(', ') : 'none'}`}
-							aria-pressed={start.on_select ? Boolean(start.selected) : undefined}
-							onClick={start.on_select}
-							onKeyDown={start.on_select ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start.on_select?.(); } } : undefined}
-							style={{ cursor: start.on_select ? 'pointer' : 'default', outline: 'none' }}
+							key={p.name}
+							transform={`translate(${x},${y})`}
+							role={on_select ? 'button' : undefined}
+							tabIndex={on_select ? 0 : undefined}
+							aria-label={`${p.name}, ${k.label}${badge ? ', human review' : ''}${st && st !== 'idle' ? `, ${st}` : ''}`}
+							aria-pressed={on_select ? is_sel : undefined}
+							data-phase={p.name}
+							onClick={on_select ? () => on_select(p.name) : undefined}
+							onKeyDown={on_select ? (e) => key(e, p.name) : undefined}
+							style={{ cursor: on_select ? 'pointer' : 'default', outline: 'none' }}
 						>
-							<rect width={START_W} height={sh} rx={12} strokeWidth={start.selected ? 1.5 : 1.2} strokeDasharray={start.selected ? undefined : '4 3'} style={{ fill: 'var(--g-input)', stroke: start.selected ? 'var(--g-acc)' : 'var(--g-ink-3)' }} />
-							<text x={12} y={18} fontSize={9.5} fontWeight={700} letterSpacing=".06em" style={{ fill: 'var(--g-acc)' }} fontFamily="var(--g-font)">▶ RUN INPUTS</text>
-							{shown.length ? shown.map((i, n) => (
-								<text key={i.name} x={12} y={36 + n * 14} fontSize={11.5} fontFamily="var(--g-mono)" style={{ fill: i.required ? 'var(--g-ink)' : 'var(--g-ink-2)' }} fontWeight={i.required ? 600 : 400}>
-									{i.name.length > 15 ? `${i.name.slice(0, 14)}…` : i.name}{i.required ? <tspan style={{ fill: 'var(--g-bad)' }}>*</tspan> : null}
-								</text>
-							)) : <text x={12} y={36} fontSize={11.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">none</text>}
-							{more > 0 ? <text x={12} y={36 + shown.length * 14} fontSize={11} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">+{more} more</text> : null}
+							<title>{`${p.name} — ${sub}`}</title>
+							{is_sel ? <rect x={-5} y={-5} width={W + 10} height={H + 10} rx={16} fill="none" stroke={k.color} strokeOpacity={0.35} /> : null}
+							<rect width={W} height={H} rx={12} fill={`url(#${uid}nf)`} stroke={is_sel ? k.color : hexa(k.color, 0.38)} strokeWidth={is_sel ? 1.5 : 1} filter={`url(#${uid}${is_sel ? `gl${k.color.slice(1)}` : 'soft'})`} />
+							<rect x={1} y={1} width={W - 2} height={H * 0.5} rx={11} fill={k.color} opacity={0.05} />
+							<rect x={10} y={H / 2 - 13} width={26} height={26} rx={8} fill={hexa(k.color, 0.14)} stroke={hexa(k.color, 0.35)} />
+							<text x={23} y={H / 2 + 5} textAnchor="middle" fontSize={13} fill={k.color} fontWeight={700}>{k.glyph}</text>
+							<text x={45} y={H / 2 - 3} fontSize={12.5} style={{ fill: 'var(--g-ink)' }} fontWeight={600} fontFamily="var(--g-font)">{title}</text>
+							<text x={45} y={H / 2 + 13} fontSize={10.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-mono)">{sub.length > 16 ? `${sub.slice(0, 15)}…` : sub}</text>
+							{badge ? (
+								<g transform={`translate(${W - 78},-10)`}>
+									<rect width={74} height={19} rx={9.5} stroke={REVIEW_COLOR} style={{ fill: 'var(--g-hug-chip)' }} strokeOpacity={0.6} />
+									<circle cx={12} cy={9.5} r={3} fill="none" stroke={REVIEW_COLOR} strokeWidth={1.4} />
+									<text x={20} y={13.2} fontSize={9.5} fill={REVIEW_COLOR} fontWeight={700} letterSpacing=".04em" fontFamily="var(--g-font)">REVIEW</text>
+								</g>
+							) : null}
+							{k.id === 'gate' && p.max_iterations ? (
+								<g transform={`translate(${W - 46},-10)`}>
+									<rect width={42} height={19} rx={9.5} strokeOpacity={0.6} style={{ fill: 'var(--g-warn-chip)', stroke: 'var(--g-warn)' }} />
+									<text x={21} y={13.2} textAnchor="middle" fontSize={9.5} style={{ fill: 'var(--g-warn-text)' }} fontWeight={700} fontFamily="var(--g-mono)">×{p.max_iterations}</text>
+								</g>
+							) : null}
+							{st && st !== 'idle' ? (
+								<g data-status={st}>
+									<circle cx={W - 12} cy={H - 12} r={4} style={{ fill: DOT[st] }} />
+									{st === 'running' ? <circle className="g-flow" cx={W - 12} cy={H - 12} r={4} fill="none" style={{ stroke: DOT[st] }}><animate attributeName="r" from="4" to="11" dur="1.4s" repeatCount="indefinite" /><animate attributeName="opacity" from="1" to="0" dur="1.4s" repeatCount="indefinite" /></circle> : null}
+								</g>
+							) : st === 'idle' ? <circle cx={W - 12} cy={H - 12} r={3.5} style={{ fill: 'var(--g-ink-4)' }} /> : null}
 						</g>
-					</g>
-				);
-			})() : roots.map((r) => { const a = at(r.name); const sx = a.x - 34; const sy = a.y + H / 2; return (
-				<g key={`start-${r.name}`} aria-hidden>
-					<path d={`M${sx + 7} ${sy} H${a.x}`} strokeWidth={1.5} strokeDasharray="3 4" style={{ stroke: 'var(--g-line-strong)' }} />
-					<circle cx={sx} cy={sy} r={7} stroke="var(--g-acc)" style={{ fill: 'var(--g-input)', stroke: 'var(--g-acc)' }} strokeWidth={2} /><circle cx={sx} cy={sy} r={2.5} fill="var(--g-acc)" />
-				</g>
-			); })}
-			{leaves.map((r) => { const a = at(r.name); const ex = a.x + W + 30; const ey = a.y + H / 2; return (
-				<g key={`end-${r.name}`} aria-hidden>
-					<path d={`M${a.x + W} ${ey} H${ex - 8}`} strokeWidth={1.5} strokeDasharray="3 4" style={{ stroke: 'var(--g-line-strong)' }} />
-					<circle cx={ex} cy={ey} r={8} strokeWidth={2} style={{ fill: 'var(--g-input)', stroke: 'var(--g-ok)' }} />
-					<path d={`M${ex - 3.5} ${ey} l2.5 2.5 l4.5 -5`} strokeWidth={1.8} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-ok)' }} />
-				</g>
-			); })}
-
-			{edges}
-
-			{L.loops.map((lp) => {
-				const g = at(lp.from); const t = at(lp.to);
-				const gx = g.x + W / 2; const tx = t.x + W / 2;
-				const peak = Math.min(g.y, t.y) - 50;
-				const mx = (gx + tx) / 2;
-				return (
-					<g key={`loop-${lp.from}`} data-loop={`${lp.from}->${lp.to}`}>
-						<path className="g-march" d={`M${gx} ${g.y - 2} C${gx} ${peak}, ${tx} ${peak}, ${tx} ${t.y - 2}`} strokeWidth={1.5} strokeDasharray="5 5" fill="none" opacity={0.9} style={{ stroke: 'var(--g-warn)', animation: 'g-march 1.2s linear infinite' }} />
-						<path d={`M${tx - 4} ${t.y - 9} L${tx} ${t.y - 3} L${tx + 4} ${t.y - 9}`} strokeWidth={1.6} fill="none" strokeLinecap="round" style={{ stroke: 'var(--g-warn)' }} />
-						<g transform={`translate(${mx - 58},${peak + 1})`}>
-							<rect width={116} height={22} rx={11} strokeOpacity={0.55} style={{ fill: 'var(--g-warn-chip)', stroke: 'var(--g-warn)' }} />
-							<text x={58} y={15} textAnchor="middle" fontSize={10.5} style={{ fill: 'var(--g-warn-text)' }} fontWeight={600} fontFamily="var(--g-font)">↺ route back{lp.max ? ` · ≤ ${lp.max}` : ''}</text>
-						</g>
-					</g>
-				);
-			})}
-
-			{phases.map((p) => {
-				const { x, y } = at(p.name);
-				const k = phase_kind(p);
-				const badge = p.review && k.id !== 'human';
-				const is_sel = selected === p.name;
-				const st = statuses ? overlay_state(statuses[p.name]) : null;
-				const title = p.name.length > 15 ? `${p.name.slice(0, 14)}…` : p.name;
-				const sub = phase_subtitle(p);
-				return (
-					<g
-						key={p.name}
-						transform={`translate(${x},${y})`}
-						role={on_select ? 'button' : undefined}
-						tabIndex={on_select ? 0 : undefined}
-						aria-label={`${p.name}, ${k.label}${badge ? ', human review' : ''}${st && st !== 'idle' ? `, ${st}` : ''}`}
-						aria-pressed={on_select ? is_sel : undefined}
-						data-phase={p.name}
-						onClick={on_select ? () => on_select(p.name) : undefined}
-						onKeyDown={on_select ? (e) => key(e, p.name) : undefined}
-						style={{ cursor: on_select ? 'pointer' : 'default', outline: 'none' }}
-					>
-						<title>{`${p.name} — ${sub}`}</title>
-						{is_sel ? <rect x={-5} y={-5} width={W + 10} height={H + 10} rx={16} fill="none" stroke={k.color} strokeOpacity={0.35} /> : null}
-						<rect width={W} height={H} rx={12} fill={`url(#${uid}nf)`} stroke={is_sel ? k.color : hexa(k.color, 0.38)} strokeWidth={is_sel ? 1.5 : 1} filter={`url(#${uid}${is_sel ? `gl${k.color.slice(1)}` : 'soft'})`} />
-						<rect x={1} y={1} width={W - 2} height={H * 0.5} rx={11} fill={k.color} opacity={0.05} />
-						<rect x={10} y={H / 2 - 13} width={26} height={26} rx={8} fill={hexa(k.color, 0.14)} stroke={hexa(k.color, 0.35)} />
-						<text x={23} y={H / 2 + 5} textAnchor="middle" fontSize={13} fill={k.color} fontWeight={700}>{k.glyph}</text>
-						<text x={45} y={H / 2 - 3} fontSize={12.5} style={{ fill: 'var(--g-ink)' }} fontWeight={600} fontFamily="var(--g-font)">{title}</text>
-						<text x={45} y={H / 2 + 13} fontSize={10.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-mono)">{sub.length > 16 ? `${sub.slice(0, 15)}…` : sub}</text>
-						{badge ? (
-							<g transform={`translate(${W - 78},-10)`}>
-								<rect width={74} height={19} rx={9.5} stroke={REVIEW_COLOR} style={{ fill: 'var(--g-hug-chip)' }} strokeOpacity={0.6} />
-								<circle cx={12} cy={9.5} r={3} fill="none" stroke={REVIEW_COLOR} strokeWidth={1.4} />
-								<text x={20} y={13.2} fontSize={9.5} fill={REVIEW_COLOR} fontWeight={700} letterSpacing=".04em" fontFamily="var(--g-font)">REVIEW</text>
-							</g>
-						) : null}
-						{k.id === 'gate' && p.max_iterations ? (
-							<g transform={`translate(${W - 46},-10)`}>
-								<rect width={42} height={19} rx={9.5} strokeOpacity={0.6} style={{ fill: 'var(--g-warn-chip)', stroke: 'var(--g-warn)' }} />
-								<text x={21} y={13.2} textAnchor="middle" fontSize={9.5} style={{ fill: 'var(--g-warn-text)' }} fontWeight={700} fontFamily="var(--g-mono)">×{p.max_iterations}</text>
-							</g>
-						) : null}
-						{st && st !== 'idle' ? (
-							<g data-status={st}>
-								<circle cx={W - 12} cy={H - 12} r={4} style={{ fill: DOT[st] }} />
-								{st === 'running' ? <circle className="g-flow" cx={W - 12} cy={H - 12} r={4} fill="none" style={{ stroke: DOT[st] }}><animate attributeName="r" from="4" to="11" dur="1.4s" repeatCount="indefinite" /><animate attributeName="opacity" from="1" to="0" dur="1.4s" repeatCount="indefinite" /></circle> : null}
-							</g>
-						) : st === 'idle' ? <circle cx={W - 12} cy={H - 12} r={3.5} style={{ fill: 'var(--g-ink-4)' }} /> : null}
-					</g>
-				);
-			})}
-		</svg>
+					);
+				})}
+			</svg>
+		</div>
 	);
+}
+
+/**
+ * Edge from the end of one band to a phase on a later band: out to the column gutter,
+ * down to the lane under the band, across, and down into the phase from its left.
+ */
+function wrap_path(x1: number, y1: number, x2: number, y2: number, lane: number): string {
+	const r = 10;
+	const gx = x1 + 22; const tx = x2 - 22;
+	const s = tx < gx ? -1 : 1;
+	return `M${x1} ${y1} H${gx - r} Q${gx} ${y1} ${gx} ${y1 + r} V${lane - r} Q${gx} ${lane} ${gx + s * r} ${lane} H${tx - s * r} Q${tx} ${lane} ${tx} ${lane + r} V${y2 - r} Q${tx} ${y2} ${tx + r} ${y2} H${x2}`;
 }
 
 /** Legend for the graph (types, review, loop). */

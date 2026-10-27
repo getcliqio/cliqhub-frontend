@@ -262,6 +262,31 @@ export function layout_phases(phases: Team_phase[]): Graph_layout {
 	return { pos, cols, rows, loops };
 }
 
+/** Steps per band before a long flow wraps onto the next band. */
+export const WRAP_STEPS = 6;
+
+/**
+ * Wraps a long layout into bands, like lines of text: column → band and the column
+ * within it. Bands are balanced (7 steps → 4 + 3, not 6 + 1) and a break
+ * never falls inside a gate's route-back when it can be moved a step or two.
+ */
+export function wrap_columns(L: Graph_layout, max = WRAP_STEPS): Array<{ band: number; col: number }> {
+	const per = Math.ceil(L.cols / Math.max(1, Math.ceil(L.cols / max)));
+	const splits = (end: number) => L.loops.some((lp) => L.pos[lp.to].col < end && L.pos[lp.from].col >= end);
+	const out: Array<{ band: number; col: number }> = [];
+	let start = 0;
+	for (let band = 0; start < L.cols; band++) {
+		let end = Math.min(L.cols, start + per);
+		if (end < L.cols && splits(end)) {
+			const tries = [end - 1, end + 1, end - 2, end + 2].filter((e) => e > start + 1 && e < L.cols && e <= start + max + 1);
+			end = tries.find((e) => !splits(e)) ?? end;
+		}
+		for (let c = start; c < end; c++) out.push({ band, col: c - start });
+		start = end;
+	}
+	return out;
+}
+
 export function team_href(scope: string | null, name: string, tab?: Team_view): string {
 	const base = `/teams/${encodeURIComponent(scope ?? '_')}/${encodeURIComponent(name)}`;
 	return tab && tab !== 'overview' ? `${base}?tab=${tab}` : base;

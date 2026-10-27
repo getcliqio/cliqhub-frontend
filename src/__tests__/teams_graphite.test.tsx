@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
-import { layout_phases, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
+import { layout_phases, wrap_columns, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
 
 const auth = { scopes: [{ slug: 'sapan' }], user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
@@ -12,6 +12,7 @@ vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: ({ sco
 
 import { Component as ListPage } from '@/pages/teams/teams_graphite_page';
 import { Component as TeamPage } from '@/pages/teams/team_graphite_page';
+import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
 
 const ph = (name: string, type: string, over: Partial<Team_phase> = {}): Team_phase => ({ name, type, agent: type === 'standard' ? 'claude-code' : null, depends_on: [], review: false, reviewers: null, max_iterations: null, commands: [], sources: [], targets: [], team: null, role: null, support: false, ...over });
 const PHASES: Team_phase[] = [
@@ -134,6 +135,24 @@ describe('team page helpers', () => {
 		const b = layout_phases([ph('root', 'standard'), ph('alpha', 'standard', { depends_on: ['root'] }), ph('zeta', 'standard', { depends_on: ['root'] })]);
 		expect(b.pos.alpha.row).toBeLessThan(b.pos.zeta.row);
 		expect(layout_phases(PHASES).pos.tests.row).toBeLessThan(layout_phases(PHASES).pos['security-scan'].row);
+	});
+	it('wraps long flows into balanced bands, never breaking inside a route-back', () => {
+		const chain = (n: number, over: Record<number, Partial<Team_phase>> = {}) => Array.from({ length: n }, (_, i) => ph(`p${i}`, 'standard', { depends_on: i ? [`p${i - 1}`] : [], ...over[i] }));
+		expect(wrap_columns(layout_phases(PHASES)).every((c) => c.band === 0)).toBe(true);
+		const seven = wrap_columns(layout_phases(chain(7)));
+		expect(seven.map((c) => c.band)).toEqual([0, 0, 0, 0, 1, 1, 1]);
+		expect(seven[4].col).toBe(0);
+		// p4 is a gate routing back to p3: the break moves so both stay on one band.
+		const looped = wrap_columns(layout_phases(chain(7, { 4: { type: 'gate', max_iterations: 2 } })));
+		expect(looped[3].band).toBe(looped[4].band);
+	});
+	it('draws a wrapped flow with a connector between bands', () => {
+		const long = Array.from({ length: 9 }, (_, i) => ph(`step-${i}`, 'standard', { depends_on: i ? [`step-${i - 1}`] : [] }));
+		const { container } = render(<Workflow_graph phases={long} />);
+		expect(container.querySelectorAll('[data-wrap]')).toHaveLength(1);
+		expect(container.querySelector('[data-wrap]')?.getAttribute('data-edge')).toBe('step-4->step-5');
+		const svg = container.querySelector('svg')!;
+		expect(Number.parseFloat(svg.style.minWidth)).toBeGreaterThan(0);
 	});
 	it('subtitles, overlay states, hrefs', () => {
 		expect(phase_subtitle(PHASES[0])).toBe('jira');
