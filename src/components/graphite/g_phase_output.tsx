@@ -8,7 +8,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
-import { Md } from '@/components/graphite/g_review';
+import { Md } from '@/components/graphite/g_md';
 import type { Phase_output_view, Run_artifact, Run_phase_output } from '@/lib/realm_inbox';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 

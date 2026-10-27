@@ -105,6 +105,21 @@ function map_review(raw: unknown): GeneratedPhase['review'] {
 	return review;
 }
 
+function map_hug(raw: unknown): GeneratedPhase['hug'] {
+	if (!raw || typeof raw !== 'object') return undefined;
+	const row = raw as Record<string, unknown>;
+	const hug: NonNullable<GeneratedPhase['hug']> = {};
+	const channels = as_string_list(row.channels);
+	if (channels.length > 0) hug.channels = channels;
+	// Durations are written as `30m`, `2h`, or minutes.
+	const duration = (v: unknown) => as_string(v) ?? (typeof v === 'number' && Number.isFinite(v) ? `${v}m` : undefined);
+	const timeout = duration(row.timeout);
+	if (timeout) hug.timeout = timeout;
+	const remind_every = duration(row.remind_every);
+	if (remind_every) hug.remind_every = remind_every;
+	return Object.keys(hug).length ? hug : undefined;
+}
+
 /** The builder's view of one team.yml phase (its original YAML kept in `source`). */
 export function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | null {
 	if (!raw || typeof raw !== 'object') return null;
@@ -155,6 +170,9 @@ export function map_phase(raw: unknown, is_support: boolean): GeneratedPhase | n
 
 	const review = map_review(row.review);
 	if (review) phase.review = review;
+
+	const hug = map_hug(row.hug);
+	if (hug) phase.hug = hug;
 
 	const team = as_string(row.team);
 	if (team) phase.team = team;

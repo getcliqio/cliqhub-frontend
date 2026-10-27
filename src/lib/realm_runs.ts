@@ -17,7 +17,8 @@ export interface Realm_run_row {
 	/** Set on a sub-team run: its main run and the phase that started it (absent from an older BFF). */
 	parent?: { run_id: string; run_name: string | null; phase: string | null } | null;
 	/** Why the run needs a person — waiting for input, or a review pending (absent from an older BFF). */
-	needs_you?: 'input' | 'review' | null;
+	/** `hug` when an unanswered Hug for this run reached you. */
+	needs_you?: 'hug' | null;
 	/** The daemon's name or hostname (absent from an older BFF). */
 	daemon_name?: string | null;
 }

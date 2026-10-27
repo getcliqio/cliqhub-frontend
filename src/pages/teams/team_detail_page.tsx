@@ -13,7 +13,7 @@ import type { WorkflowPhase } from '@/lib/types';
 import { team_href, type Team_phase } from '@/lib/team_page';
 import type { TeamDetailData } from '@/components/team_detail_view';
 import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
-import { Md } from '@/components/graphite/g_review';
+import { Md } from '@/components/graphite/g_md';
 import { Team_avatar } from '@/pages/teams/teams_graphite_page';
 
 const CARD = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';

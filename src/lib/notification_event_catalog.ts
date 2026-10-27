@@ -36,7 +36,7 @@ const REALM_GROUPS: Event_group[] = [
 			{ value: 'phase.failed', label: 'Phase failed' },
 			{ value: 'phase.skipped', label: 'Phase skipped' },
 			{ value: 'phase.escalated', label: 'Phase escalated' },
-			{ value: 'phase.inputs_supplied', label: 'Inputs supplied' },
+			{ value: 'phase.resumed', label: 'Phase resumed' },
 			{ value: 'phase.timed_out', label: 'Phase timed out' },
 			{ value: 'phase.idle', label: 'Phase idle' },
 		],
@@ -45,11 +45,10 @@ const REALM_GROUPS: Event_group[] = [
 		value: 'hug.*',
 		label: 'All HUG',
 		children: [
-			{ value: 'hug.review_reminded', label: 'Review reminded' },
-			{ value: 'hug.review_responded', label: 'Review responded' },
-			{ value: 'hug.routing_requested', label: 'Routing requested' },
-			{ value: 'hug.review_resolved', label: 'Review resolved' },
-			{ value: 'hug.review_expired', label: 'Review expired' },
+			{ value: 'hug.reminded', label: 'HUG reminder' },
+			{ value: 'hug.responded', label: 'HUG answered' },
+			{ value: 'hug.closed', label: 'HUG closed' },
+			{ value: 'hug.expired', label: 'HUG expired' },
 		],
 	},
 	{
@@ -99,6 +98,12 @@ const ACCOUNT_GROUPS: Event_group[] = [
 	},
 ];
 
+/** CliqHub's own notices about a realm's channels (not in a family; never selected by default). */
+const REALM_LEAVES: Event_leaf[] = [
+	{ value: 'notification.unknown_channel', label: 'Unknown channel named' },
+	{ value: 'notification.no_access', label: 'Not sent: someone without access' },
+];
+
 const ACCOUNT_LEAVES: Event_leaf[] = [
 	{ value: 'notification.test', label: 'Notification test' },
 ];
@@ -115,8 +120,9 @@ export function all_group_selectors(scope: Binding_scope): string[] {
 }
 
 export function event_leaves_for_scope(scope: Binding_scope): Event_leaf[] {
-	if (scope === 'account' || scope === 'all') return ACCOUNT_LEAVES;
-	return [];
+	if (scope === 'account') return ACCOUNT_LEAVES;
+	if (scope === 'all') return [...REALM_LEAVES, ...ACCOUNT_LEAVES];
+	return REALM_LEAVES;
 }
 
 /** Account-scoped selectors (team/auth/test). Everything else is realm-scoped. */

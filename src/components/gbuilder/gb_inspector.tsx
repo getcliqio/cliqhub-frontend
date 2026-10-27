@@ -19,6 +19,12 @@ export const IN = 'w-full rounded-lg border border-[var(--g-line)] bg-[var(--g-b
 const BTN = 'rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold hover:bg-[var(--g-soft)] disabled:opacity-50';
 const AI_BTN = 'inline-flex items-center gap-1.5 rounded-lg border border-[rgba(155,140,255,.5)] bg-[linear-gradient(135deg,rgba(124,108,255,.35),rgba(255,122,217,.22))] px-2.5 py-1 text-[11.5px] font-semibold text-[var(--g-acc-text)] disabled:opacity-50';
 
+/** A phase's `hug:` block, or undefined when nothing is set. */
+function tidy_hug(h: NonNullable<GeneratedPhase['hug']>): GeneratedPhase['hug'] {
+	const out = { ...(h.channels?.length ? { channels: h.channels } : {}), ...(h.timeout ? { timeout: h.timeout } : {}), ...(h.remind_every ? { remind_every: h.remind_every } : {}) };
+	return Object.keys(out).length ? out : undefined;
+}
+
 export function Section({ title, right, children, id }: { title: string; right?: ReactNode; children: ReactNode; id?: string }) {
 	return (
 		<section id={id} className="border-b border-[var(--g-line)] px-4 py-3.5" aria-label={title}>
@@ -198,6 +204,17 @@ export function Phase_panel({ team, name, on_change, on_select, on_close }: { te
 						{agents.map((a) => <option key={a} value={a}>{a}</option>)}
 					</select>
 					<input aria-label="Model" value={phase.model ?? ''} onChange={(e) => on({ model: e.target.value || undefined })} placeholder="Model (optional — the agent’s default)" className={`${IN} mt-1.5`} />
+				</Section>
+			) : null}
+
+			{kind === 'agent' ? (
+				<Section title="When it asks a person">
+					<label className="text-[11.5px] text-[var(--g-ink-3)]">Channels the agent’s questions go to</label>
+					<input aria-label="Ask channels" value={(phase.hug?.channels ?? []).join(', ')} onChange={(e) => on({ hug: tidy_hug({ ...phase.hug, channels: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) }) })} placeholder="a person, a group, or $(inputs.reviewers)" className={IN} />
+					<div className="mt-2 grid grid-cols-2 gap-1.5">
+						<input aria-label="Ask timeout" value={phase.hug?.timeout ?? ''} onChange={(e) => on({ hug: tidy_hug({ ...phase.hug, timeout: e.target.value || undefined }) })} placeholder="timeout · 24h" className={IN} />
+						<input aria-label="Ask remind every" value={phase.hug?.remind_every ?? ''} onChange={(e) => on({ hug: tidy_hug({ ...phase.hug, remind_every: e.target.value || undefined }) })} placeholder="remind · 4h" className={IN} />
+					</div>
 				</Section>
 			) : null}
 

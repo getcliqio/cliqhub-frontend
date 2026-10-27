@@ -23,6 +23,7 @@ export interface ExportPhase {
 	action?: string;
 	model?: string;
 	review?: ExportReviewBlock;
+	hug?: { channels?: string[]; timeout?: string; remind_every?: string };
 	team?: string;
 	inputs?: Record<string, string>;
 	is_support?: boolean;
@@ -137,6 +138,14 @@ function phase_doc(p: ExportPhase): Rec {
 	put(out, 'sources', field(raw.sources, p.sources, was.sources, (v, r) => rows(v, was.sources, r, (e) => ({ name: e.name, url: e.url, ref: e.ref }))));
 	put(out, 'target_entries', field(raw.target_entries, p.target_entries, was.target_entries, (v, r) => rows(v, was.target_entries, r, (e) => ({ name: e.name, file: e.file, url: e.url, ref: e.ref, mode: e.mode && e.mode !== 'create' ? e.mode : undefined }))));
 	put(out, 'review', field(raw.review, p.review, was.review, (v, r) => (v ? review_yaml(v, r) : undefined)));
+	put(out, 'hug', field(raw.hug, p.hug, was.hug, (v, r) => {
+		if (!v) return undefined;
+		const o: Rec = { ...(r && typeof r === 'object' ? r as Rec : {}) };
+		put(o, 'channels', v.channels?.length ? v.channels : undefined);
+		put(o, 'timeout', v.timeout);
+		put(o, 'remind_every', v.remind_every);
+		return Object.keys(o).length ? o : undefined;
+	}));
 	put(out, 'team', field(raw.team, p.team, was.team));
 	// A team phase's values for its sub-team go in `args`; values the builder can't show (not text) stay.
 	put(out, 'args', field(raw.args, p.inputs, was.inputs, (v, r) => {

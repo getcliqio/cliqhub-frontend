@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 
 import type { StreamEvent } from '@/hooks/use_run_event_stream';
+import { hug_href } from '@/lib/hug';
 
 
 // ─── Component ───────────────────────────────────────────────────────
@@ -182,13 +183,34 @@ const RENDERERS: Record<string, Renderer> = {
         </CardShell>
     ),
 
-    phase_awaiting_input: (e) => (
+    'phase.waiting': (e) => (
         <CardShell event={e} icon={<Pause className="h-3 w-3 text-purple-500" />} accent="border-purple-200 dark:border-purple-800">
             <div className="text-xs font-semibold text-purple-700 dark:text-purple-400">
-                ⏸ Awaiting input: {e.phase}
+                ⏸ Waiting on people: {e.phase}
             </div>
         </CardShell>
     ),
+
+    'phase.resumed': (e) => (
+        <CardShell event={e} icon={<Play className="h-3 w-3 text-sky-500" />} accent="border-sky-200 dark:border-sky-800">
+            <div className="text-xs font-semibold text-sky-700 dark:text-sky-400">
+                Phase running again: {e.phase}
+            </div>
+        </CardShell>
+    ),
+
+    'hug.opened': (e) => {
+        const p = e.payload as Record<string, unknown> | undefined;
+        const hug_id = typeof p?.hug_id === 'string' ? p.hug_id : null;
+        const title = typeof p?.title === 'string' ? p.title : 'Input requested';
+        return (
+            <CardShell event={e} icon={<Pause className="h-3 w-3 text-pink-500" />} accent="border-pink-200 dark:border-pink-800">
+                <div className="text-xs font-semibold text-pink-700 dark:text-pink-400">
+                    {hug_id ? <a href={hug_href(hug_id)} className="underline">{title}</a> : title}
+                </div>
+            </CardShell>
+        );
+    },
 
     run_complete: (e) => (
         <CardShell event={e} icon={<CheckCircle className="h-3 w-3 text-emerald-500" />} accent="border-emerald-300 dark:border-emerald-700">

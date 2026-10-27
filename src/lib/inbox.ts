@@ -18,7 +18,8 @@ export interface Inbox_item {
 	team: string | null;
 	run_id: string | null;
 	phase: string | null;
-	review_id: string | null;
+	/** The Hug a `hug.*` row is about. */
+	hug_id: string | null;
 	channel_id: string | null;
 	original_event: string | null;
 	at: number;
@@ -56,23 +57,21 @@ export function mark_inbox_seen(at: number = Date.now()): void {
 	try { window.dispatchEvent(new CustomEvent(INBOX_SEEN_EVENT)); } catch { /* no window */ }
 }
 
-export type Inbox_kind = 'failed' | 'input' | 'review' | 'delivery' | 'daemon' | 'done' | 'timeout' | 'info';
+export type Inbox_kind = 'failed' | 'hug' | 'delivery' | 'daemon' | 'done' | 'timeout' | 'info';
 
 export function inbox_kind(e: string): Inbox_kind {
-	if (e === 'notification.failed') return 'delivery';
+	if (e === 'notification.failed' || e === 'notification.no_access') return 'delivery';
 	if (e === 'run.failed' || e === 'run.crashed' || e === 'phase.failed') return 'failed';
-	if (e === 'phase.input_required') return 'input';
-	if (e.startsWith('hug.')) return 'review';
+	if (e.startsWith('hug.')) return 'hug';
 	if (e.startsWith('daemon.')) return 'daemon';
 	if (e === 'run.completed' || e === 'phase.completed') return 'done';
 	if (e === 'phase.timed_out' || e === 'phase.idle') return 'timeout';
 	return 'info';
 }
 
-/** HUG events (human reviews and agents asking for input) live in HUGs, not the inbox or bell. */
+/** Hug events (a person asked for input) live in HUGs, not the inbox or bell. */
 export function is_hug_event(e: string): boolean {
-	const k = inbox_kind(e);
-	return k === 'review' || k === 'input' || e === 'phase.inputs_supplied';
+	return inbox_kind(e) === 'hug';
 }
 
 /** Events that mean something went wrong — the Dashboard's "Needs attention" panel. */
@@ -94,11 +93,11 @@ export function inbox_action(i: Inbox_item): { label: string; href: string } | n
 		if (i.org_slug) q.set('org', i.org_slug);
 		return { label: 'Fix channel', href: `/notifications?${q}` };
 	}
-	if (kind === 'review') {
-		if (i.review_id && i.event === 'hug.review_requested') return { label: 'Review', href: `/reviews/${encodeURIComponent(i.review_id)}` };
+	if (kind === 'hug') {
+		// Opened and reminded Hugs are waiting on someone: answer them; the rest are a record.
+		if (i.hug_id) return { label: i.event === 'hug.opened' || i.event === 'hug.reminded' ? 'Answer' : 'Open', href: `/hugs/${encodeURIComponent(i.hug_id)}` };
 		return run ? { label: 'Open run', href: run } : null;
 	}
-	if (kind === 'input') return run ? { label: 'Provide input', href: run } : null;
 	if (kind === 'failed') return run ? { label: 'Investigate', href: run } : null;
 	if (kind === 'daemon') return realm ? { label: 'Open realm', href: `${realm}/inbox` } : null;
 	return run ? { label: 'Open run', href: run } : realm ? { label: 'Open realm', href: `${realm}/inbox` } : null;
@@ -107,11 +106,10 @@ export function inbox_action(i: Inbox_item): { label: string; href: string } | n
 /** Filter chips → exact Core event types. */
 export const INBOX_FILTERS: Array<{ id: string; label: string; types: string[] }> = [
 	{ id: 'failures', label: 'Failures', types: ['run.failed', 'run.crashed', 'phase.failed', 'phase.timed_out'] },
-	{ id: 'reviews', label: 'Reviews', types: ['hug.review_requested', 'hug.review_reminded', 'hug.review_responded', 'hug.review_resolved', 'hug.review_expired', 'hug.routing_requested'] },
-	{ id: 'input', label: 'Input', types: ['phase.input_required', 'phase.inputs_supplied'] },
+	{ id: 'hugs', label: 'HUGs', types: ['hug.reminded', 'hug.responded', 'hug.closed', 'hug.expired'] },
 	{ id: 'runs', label: 'Runs', types: ['run.started', 'run.resumed', 'run.completed', 'run.cancelled'] },
 	{ id: 'daemons', label: 'Daemons', types: ['daemon.enrolled', 'daemon.removed', 'daemon.online', 'daemon.offline', 'daemon.outbox.dead', 'daemon.outbox.recovered'] },
-	{ id: 'delivery', label: 'Delivery problems', types: ['notification.failed'] },
+	{ id: 'delivery', label: 'Delivery problems', types: ['notification.failed', 'notification.no_access'] },
 ];
 
 export function day_label(ms: number, now: number = Date.now()): string {

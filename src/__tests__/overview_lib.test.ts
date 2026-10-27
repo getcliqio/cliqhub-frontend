@@ -27,8 +27,8 @@ describe('scope_overview', () => {
 });
 
 describe('item_href', () => {
-	it('links reviews to the review page', () => {
-		expect(item_href(multi_org_overview().needs_you[0])).toBe('/reviews/rev-1');
+	it('links a Hug to its page', () => {
+		expect(item_href(multi_org_overview().needs_you[0])).toBe('/hugs/hug-1');
 	});
 	it('links runs into their realm', () => {
 		expect(item_href(multi_org_overview().live_runs[0])).toBe('/o/measureone/realms/prod-us/runs/run-1843');
@@ -39,7 +39,7 @@ describe('item_href', () => {
 	});
 	it('encodes ids', () => {
 		const item = { ...multi_org_overview().needs_you[0], id: 'a/b' };
-		expect(item_href(item)).toBe('/reviews/a%2Fb');
+		expect(item_href(item)).toBe('/hugs/a%2Fb');
 	});
 });
 

@@ -46,11 +46,10 @@ export const PERMISSION_GROUPS: Array<{ label: string; prefixes: string[] }> = [
 	{ label: 'Org', prefixes: ['org.'] },
 	{ label: 'Realms', prefixes: ['realms.'] },
 	{ label: 'Daemons & tokens', prefixes: ['daemons.', 'tokens.', 'dispatch_keys.'] },
-	{ label: 'Team execution', prefixes: ['teams.run', 'teams.cancel', 'teams.inputs', 'teams.install', 'runs.'] },
+	{ label: 'Team execution', prefixes: ['teams.run', 'teams.cancel', 'teams.install', 'runs.'] },
 	{ label: 'Publishing', prefixes: ['teams.publish', 'teams.catalog'] },
 	{ label: 'Notifications', prefixes: ['channels.', 'rules.', 'inbox.'] },
 	{ label: 'Agents', prefixes: ['agents.'] },
-	{ label: 'Reviews', prefixes: ['reviews.'] },
 ];
 export function group_permissions(all: string[]): Array<{ label: string; perms: string[] }> {
 	const used = new Set<string>();

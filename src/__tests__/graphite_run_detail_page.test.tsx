@@ -1,6 +1,6 @@
 /**
  * Graphite run detail — composition read, state-driven actions, control
- * calls (supply / cancel modes / resume), banners, stranded errors, logs,
+ * calls (cancel modes / resume), banners, stranded errors, logs,
  * canonical realm redirect, polling cadence.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -104,21 +104,16 @@ describe('Graphite run detail', () => {
 		expect(screen.queryByRole('button', { name: /output of/ })).toBeNull();
 		expect(screen.queryByTestId('run-artifacts')).toBeNull();
 	});
-	it('a phase’s stored artifacts download through artifacts/get_by_id', async () => {
-		const open = vi.spyOn(window, 'open').mockReturnValue(null);
-		const spy = route_fetch(
-			run_detail({ artifacts: [{ artifact_id: 'a1', phase: 'fetch', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }),
-			{ '/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { download_url: 'https://r2.example/report.pdf?sig' } } }) },
-		);
+	it('a phase’s stored files link straight to the Hub download (the link never expires)', async () => {
+		const spy = route_fetch(run_detail({ artifacts: [{ artifact_id: 'a 1', phase: 'fetch', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }));
 		render_page();
 		await ready();
 		expect(screen.queryByTestId('artifact-row')).toBeNull(); // closed until asked for
 		const row = within(open_output('fetch')).getByTestId('artifact-row');
 		expect(row).toHaveTextContent('report.pdf');
 		expect(row).toHaveTextContent('File · 2.0 KB · Weekly');
-		fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }));
-		await waitFor(() => expect(open).toHaveBeenCalledWith('https://r2.example/report.pdf?sig', '_blank', 'noopener'));
-		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'a1' }]);
+		expect(screen.getByRole('link', { name: 'Download report.pdf' })).toHaveAttribute('href', '/v1/artifacts/download?artifact_id=a%201');
+		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([]);
 	});
 	it('a phase’s artifacts: files download, documents read inline; its output record isn’t listed again', async () => {
 		const long = 'L'.repeat(2000);
@@ -134,7 +129,7 @@ describe('Graphite run detail', () => {
 		await ready();
 		const panel = open_output('fetch');
 		expect(within(panel).getAllByTestId('artifact-row')).toHaveLength(2);
-		expect(within(panel).getByRole('button', { name: 'Download app.zip' })).toBeInTheDocument();
+		expect(within(panel).getByRole('link', { name: 'Download app.zip' })).toHaveAttribute('href', '/v1/artifacts/download?artifact_id=a1');
 		fireEvent.click(within(panel).getByRole('button', { name: 'Read transcript' }));
 		await waitFor(() => expect(within(panel).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
@@ -205,7 +200,8 @@ describe('Graphite run detail', () => {
 
 	it.each([
 		['running', ['Cancel']],
-		['awaiting_input', ['Provide input', 'Cancel', 'Resume from…']],
+		// Waiting on a person: the Hug banner links to it; there is no input form here.
+		['awaiting_input', ['Cancel', 'Resume from…']],
 		['failed', ['Resume from…', 'Run again']],
 		['crashed', ['Resume from…', 'Run again']],
 		['completed', ['Run again']],
@@ -224,21 +220,6 @@ describe('Graphite run detail', () => {
 		render_page();
 		await ready();
 		expect(screen.queryByRole('button', { name: 'Run again' })).toBeNull();
-	});
-
-	it('supply inputs posts key=value pairs, shows a notice and reloads', async () => {
-		const spy = route_fetch(run_detail({}, { state: 'awaiting_input', error: null }), { '/v1/runs/supply_inputs': () => ({ body: { ok: true } }) });
-		render_page();
-		await ready();
-		fireEvent.click(screen.getByRole('button', { name: 'Provide input' }));
-		const send = screen.getByRole('button', { name: 'Send & resume' });
-		expect(send).toBeDisabled();
-		fireEvent.change(screen.getByLabelText('Inputs'), { target: { value: 'employer_name=Acme Corp\n# skip\nbad line' } });
-		fireEvent.click(send);
-		expect(await screen.findByText('Inputs sent — the run should resume shortly.')).toBeInTheDocument();
-		expect(calls(spy, '/v1/runs/supply_inputs')).toEqual([{ run_id: 'run-77', inputs: { employer_name: 'Acme Corp' } }]);
-		expect(calls(spy, '/v1/run_detail/get').length).toBeGreaterThanOrEqual(2);
-		expect(screen.queryByTestId('supply-panel')).toBeNull();
 	});
 
 	it.each([
@@ -263,7 +244,7 @@ describe('Graphite run detail', () => {
 				{ run_id: 'run-77', run_name: 'Nightly reconcile', team: '@measureone/architect', phase: 'design' },
 				{ run_id: 'run-lld', run_name: 'solar-lilac-fox', team: '@measureone/design-lld', phase: 'hug-lld' },
 			],
-			review: { review_id: 'rv-1', status: 'expired', policy: 'any', route_targets: ['draft-lld'], reviewers: [
+			review: { hug_id: 'rv-1', status: 'expired', policy: 'any', route_targets: ['draft-lld'], reviewers: [
 				{ name: 'krupali', action: 'REJECT', responded_at: new Date().toISOString(), comment: 'jobs too big' },
 				{ name: 'sapan', action: null, responded_at: null, comment: null },
 			] },
@@ -279,7 +260,7 @@ describe('Graphite run detail', () => {
 		]);
 		expect(within(card).getByTestId('failure-resume')).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-lld?resume=draft-lld');
 		expect(within(card).getByTestId('failure-two-step')).toHaveTextContent('resume this run from design');
-		expect(within(card).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/reviews/rv-1');
+		expect(within(card).getByRole('link', { name: 'Open review' })).toHaveAttribute('href', '/hugs/rv-1');
 	});
 
 	it('why it failed in this run: the header’s Resume opens at that phase (the card has no second Resume or Logs); ?resume= does the same', async () => {
@@ -414,12 +395,12 @@ describe('Graphite run detail', () => {
 		expect(b).toHaveTextContent('Reason: daemon offline');
 	});
 
-	it('pending review on this run links to the review', async () => {
-		route_fetch(run_detail({ reviews: [{ id: 'rev-9', title: 'Approve match results', phase: 'gate', requested_at: Date.now() - 60_000, message: null }] }, { state: 'awaiting_input', error: null }));
+	it('an open Hug on this run links to it', async () => {
+		route_fetch(run_detail({ hugs: [{ id: 'hug-9', title: 'Approve match results', phase: 'gate', created_at: Date.now() - 60_000, expires_at: Date.now() + 60_000, responded: false }] }, { state: 'awaiting_input', error: null }));
 		render_page();
 		await ready();
-		expect(screen.getByTestId('run-reviews-banner')).toHaveTextContent('Waiting on a review: Approve match results');
-		expect(screen.getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-9');
+		expect(screen.getByTestId('run-hugs-banner')).toHaveTextContent('Waiting on a person: Approve match results');
+		expect(screen.getByRole('link', { name: 'Answer' })).toHaveAttribute('href', '/hugs/hug-9');
 	});
 
 	it('partial composition names the missing sections', async () => {

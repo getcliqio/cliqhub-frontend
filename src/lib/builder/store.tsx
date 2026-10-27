@@ -9,6 +9,13 @@ export interface GeneratedReviewBlock {
 	remind_every?: string;
 }
 
+/** Where an agent's own questions go (`ctx.ask`): a phase's `hug:` block. */
+export interface GeneratedHugBlock {
+	channels?: string[];
+	timeout?: string;
+	remind_every?: string;
+}
+
 export interface GeneratedPhase {
 	name: string;
 	type: 'standard' | 'gate' | 'team';
@@ -21,6 +28,7 @@ export interface GeneratedPhase {
 	action?: string;
 	model?: string;
 	review?: GeneratedReviewBlock;
+	hug?: GeneratedHugBlock;
 	team?: string;
 	inputs?: Record<string, string>;
 	is_support?: boolean;
@@ -28,7 +36,7 @@ export interface GeneratedPhase {
 	pending?: boolean;
 	/**
 	 * This phase as written in team.yml when it was opened. Saving starts from it, so fields the builder
-	 * doesn't edit (args, timeout, when, hug, an agent's own inputs…) are kept as they were.
+	 * doesn't edit (args, timeout, when, an agent's own inputs…) are kept as they were.
 	 */
 	source?: Record<string, unknown>;
 }

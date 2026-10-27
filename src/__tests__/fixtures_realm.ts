@@ -10,15 +10,15 @@ export function inbox(over: Partial<Realm_inbox_data> = {}): Realm_inbox_data {
 	return {
 		realm: REALM,
 		items: [
-			{ kind: 'input', id: 'run-88', run_id: 'run-88', title: 'income-verify #88', team: 'income-verify', phase: 'intake', state: 'awaiting_input', at: now - 60_000, error: null, message: null, artifact_count: null, origin: 'hub' },
-			{ kind: 'failed', id: 'run-77', run_id: 'run-77', title: 'Nightly reconcile', team: 'recon', phase: 'match', state: 'crashed', at: now - 120_000, error: 'Timeout talking to ledger', message: null, artifact_count: null, origin: 'cli' },
-			{ kind: 'review', id: 'rev-1', run_id: 'run-1841', title: 'Approve architecture', team: '@cliq/feature-dev-js', phase: 'design-review', state: 'pending', at: now - 600_000, error: null, message: 'Please check the retry budget', artifact_count: 2, origin: null },
+			{ kind: 'input', id: 'run-88', run_id: 'run-88', title: 'income-verify #88', team: 'income-verify', phase: 'intake', state: 'awaiting_input', at: now - 60_000, error: null, expires_at: null, responded: null, origin: 'hub' },
+			{ kind: 'failed', id: 'run-77', run_id: 'run-77', title: 'Nightly reconcile', team: 'recon', phase: 'match', state: 'crashed', at: now - 120_000, error: 'Timeout talking to ledger', expires_at: null, responded: null, origin: 'cli' },
+			{ kind: 'hug', id: 'hug-1', run_id: 'run-1841', title: 'Approve architecture', team: '@cliq/feature-dev-js', phase: 'design-review', state: 'open', at: now - 600_000, error: null, expires_at: now + 3_600_000, responded: false, origin: null },
 		],
 		live: [
-			{ kind: 'run', id: 'run-1843', run_id: 'run-1843', title: 'PROJ-491 · Webhook signing', team: 'feature-dev-js', phase: 'implement', state: 'running', at: now - 30_000, error: null, message: null, artifact_count: null, origin: 'hub' },
+			{ kind: 'run', id: 'run-1843', run_id: 'run-1843', title: 'PROJ-491 · Webhook signing', team: 'feature-dev-js', phase: 'implement', state: 'running', at: now - 30_000, error: null, expires_at: null, responded: null, origin: 'hub' },
 		],
-		counts: { reviews: 1, awaiting_input: 1, failed_24h: 1, running: 1 },
-		sections: { reviews: ok, awaiting_input: ok, failed: ok, running: ok },
+		counts: { hugs: 1, awaiting_input: 1, failed_24h: 1, running: 1 },
+		sections: { hugs: ok, awaiting_input: ok, failed: ok, running: ok },
 		partial: false,
 		...over,
 	};
@@ -39,9 +39,9 @@ export function run_detail(over: Partial<Run_detail_data> = {}, run_over: Partia
 			{ phase: 'fetch', status: 'completed', sequence: 0, started_at: now - 600_000, completed_at: now - 300_000, error: null, agent: 'fetcher' },
 		],
 		realm: REALM,
-		reviews: [],
+		hugs: [],
 		artifacts: [],
-		sections: { phases: ok, labels: ok, realm: ok, reviews: ok, artifacts: ok },
+		sections: { phases: ok, labels: ok, realm: ok, hugs: ok, artifacts: ok },
 		partial: false,
 		...over,
 	};

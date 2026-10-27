@@ -105,7 +105,8 @@ export function use_run_event_stream({
             'phase_start', 'phase_started',
             'phase_complete', 'phase_completed',
             'phase_failed', 'phase_error',
-            'phase_awaiting_input', 'phase_inputs_supplied',
+            // A phase waiting on people (Hugs) and running again (PLAN-hug-requests).
+            'phase.waiting', 'phase.resumed', 'hug.opened',
             'agent_started', 'agent_completed', 'agent_failed',
             'run_complete', 'run_failed', 'run_crashed', 'run_cancelled',
             'orchestrator_registered',

@@ -80,14 +80,14 @@ describe('Realm runs page', () => {
 	it('columns: Run, Team (with version), State (Needs you from the BFF), Started, Daemon (its name)', async () => {
 		const base = runs().items[0];
 		route_fetch(() => ({ body: { ok: true, data: runs({ items: [
-			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', needs_you: 'review', daemon_id: 'd-123456789', daemon_name: 'mac-1' },
+			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', needs_you: 'hug', daemon_id: 'd-123456789', daemon_name: 'mac-1' },
 			{ ...base, run_id: 'w2', run_name: 'plain', team: '@cliq/dev', version: null, state: 'completed', needs_you: null, daemon_id: 'd-abcdefghij', daemon_name: null },
 		], total: 2 }) } }));
 		render_page();
 		const w1 = await screen.findByTestId('run-w1');
 		expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.replace(/[↑↓⇅\s]+$/u, '').trim())).toEqual(['Run', 'Team', 'State', 'Started', 'Daemon']);
 		expect(within(w1).getByTestId('cell-team')).toHaveTextContent('@cliq/dev · 2.0.0');
-		expect(within(w1).getByTestId('cell-state')).toHaveTextContent('Needs you · reviewat human-review');
+		expect(within(w1).getByTestId('cell-state')).toHaveTextContent('Needs youat human-review');
 		expect(within(w1).getByTestId('cell-daemon')).toHaveTextContent('mac-1');
 		const w2 = screen.getByTestId('run-w2');
 		expect(within(w2).getByTestId('cell-team')).toHaveTextContent(/^@cliq\/dev$/);

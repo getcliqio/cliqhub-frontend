@@ -150,26 +150,24 @@ describe('Overview page', () => {
 		expect(names.slice(1).map((n) => n.match(/prod-us|staging/)?.[0])).toEqual(['prod-us', 'staging']);
 	});
 
-	it('needs-you tabs filter by kind and link to the right place', async () => {
+	it('HUGs waiting on you link to their Hug page', async () => {
 		respond(multi_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1, name: /MeasureOne/ });
-		fireEvent.click(screen.getByRole('tab', { name: /Input 1/ }));
-		expect(screen.getByRole('tab', { name: /Input 1/ })).toHaveAttribute('aria-selected', 'true');
-		expect(screen.queryByText('Approve architecture · PROJ-482')).toBeNull();
-		expect(screen.getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
-		fireEvent.click(screen.getByRole('tab', { name: /Reviews 1/ }));
-		expect(screen.getAllByRole('link', { name: 'Review' })[0]).toHaveAttribute('href', '/reviews/rev-1');
+		expect(screen.getByText('Approve architecture · PROJ-482')).toBeInTheDocument();
+		expect(screen.queryByText('Review docs page')).toBeNull(); // Acme's
+		const answers = screen.getAllByRole('link', { name: 'Answer' }).map((a) => a.getAttribute('href'));
+		expect(answers).toEqual(expect.arrayContaining(['/hugs/hug-1', '/hugs/hug-88']));
 	});
 
 	it('Needs attention: only problems for this org from the latest events, with a way into the inbox', async () => {
 		const ev = (id: string, event: string, org_id: string | null = ORG_A): Inbox_item => ({
 			id, event, title: `T ${id}`, message: null, severity: null, org_id, org_slug: org_id === ORG_B ? 'acme-labs' : 'measureone',
-			realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, review_id: null, channel_id: null, original_event: null, at: Date.now() - 60_000,
+			realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, hug_id: null, channel_id: null, original_event: null, at: Date.now() - 60_000,
 		});
 		const d = multi_org_overview();
 		d.inbox = { new_count: 0, capped: false, status: 'ok', latest: [
-			ev('fail', 'run.failed'), ev('done', 'run.completed'), ev('hug', 'hug.review_requested'),
+			ev('fail', 'run.failed'), ev('done', 'run.completed'), ev('hug', 'hug.reminded'),
 			ev('off', 'daemon.offline'), ev('on', 'daemon.online'), ev('other-org', 'run.crashed', ORG_B),
 		] };
 		respond(d);
@@ -192,7 +190,7 @@ describe('Overview page', () => {
 	});
 
 	it('shows onboarding when the user has no realms', async () => {
-		respond({ orgs: [], totals: { needs_you: 0, pending_reviews: 0, awaiting_input: 0, active_runs: 0, failed_24h: 0, completed_24h: 0, daemons_online: 0, daemons_total: 0, orgs: 0, realms: 0 }, needs_you: [], live_runs: [], partial: false });
+		respond({ orgs: [], totals: { needs_you: 0, open_hugs: 0, awaiting_input: 0, active_runs: 0, failed_24h: 0, completed_24h: 0, daemons_online: 0, daemons_total: 0, orgs: 0, realms: 0 }, needs_you: [], live_runs: [], partial: false });
 		render_page();
 		expect(await screen.findByText('You don’t have any realms yet')).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Create a realm' })).toHaveAttribute('href', '/realms');
@@ -372,13 +370,12 @@ describe('Breadcrumb, account menu', () => {
 
 describe('Colour by kind (overview)', () => {
 	afterEach(() => vi.restoreAllMocks());
-	it('input rows are amber like everywhere else, reviews pink', async () => {
+	it('HUG rows are pink, like everywhere else', async () => {
 		respond(multi_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1 });
 		const kinds = Array.from(document.querySelectorAll('[data-kind]')) as HTMLElement[];
-		expect(kinds.find((k) => k.dataset.kind === 'input')!.style.color).toBe('var(--g-warn-text)');
-		expect(kinds.find((k) => k.dataset.kind === 'review')!.style.color).toBe('var(--g-hug)');
+		expect(kinds.find((k) => k.dataset.kind === 'hug')!.style.color).toBe('var(--g-hug)');
 	});
 });
 

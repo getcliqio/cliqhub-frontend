@@ -1,11 +1,10 @@
 /**
- * HUGs (Graphite) — everything in the org waiting on a person: human reviews
- * and agents asking for input. Its own app, not part of the inbox.
+ * HUGs (Graphite) — everything in the org waiting on a person: reviews and agents asking a
+ * question are all Hugs. Its own app, not part of the inbox.
  *
- *   Waiting — reviews + input requests, from the overview the shell already
- *             loads (no extra call), oldest first.
- *   Done    — answered, resolved or expired HUGs: the org's `hug.*` and
- *             `phase.inputs_supplied` events from `POST /v1/inbox/get`.
+ *   Waiting — open Hugs that reached you and you haven't answered, from the overview the shell
+ *             already loads (no extra call), oldest first.
+ *   Done    — answered, closed or expired Hugs: the org's `hug.*` events from `POST /v1/inbox/get`.
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -22,16 +21,16 @@ type Tab = 'waiting' | 'done';
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 
-/** HUG events that mean "settled" (the Done list). */
-export const HUG_DONE_TYPES = ['hug.review_responded', 'hug.review_resolved', 'hug.review_expired', 'phase.inputs_supplied'];
+/** Hug events that mean "settled" or answered (the Done list). */
+export const HUG_DONE_TYPES = ['hug.responded', 'hug.closed', 'hug.expired'];
 
-/** Overview "needs you" item → the shared row shape (same row, same actions). */
+/** Overview "needs you" Hug → the shared row shape (same row, same actions). */
 export function needs_to_item(i: Overview_item): Inbox_item {
 	return {
 		id: `${i.kind}-${i.id}`,
-		event: i.kind === 'review' ? 'hug.review_requested' : 'phase.input_required',
+		event: 'hug.opened',
 		title: i.title,
-		message: i.phase ? `${i.kind === 'review' ? 'Review gate' : 'Waiting for input'} · ${i.phase}` : null,
+		message: i.phase ? `Waiting for you · ${i.phase}` : null,
 		severity: null,
 		org_id: i.org_id,
 		org_slug: i.org_slug,
@@ -40,7 +39,7 @@ export function needs_to_item(i: Overview_item): Inbox_item {
 		team: i.team,
 		run_id: i.run_id,
 		phase: i.phase,
-		review_id: i.kind === 'review' ? i.id : null,
+		hug_id: i.kind === 'hug' ? i.id : null,
 		channel_id: null,
 		original_event: null,
 		at: i.at ?? 0,
@@ -64,21 +63,16 @@ function Empty({ title, body }: { title: string; body: string }) {
 }
 
 function Waiting({ items, total, scope }: { items: Overview_item[]; total: number; scope: View_scope }) {
-	const [kind, set_kind] = useState<'all' | 'review' | 'input'>('all');
 	const [q, set_q] = useState('');
-	const mine = items.filter((i) => (i.kind === 'review' || i.kind === 'input') && in_view(i, scope));
+	const mine = items.filter((i) => i.kind === 'hug' && in_view(i, scope));
 	const shown = mine
-		.filter((i) => kind === 'all' || i.kind === kind)
 		.filter((i) => !q.trim() || `${i.title} ${i.team ?? ''} ${i.realm_slug ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
 		// Oldest waiting first: the longest wait is the most urgent.
 		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-	const n = (k: 'review' | 'input') => mine.filter((i) => i.kind === k).length;
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex flex-wrap items-center gap-2">
-				<button type="button" aria-pressed={kind === 'all'} onClick={() => set_kind('all')} className={PILL(kind === 'all')}>All <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{mine.length}</span></button>
-				<button type="button" aria-pressed={kind === 'review'} onClick={() => set_kind('review')} className={PILL(kind === 'review')}>Reviews <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{n('review')}</span></button>
-				<button type="button" aria-pressed={kind === 'input'} onClick={() => set_kind('input')} className={PILL(kind === 'input')}>Input <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{n('input')}</span></button>
+				<span className={PILL(true)}>Waiting <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{mine.length}</span></span>
 				<input aria-label="Search HUGs" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search…" className={`${INPUT} ml-auto w-[220px]`} />
 			</div>
 			<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
@@ -86,7 +80,7 @@ function Waiting({ items, total, scope }: { items: Overview_item[]; total: numbe
 					<>
 						<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Oldest waiting first</div>
 						{shown.map((i) => <Inbox_row key={`${i.kind}-${i.id}`} item={needs_to_item(i)} is_new={false} show_realm_org={false} />)}
-						{total > mine.length && kind === 'all' && !q.trim() ? (
+						{total > mine.length && !q.trim() ? (
 							<p className="border-t border-[var(--g-line-2)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]" data-testid="needs-more">
 								Showing the {mine.length} most recent of {total}. Open a realm to see the rest.
 							</p>
@@ -122,7 +116,7 @@ function Done({ scope }: { scope: View_scope }) {
 					<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
 					{g.items.map((i) => <Inbox_row key={i.id} item={i} is_new={false} show_realm_org={false} />)}
 				</div>
-			)) : <Empty title="No past HUGs yet" body="Answered reviews and supplied inputs show up here." />}
+			)) : <Empty title="No past HUGs yet" body="Answered, closed and expired HUGs show up here." />}
 		</div>
 	);
 }
@@ -148,7 +142,7 @@ export function Component() {
 			<div className="flex flex-col gap-[18px] px-7 py-6">
 				<div>
 					<h1 className="text-[24px] font-semibold tracking-[-0.02em]">HUGs</h1>
-					<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Human reviews, and agents asking a question: the runs waiting on a person.</p>
+					<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Reviews, and agents asking a question: the runs waiting on a person.</p>
 				</div>
 				<div role="tablist" aria-label="HUGs" className="flex gap-1 border-b border-[var(--g-line)]">
 					{([['waiting', 'Waiting', waiting_total], ['done', 'Done', 0]] as const).map(([id, label, n]) => (

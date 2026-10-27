@@ -180,11 +180,8 @@ function Empty_no_realms() {
 
 /* ------------------------------------------------------------------ */
 
-type Needs_filter = 'all' | 'review' | 'input';
-
 export function Overview_view({ data }: { data: Overview_data }) {
 	const { user } = useAuth();
-	const [needs_filter, set_needs_filter] = useState<Needs_filter>('all');
 	// The view comes from the switcher (URL); this page never filters on its own.
 	const scope = use_view_scope(data);
 	const view_org = scope.kind === 'org' ? scope.org : null;
@@ -194,9 +191,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 	const multi_org = data.orgs.length > 0;
 	const show_org_tags = multi_org && scope.kind === 'all';
 
-	const reviews = view.needs_you.filter((i) => i.kind === 'review').length;
-	const inputs = view.needs_you.filter((i) => i.kind === 'input').length;
-	const needs_list = needs_filter === 'all' ? view.needs_you : view.needs_you.filter((i) => i.kind === needs_filter);
+	const needs_list = view.needs_you;
 	const realms_with_activity = new Set(view.live_runs.map((r) => r.realm_id).filter(Boolean)).size;
 	const offline = view.totals.daemons_total - view.totals.daemons_online;
 	// Same panel in every view: realms, each labelled with its org — no view switching.
@@ -248,7 +243,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 					tone="attention"
 					emphasize={view.totals.needs_you > 0}
 					value={view.totals.needs_you}
-					sub={`${plural(view.totals.pending_reviews, 'review')} · ${plural(view.totals.awaiting_input, 'input')}`}
+					sub={`${plural(view.totals.open_hugs, 'open HUG')} · ${plural(view.totals.awaiting_input, 'run')} waiting`}
 				/>
 				<Stat
 					label="Running now"
@@ -275,10 +270,8 @@ export function Overview_view({ data }: { data: Overview_data }) {
 					<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
 						<h2 id="needs-h" className="text-[15px] font-semibold">HUGs</h2>
 						<span className="text-[12px] text-[var(--g-ink-3)]">waiting on a person</span>
-						<div className="ml-auto flex items-center gap-1" role="tablist" aria-label="Filter HUGs">
-							<Tab on={needs_filter === 'all'} onClick={() => set_needs_filter('all')}>All {view.needs_you.length}</Tab>
-							<Tab on={needs_filter === 'review'} onClick={() => set_needs_filter('review')}>Reviews {reviews}</Tab>
-							<Tab on={needs_filter === 'input'} onClick={() => set_needs_filter('input')}>Input {inputs}</Tab>
+						<div className="ml-auto flex items-center gap-1">
+							<span className="g-mono text-[12px] text-[var(--g-ink-3)]">{view.needs_you.length}</span>
 							<Link to="/hugs" className="ml-2 text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">All HUGs →</Link>
 						</div>
 					</div>
@@ -286,7 +279,7 @@ export function Overview_view({ data }: { data: Overview_data }) {
 						<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
 							<CheckCircle2 aria-hidden className="h-7 w-7 text-[var(--g-ok)]" />
 							<p className="text-[14px] font-semibold">You’re all caught up</p>
-							<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews, and agents asking a question, show up here.</p>
+							<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews, and agents asking you a question, show up here.</p>
 						</div>
 					) : (
 						<ul>{needs_list.map((i) => <Needs_row key={`${i.kind}-${i.id}`} item={i} show_org={show_org_tags} org={data.orgs.find((o) => o.id === i.org_id)} />)}</ul>
@@ -368,20 +361,6 @@ export function Overview_view({ data }: { data: Overview_data }) {
 
 function article(word: string): string {
 	return /^[aeiou]/i.test(word) ? 'an' : 'a';
-}
-
-function Tab({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
-	return (
-		<button
-			type="button"
-			role="tab"
-			aria-selected={on}
-			onClick={onClick}
-			className={`rounded-full px-2.5 py-0.5 text-[12px] ${on ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}
-		>
-			{children}
-		</button>
-	);
 }
 
 export function Component() {

@@ -5,6 +5,7 @@
  * that sub-team run (`run_detail/get`, once per run, on demand).
  */
 import { Link } from 'react-router';
+import { hug_href } from '@/lib/hug';
 import { fmt_ms, fmt_usd, type Telemetry_phase, type Telemetry_sub_run } from '@/lib/run_telemetry';
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Run_detail_data, Run_failure } from '@/lib/realm_inbox';
@@ -154,7 +155,7 @@ export function Step_details({ step, top, failure, run_href, on_close }: {
 			{outputs.length ? <G_phase_output outputs={outputs} run_link={run_href} /> : detail.status === 'loading' ? <p className="text-[var(--g-ink-3)]">Loading output…</p> : null}
 			<div className="flex flex-wrap gap-2">
 				{failed_run ? <Link to={`${run_href(run.run_id)}?resume=${encodeURIComponent(p.name)}`} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line)] px-2.5 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Resume sub-team from {p.name}</Link> : null}
-				{broke_here?.review ? <Link to={`/reviews/${broke_here.review.review_id}`} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line)] px-2.5 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Open review</Link> : null}
+				{broke_here?.review ? <Link to={hug_href(broke_here.review.hug_id)} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line)] px-2.5 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Open review</Link> : null}
 				<Link to={`${run_href(run.run_id)}?tab=logs`} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line)] px-2.5 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Logs</Link>
 				<Link to={run_href(run.run_id)} className="inline-flex h-7 items-center rounded-md border border-[var(--g-line)] px-2.5 text-[12px] font-semibold hover:bg-[var(--g-soft)]">Open sub-team run ↗</Link>
 			</div>

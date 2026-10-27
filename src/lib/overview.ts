@@ -10,8 +10,9 @@ import { INBOX_SEEN_EVENT, read_inbox_seen, type Inbox_summary } from '@/lib/inb
 import type { Org_status } from '@/lib/admin';
 
 export interface Overview_counts {
+	/** Open Hugs that reached you (a run awaiting input waits on one, so it isn't counted again). */
 	needs_you: number;
-	pending_reviews: number;
+	open_hugs: number;
 	awaiting_input: number;
 	active_runs: number;
 	failed_24h: number;
@@ -30,7 +31,7 @@ export interface Overview_realm {
 	daemons: { online: number; stale: number; offline: number; total: number };
 	active_runs: number;
 	awaiting_input: number;
-	pending_reviews: number;
+	open_hugs: number;
 	needs_you: number;
 	/** What you may do here (view < operate < admin); null when Core didn't say. Optional for older BFFs. */
 	level?: 'view' | 'operate' | 'admin' | null;
@@ -67,7 +68,7 @@ export interface Overview_org {
 }
 
 export interface Overview_item {
-	kind: 'review' | 'input' | 'run';
+	kind: 'hug' | 'input' | 'run';
 	id: string;
 	title: string;
 	org_id: string;
@@ -159,7 +160,7 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 		orgs,
 		totals: {
 			needs_you: c?.needs_you ?? 0,
-			pending_reviews: c?.pending_reviews ?? 0,
+			open_hugs: c?.open_hugs ?? 0,
 			awaiting_input: c?.awaiting_input ?? 0,
 			active_runs: c?.active_runs ?? 0,
 			failed_24h: c?.failed_24h ?? 0,
@@ -179,7 +180,7 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 
 /** In-app link for an overview item. */
 export function item_href(item: Overview_item): string {
-	if (item.kind === 'review') return `/reviews/${encodeURIComponent(item.id)}`;
+	if (item.kind === 'hug') return `/hugs/${encodeURIComponent(item.id)}`;
 	const run_id = encodeURIComponent(item.run_id ?? item.id);
 	if (item.realm_slug) return `/o/${item.org_slug}/realms/${item.realm_slug}/runs/${run_id}`;
 	return `/runs/${run_id}`;

@@ -1,7 +1,7 @@
 /**
  * Run detail › Artifacts — what the run's phases published, grouped by phase:
- * stored files (Download asks `artifacts/get_by_id` for a fresh link — stored
- * links expire) and documents kept as run records (transcript, design or
+ * stored files (Download streams from the Hub, `/v1/artifacts/download` — the link never
+ * expires) and documents kept as run records (transcript, design or
  * review doc — a preview, Read loads the whole text from `artifacts/get_by_id`).
  * Phase outputs and handoffs are not listed here: they show on their phase
  * (Phases tab). Rows come with the run page read (`run_detail/get`). Always
@@ -12,6 +12,7 @@ import { Download } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
 import type { Run_artifact, Section_status } from '@/lib/realm_inbox';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { artifact_download_href } from '@/lib/artifact_view';
 
 /** Byte count as a short size. */
 export function format_size(bytes: number): string {
@@ -67,19 +68,6 @@ export function G_run_artifacts({ artifacts: all, status, embedded = false }: { 
 		return payload?.ok ? (payload.data as Record<string, unknown>) : null;
 	}
 
-	async function download(id: string) {
-		set_busy(id); set_err(null);
-		try {
-			const url = (await get_by_id(id))?.download_url;
-			if (typeof url === 'string' && url) window.open(url, '_blank', 'noopener');
-			else set_err('Couldn’t get a download link. Try again.');
-		} catch {
-			set_err('Couldn’t get a download link. Try again.');
-		} finally {
-			set_busy(null);
-		}
-	}
-
 	async function read(a: Run_artifact) {
 		if (open[a.artifact_id]) { set_open(({ [a.artifact_id]: _, ...rest }) => rest); return; }
 		// Short records are whole already; longer ones load their full text.
@@ -130,9 +118,9 @@ export function G_run_artifacts({ artifacts: all, status, embedded = false }: { 
 													</p>
 												</div>
 												{is_file ? (
-													<button type="button" disabled={busy === a.artifact_id} onClick={() => void download(a.artifact_id)} aria-label={`Download ${a.name}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-50">
-														<Download className="h-3.5 w-3.5" />{busy === a.artifact_id ? '…' : 'Download'}
-													</button>
+													<a href={artifact_download_href(a.artifact_id)} download={a.name} aria-label={`Download ${a.name}`} className="inline-flex items-center gap-1 rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-ink-2)] hover:text-[var(--g-ink)]">
+														<Download className="h-3.5 w-3.5" />Download
+													</a>
 												) : (
 													<button type="button" disabled={busy === a.artifact_id} onClick={() => void read(a)} aria-expanded={Boolean(text)} aria-label={`${text ? 'Hide' : 'Read'} ${a.name}`} className="inline-flex items-center rounded-md border border-[var(--g-line)] px-2.5 py-1 text-[12px] font-semibold text-[var(--g-ink-2)] hover:text-[var(--g-ink)] disabled:opacity-50">
 														{busy === a.artifact_id ? '…' : text ? 'Hide' : 'Read'}

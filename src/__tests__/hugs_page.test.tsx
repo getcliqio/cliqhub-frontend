@@ -1,6 +1,6 @@
 /**
- * HUGs — Waiting (reviews + input requests from the overview, no extra call,
- * oldest first, the org you're in) and Done (settled HUG events from one
+ * HUGs — Waiting (open Hugs that reached you, from the overview, no extra call,
+ * oldest first, the org you're in) and Done (settled Hug events from one
  * inbox read, scoped to the org).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -19,8 +19,8 @@ vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => 
 import { Component as HugsPage, HUG_DONE_TYPES } from '@/pages/hugs_page';
 
 const done: Inbox_item = {
-	id: 'd1', event: 'hug.review_responded', title: 'Approved design · PROJ-1', message: 'approved', severity: null, org_id: ORG_A, org_slug: 'measureone',
-	realm_id: 'r-prod', realm_slug: 'prod-us', team: 'feature-dev', run_id: 'run-1', phase: 'design-review', review_id: 'rev-0', channel_id: null,
+	id: 'd1', event: 'hug.responded', title: 'Approved design · PROJ-1', message: 'approved', severity: null, org_id: ORG_A, org_slug: 'measureone',
+	realm_id: 'r-prod', realm_slug: 'prod-us', team: 'feature-dev', run_id: 'run-1', phase: 'design-review', hug_id: 'hug-0', channel_id: null,
 	original_event: null, at: Date.now() - 3_600_000,
 };
 
@@ -45,24 +45,23 @@ function render_page(path = '/hugs') {
 describe('HUGs', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('Waiting: reviews + input from the overview, oldest first, no extra request', async () => {
+	it('Waiting: open Hugs from the overview, oldest first, no extra request; each answers on its Hug page', async () => {
 		const calls = route_fetch();
 		render_page();
-		await screen.findByTestId('inbox-item-review-rev-1');
-		// This org only (rev-2 is Acme's): run-88 (38m), rev-1 (12m) → oldest waiting first.
-		expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-input-run-88', 'inbox-item-review-rev-1']);
+		await screen.findByTestId('inbox-item-hug-hug-1');
+		// This org only (hug-2 is Acme's): hug-88 (38m), hug-1 (12m) → oldest waiting first.
+		expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-hug-hug-88', 'inbox-item-hug-hug-1']);
 		expect(calls.filter((c) => c.url === '/v1/inbox/get')).toHaveLength(0);
-		expect(within(screen.getByTestId('inbox-item-review-rev-1')).getByRole('link', { name: 'Review' })).toHaveAttribute('href', '/reviews/rev-1');
-		expect(within(screen.getByTestId('inbox-item-input-run-88')).getByRole('link', { name: 'Provide input' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-88');
+		expect(within(screen.getByTestId('inbox-item-hug-hug-1')).getByRole('link', { name: 'Answer' })).toHaveAttribute('href', '/hugs/hug-1');
 		expect(screen.getByRole('tab', { name: /Waiting/ })).toHaveTextContent('5');
-		fireEvent.click(screen.getByRole('button', { name: /^Input/ }));
-		expect(screen.getAllByTestId(/^inbox-item-/)).toHaveLength(1);
+		fireEvent.change(screen.getByRole('textbox', { name: 'Search HUGs' }), { target: { value: 'employer' } });
+		expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-hug-hug-88']);
 	});
 
 	it('follows the org (?org=)', async () => {
 		route_fetch();
 		render_page('/hugs?org=acme-labs');
-		await waitFor(() => expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-review-rev-2']));
+		await waitFor(() => expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-hug-hug-2']));
 	});
 
 	it('Done: settled HUG events for the org, one inbox read', async () => {

@@ -244,9 +244,9 @@ export const router = createBrowserRouter([
             lazy: lazy_route(() => import('@/pages/org/org_resolver_page')),
           },
           {
-            // HUG review packet (markdown, form, artifacts, chat).
-            path: 'reviews/:review_id',
-            lazy: lazy_route(() => import('@/pages/reviews/review_page')),
+            // One Hug: what a person is asked, its context, the answers, and the form to answer.
+            path: 'hugs/:hug_id',
+            lazy: lazy_route(() => import('@/pages/hugs/hug_page')),
           },
           {
             // Build › New team: generate, template, fork, import; canvas · YAML · changes; publish.

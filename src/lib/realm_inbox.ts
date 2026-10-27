@@ -17,7 +17,7 @@ export interface Section_status {
 }
 
 export interface Inbox_item {
-	kind: 'review' | 'input' | 'failed' | 'run';
+	kind: 'hug' | 'input' | 'failed' | 'run';
 	id: string;
 	run_id: string | null;
 	title: string;
@@ -26,9 +26,11 @@ export interface Inbox_item {
 	state: string;
 	at: number | null;
 	error: string | null;
-	message: string | null;
-	artifact_count: number | null;
-	/** Who initiated the run: `'hub'` or `'cli'`, null for reviews / older runs. */
+	/** When a Hug stops taking answers (epoch ms; Hugs only). */
+	expires_at: number | null;
+	/** Whether you have answered the Hug (Hugs only). */
+	responded: boolean | null;
+	/** Who initiated the run: `'hub'` or `'cli'`, null for Hugs / older runs. */
 	origin: string | null;
 }
 
@@ -36,8 +38,8 @@ export interface Realm_inbox_data {
 	realm: Control_realm;
 	items: Inbox_item[];
 	live: Inbox_item[];
-	counts: { reviews: number; awaiting_input: number; failed_24h: number; running: number };
-	sections: Record<'reviews' | 'awaiting_input' | 'failed' | 'running', Section_status>;
+	counts: { hugs: number; awaiting_input: number; failed_24h: number; running: number };
+	sections: Record<'hugs' | 'awaiting_input' | 'failed' | 'running', Section_status>;
 	partial: boolean;
 	/** With `summary: true`: the realm page summary. */
 	summary?: Realm_summary;
@@ -224,7 +226,8 @@ export interface Run_detail_data {
 	run: Run_row;
 	phases: Run_detail_phase[];
 	realm: Control_realm | null;
-	reviews: Array<{ id: string; title: string; phase: string | null; requested_at: number | null; message: string | null }>;
+	/** This run's open Hugs. */
+	hugs: Array<{ id: string; title: string; phase: string | null; created_at: number | null; expires_at: number | null; responded: boolean }>;
 	/** Files the run stored and its run records (`artifacts/get`, composed by the BFF). */
 	artifacts: Run_artifact[];
 	/** Each phase output, oldest first (absent from an older BFF). */
@@ -241,7 +244,7 @@ export interface Run_detail_data {
 	parent?: Run_parent | null;
 	/** Sub-team runs this run's team phases spawned, oldest first. */
 	children?: Run_child[];
-	sections: Record<'phases' | 'labels' | 'realm' | 'reviews' | 'artifacts', Section_status> & Partial<Record<'events' | 'parent' | 'children', Section_status>>;
+	sections: Record<'phases' | 'labels' | 'realm' | 'hugs' | 'artifacts', Section_status> & Partial<Record<'events' | 'parent' | 'children', Section_status>>;
 	partial: boolean;
 }
 
@@ -250,7 +253,7 @@ export function run_href(org_slug: string, realm_slug: string, run_id: string): 
 }
 
 export function inbox_item_href(item: Inbox_item, org_slug: string, realm_slug: string): string {
-	if (item.kind === 'review') return `/reviews/${encodeURIComponent(item.id)}`;
+	if (item.kind === 'hug') return `/hugs/${encodeURIComponent(item.id)}`;
 	return run_href(org_slug, realm_slug, item.run_id ?? item.id);
 }
 
@@ -278,7 +281,7 @@ export type Run_failure_reason =
 /** One hop from the run down to where it failed; the last hop's `phase` failed. */
 export interface Run_failure_step { run_id: string; run_name: string | null; team: string | null; phase: string | null }
 
-/** Who a failed review went to and what they answered (action null = no answer). */
+/** Who answered a failed review's Hug and how (APPROVE, REJECT, ROUTE:<target>; null = no decision). */
 export interface Run_failure_reviewer { name: string; action: string | null; responded_at: string | null; comment: string | null }
 
 export interface Run_failure {
@@ -288,5 +291,5 @@ export interface Run_failure {
 	hint: string | null;
 	chain: Run_failure_step[];
 	resume_from: string | null;
-	review: { review_id: string; status: string | null; policy: 'any' | 'all' | null; reviewers: Run_failure_reviewer[]; route_targets: string[] } | null;
+	review: { hug_id: string; status: string | null; policy: 'any' | 'all' | null; reviewers: Run_failure_reviewer[]; route_targets: string[] } | null;
 }

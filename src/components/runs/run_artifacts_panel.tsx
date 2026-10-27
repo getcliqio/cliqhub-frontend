@@ -11,6 +11,7 @@ import { Download } from 'lucide-react';
 
 import { useOrgFetch } from '@/lib/org_context';
 import { use_poll } from '@/lib/use_poll';
+import { artifact_download_href } from '@/lib/artifact_view';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -38,7 +39,6 @@ export function Run_artifacts_panel({ run_id, live }: Run_artifacts_panel_props)
     const auth_fetch = useOrgFetch();
     const [artifacts, set_artifacts] = useState<ArtifactRow[]>([]);
     const [loading, set_loading] = useState(true);
-    const [downloading, set_downloading] = useState<Set<string>>(new Set());
 
     const load = useCallback(async (opts?: { silent?: boolean }) => {
         if (!opts?.silent) set_loading(true);
@@ -60,30 +60,6 @@ export function Run_artifacts_panel({ run_id, live }: Run_artifacts_panel_props)
 
     useEffect(() => { void load(); }, [load]);
     use_poll(() => void load({ silent: true }), live ? 10_000 : 60_000, !loading);
-
-    /** Fetch a fresh presigned URL and open in a new tab. */
-    async function handle_download(artifact_id: string) {
-        set_downloading((prev) => new Set(prev).add(artifact_id));
-        try {
-            const res = await auth_fetch('/v1/artifacts/get_by_id', {
-                method: 'POST',
-                body: JSON.stringify({ artifact_id }),
-            });
-            const data = await res.json() as { ok?: boolean; data?: { download_url?: string } };
-            const url = data?.data?.download_url;
-            if (url) {
-                window.open(url, '_blank');
-            }
-        } catch {
-            /* ignore — user can retry */
-        } finally {
-            set_downloading((prev) => {
-                const next = new Set(prev);
-                next.delete(artifact_id);
-                return next;
-            });
-        }
-    }
 
     // Empty state — show a placeholder so the tab pane isn't blank.
     if (loading && artifacts.length === 0) {
@@ -143,16 +119,15 @@ export function Run_artifacts_panel({ run_id, live }: Run_artifacts_panel_props)
                                 {format_size(a.size_bytes)}
                             </td>
                             <td className="px-2 py-2 text-right">
-                                <button
-                                    type="button"
-                                    onClick={() => void handle_download(a.artifact_id)}
-                                    disabled={downloading.has(a.artifact_id)}
+                                <a
+                                    href={a.download_url || artifact_download_href(a.artifact_id)}
+                                    download={a.name}
                                     title="Download artifact"
-                                    className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                                    className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                                 >
                                     <Download className="h-3 w-3" />
-                                    {downloading.has(a.artifact_id) ? '…' : 'Download'}
-                                </button>
+                                    Download
+                                </a>
                             </td>
                         </tr>
                     ))}

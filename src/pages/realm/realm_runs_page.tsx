@@ -54,11 +54,11 @@ function parse_origin(v: string | null): Origin_filter | null {
 	return v === 'cli' || v === 'hub' ? v : null;
 }
 
-/** A run that needs a person: waiting for input, or a review pending. */
-function Needs_you_pill({ why }: { why: 'input' | 'review' }) {
+/** A run with an unanswered Hug that reached you. */
+function Needs_you_pill() {
 	return (
 		<span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" data-testid="needs-you">
-			<span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Needs you · {why === 'input' ? 'input' : 'review'}
+			<span aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Needs you
 		</span>
 	);
 }
@@ -198,9 +198,9 @@ export function Component() {
 													</td>
 													{/* Team with the version it ran, e.g. @cliq/hello-world · 2.0.0 */}
 													<td className="g-mono max-w-[240px] truncate px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]" data-testid="cell-team">{r.team ?? '—'}{r.version ? <span className="text-[var(--g-ink-3)]"> · {r.version}</span> : null}</td>
-													{/* Needing a person is a state of its own: waiting for input, or a review pending. */}
+													{/* Needing you is a state of its own: an unanswered Hug for this run reached you. */}
 													<td className="px-4 py-2.5" data-testid="cell-state">
-														{r.needs_you ? <Needs_you_pill why={r.needs_you} /> : <State_pill state={r.state} />}
+														{r.needs_you ? <Needs_you_pill /> : <State_pill state={r.state} />}
 														{(r.needs_you || r.state === 'running') && r.current_phase ? <span className="g-mono mt-0.5 block truncate text-[11px] text-[var(--g-ink-3)]">at {r.current_phase}</span> : null}
 													</td>
 													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]" title={r.started_at ? new Date(r.started_at).toLocaleString() : undefined}>

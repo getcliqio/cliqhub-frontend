@@ -1,7 +1,7 @@
 /**
  * Inbox (Graphite) — system events for the org you're in: runs failing,
  * daemons going offline, notifications that couldn't be delivered. Every
- * event looks the same. HUGs (reviews and input requests) are not here:
+ * event looks the same. HUGs (people asked for input) are not here:
  * they have their own page.
  *
  * One `POST /v1/inbox/get` per filter; opening the inbox marks everything seen
@@ -21,8 +21,8 @@ import { Inbox_row } from '@/components/graphite/g_inbox_row';
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 
-/** Event filters without the HUG kinds (those live in HUGs). */
-const EVENT_FILTERS = INBOX_FILTERS.filter((f) => f.id !== 'reviews' && f.id !== 'input');
+/** Event filters without HUGs (those live in HUGs). */
+const EVENT_FILTERS = INBOX_FILTERS.filter((f) => f.id !== 'hugs');
 
 function Events({ scope, seen }: { scope: View_scope; seen: number }) {
 	const auth_fetch = useAuthFetch();

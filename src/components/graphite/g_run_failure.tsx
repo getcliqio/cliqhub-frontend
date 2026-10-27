@@ -8,6 +8,7 @@
  * the phase that started it (the phase list offers that).
  */
 import { Link } from 'react-router';
+import { hug_href } from '@/lib/hug';
 import type { Run_failure, Run_failure_reason } from '@/lib/realm_inbox';
 import { relative_time } from '@/lib/overview';
 
@@ -121,7 +122,7 @@ export function Run_failure_card({ failure: f, run_href, on_resume, on_logs, can
 						<button type="button" className={BTN} onClick={() => on_resume(resume_phase)} data-testid="failure-resume">Resume from {resume_phase}</button>
 					) : null
 				) : null}
-				{f.review ? <Link to={`/reviews/${f.review.review_id}`} className={BTN}>Open review</Link> : null}
+				{f.review ? <Link to={hug_href(f.review.hug_id)} className={BTN}>Open review</Link> : null}
 				{in_sub_team
 					? <Link to={`${run_href(leaf.run_id)}?tab=logs`} className={BTN}>Sub-team logs</Link>
 					: on_logs ? <button type="button" className={BTN} onClick={on_logs}>Logs</button> : null}

@@ -35,7 +35,7 @@ const SUMMARY: Realm_summary = {
 	you: { role: 'admin', is_admin: true },
 };
 const inbox = (over: Partial<Realm_inbox_data> = {}, summary: Partial<Realm_summary> = {}) => base_inbox({ summary: { ...SUMMARY, ...summary }, ...over });
-const QUIET = { reviews: 0, awaiting_input: 0, failed_24h: 0, running: 0 };
+const QUIET = { hugs: 0, awaiting_input: 0, failed_24h: 0, running: 0 };
 
 function route_fetch(data: Realm_inbox_data) {
 	return vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
@@ -110,7 +110,7 @@ describe('Realm layout', () => {
 		expect(within(nav()).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-daemons', 'go-agents', 'go-notifications', 'go-settings']);
 		// A team is missing agent config; a run needs you / failed; daemons are online.
 		expect(within(screen.getByTestId('go-teams')).getByTestId('nav-attention')).toHaveAccessibleName('1 team is missing agent config');
-		expect(within(screen.getByTestId('go-runs')).getByTestId('nav-attention')).toHaveAccessibleName('2 need you · 1 failed in the last 24h');
+		expect(within(screen.getByTestId('go-runs')).getByTestId('nav-attention')).toHaveAccessibleName('1 needs you · 1 failed in the last 24h');
 		expect(within(screen.getByTestId('go-daemons')).getByTestId('nav-dot-ok')).toHaveAccessibleName('2 online');
 		expect(within(screen.getByTestId('go-settings')).queryByTestId('nav-attention')).toBeNull();
 		expect(nav()).not.toHaveTextContent(/\d/);

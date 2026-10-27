@@ -9,13 +9,14 @@
  *               Run details (inputs, workspace, daemon, IDs) folded below
  *
  * Data: one `POST /v1/run_detail/get { run_id }` per poll (BFF composes the run row, phases, labels,
- * realm, this run's pending reviews and its stored artifacts). Polls every 4s while the run is live,
+ * realm, this run's open Hugs and its stored artifacts). Polls every 4s while the run is live,
  * 20s otherwise. Telemetry (cost, tokens, the clock, Usage, Workflow): one `POST /v1/run_telemetry/get`.
- * Control actions stay on the existing Core routes: /v1/runs/supply_inputs · /v1/runs/cancel ·
- * /v1/runs/resume. "Run again" reuses Run_in_realm_dialog (prefilled from this run). Old links:
+ * Control actions stay on the existing Core routes: /v1/runs/cancel · /v1/runs/resume. A run awaiting
+ * input waits on a Hug: the banner links to it. "Run again" reuses Run_in_realm_dialog (prefilled from this run). Old links:
  * ?tab=timeline opens the List, ?tab=dag the Workflow.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { hug_href } from '@/lib/hug';
 import { Link, Navigate, useParams, useSearchParams } from 'react-router';
 import { Check, Copy, RefreshCw } from 'lucide-react';
 import { useAuthFetch } from '@/lib/auth_context';
@@ -39,7 +40,7 @@ import {
 } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
 import { format_datetime } from '@/lib/format_time';
-import { parse_kv_lines, pick_default_resume_phase } from '@/components/dispatch/run_dialogs';
+import { pick_default_resume_phase } from '@/components/dispatch/run_dialogs';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { sort_phases_workflow } from '@/components/runs/run_phases_panel';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -72,7 +73,7 @@ const TABS: Tab[] = ['phases', 'usage', 'logs', 'details'];
 const TAB_LABEL: Record<Tab, string> = { phases: 'Phases', usage: 'Usage', logs: 'Logs', details: 'Details' };
 /** Old view links: the timeline is the list's bars now, the DAG is the Workflow view. */
 const OLD_TAB: Record<string, Tab> = { timeline: 'phases', dag: 'phases', workflow: 'phases' };
-type Panel = null | 'supply' | 'cancel' | 'resume';
+type Panel = null | 'cancel' | 'resume';
 
 /** `scope/slug` team id → parts for "Run again"; null hides the action. */
 /** A run's title: a sub-team run reads as its team ("design-lld"); otherwise its name. */
@@ -102,7 +103,6 @@ function parse_inputs(raw: Run_row['inputs']): Record<string, unknown> | null {
 
 function control_label(endpoint: string): string {
 	if (endpoint === '/v1/cancel') return 'Cancel';
-	if (endpoint === '/v1/runs/supply_inputs') return 'Supply inputs';
 	if (endpoint === '/v1/resume') return 'Resume';
 	if (endpoint === '/v1/execute') return 'Start';
 	return endpoint;
@@ -505,32 +505,6 @@ function Details({ run, base, parent, run_link }: {
 /* ------------------------------------------------------------------ */
 /* Action panels                                                       */
 
-function Supply_panel({ busy, on_submit, on_cancel }: { busy: boolean; on_submit: (inputs: Record<string, string>) => void; on_cancel: () => void }) {
-	const [raw, set_raw] = useState('');
-	const parsed = useMemo(() => parse_kv_lines(raw), [raw]);
-	const ready = Object.keys(parsed).length > 0;
-	return (
-		<section className="rounded-[10px] border border-[rgba(255,178,36,.35)] bg-[var(--g-panel)] p-4" aria-label="Provide input" data-testid="supply-panel">
-			<p className="text-[13px] font-semibold">Provide input</p>
-			<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">One <span className="g-mono">key=value</span> per line. The run resumes once the daemon accepts them.</p>
-			<textarea
-				value={raw}
-				onChange={(e) => set_raw(e.target.value)}
-				rows={3}
-				aria-label="Inputs"
-				placeholder={'employer_name=Acme Corp\n# lines starting with # are ignored'}
-				className="g-mono mt-3 block w-full rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-3 py-2 text-[12.5px] outline-none focus:border-[var(--g-acc-line)]"
-			/>
-			<div className="mt-3 flex gap-2">
-				<button type="button" disabled={!ready || busy} onClick={() => on_submit(parsed)} className="rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] disabled:opacity-50">
-					{busy ? 'Sending…' : 'Send & resume'}
-				</button>
-				<button type="button" onClick={on_cancel} className="rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[12.5px]">Close</button>
-			</div>
-		</section>
-	);
-}
-
 function Cancel_panel({ busy, on_confirm, on_cancel }: { busy: boolean; on_confirm: () => void; on_cancel: () => void }) {
 	return (
 		<section className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)] p-4" aria-label="Cancel run" data-testid="cancel-panel">
@@ -584,8 +558,8 @@ const BTN_PRIMARY = 'inline-flex h-8 items-center gap-1.5 rounded-md bg-[var(--g
 const BTN_WAIT = 'inline-flex h-8 cursor-not-allowed items-center rounded-md border border-[var(--g-line)] px-3 text-[12.5px] font-semibold text-[var(--g-ink-3)]';
 
 /** What the viewer may do on this run (from `lib/access.ts`); everything allowed when not given. */
-export interface Run_gates { inputs: Gate; cancel: Gate; run: Gate }
-const ALL_ALLOWED: Run_gates = { inputs: { ok: true, reason: null }, cancel: { ok: true, reason: null }, run: { ok: true, reason: null } };
+export interface Run_gates { cancel: Gate; run: Gate }
+const ALL_ALLOWED: Run_gates = { cancel: { ok: true, reason: null }, run: { ok: true, reason: null } };
 
 export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: { data: Run_detail_data; org_slug: string; slug: string; reload: () => Promise<void>; gates?: Run_gates }) {
 	const auth_fetch = useAuthFetch();
@@ -604,7 +578,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 
 	const [panel, set_panel] = useState<Panel>(null);
 	const [resume_initial, set_resume_initial] = useState<string | null>(null);
-	const [busy, set_busy] = useState<null | 'supply' | 'cancel' | 'resume'>(null);
+	const [busy, set_busy] = useState<null | 'cancel' | 'resume'>(null);
 	const [notice, set_notice] = useState<string | null>(null);
 	const [error, set_error] = useState<{ message: string; code: string | null } | null>(null);
 	const [run_again, set_run_again] = useState(false);
@@ -667,7 +641,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 	// A sub-team run reads as its team ("design-lld"), with its run name beside it.
 	const sub_team_name = data.parent ? (run.team_label ?? '').replace(/^@[^/]+\//, '') : '';
 
-	async function control(kind: 'supply' | 'cancel' | 'resume', path: string, body: Record<string, unknown>, on_ok: (payload: unknown) => string) {
+	async function control(kind: 'cancel' | 'resume', path: string, body: Record<string, unknown>, on_ok: (payload: unknown) => string) {
 		set_error(null);
 		set_busy(kind);
 		try {
@@ -687,7 +661,6 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 		}
 	}
 
-	const supply = (inputs_kv: Record<string, string>) => control('supply', '/v1/runs/supply_inputs', { inputs: inputs_kv }, () => 'Inputs sent — the run should resume shortly.');
 	const cancel = () => control('cancel', '/v1/runs/cancel', {}, (payload) => {
 		const p = payload as { mode?: string; data?: { mode?: string } };
 		const mode = p.data?.mode ?? p.mode;
@@ -735,11 +708,6 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 					</p>
 				</div>
 				<div className="flex flex-wrap items-center gap-2" role="group" aria-label="Run actions">
-					{awaiting ? (
-						pending?.endpoint === '/v1/runs/supply_inputs'
-							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('supplied inputs')}>Input pending…</button>
-							: <button type="button" className={`${BTN_PRIMARY} disabled:cursor-not-allowed disabled:opacity-45`} disabled={!gates.inputs.ok} title={gates.inputs.reason ?? undefined} onClick={() => set_panel((p) => (p === 'supply' ? null : 'supply'))}>Provide input</button>
-					) : null}
 					{live ? (
 						pending?.endpoint === '/v1/cancel'
 							? <button type="button" disabled aria-disabled className={BTN_WAIT} title={wait_title('cancel')}>Cancel pending…</button>
@@ -790,14 +758,14 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 			) : pending ? (
 				<Pending_banner pending={pending} daemon_id={run.daemon_id ?? null} />
 			) : null}
-			{data.reviews.length ? (
+			{data.hugs?.length ? (
 				<Banner
 					tone="warn"
-					testid="run-reviews-banner"
-					title={data.reviews.length === 1 ? `Waiting on a review: ${data.reviews[0].title}` : `${data.reviews.length} reviews are waiting on this run`}
-					action={<Link to={`/reviews/${encodeURIComponent(data.reviews[0].id)}`} className={BTN_PRIMARY}>Review</Link>}
+					testid="run-hugs-banner"
+					title={data.hugs.length === 1 ? `Waiting on a person: ${data.hugs[0].title}` : `${data.hugs.length} HUGs are waiting on this run`}
+					action={<Link to={hug_href(data.hugs[0].id)} className={BTN_PRIMARY}>{data.hugs[0].responded ? 'Open' : 'Answer'}</Link>}
 				>
-					{data.reviews[0].phase ? <>Gate <span className="g-mono">{data.reviews[0].phase}</span> · </> : null}requested {relative_time(data.reviews[0].requested_at)}
+					<>Phase <span className="g-mono">{data.hugs[0].phase}</span> · </>asked {relative_time(data.hugs[0].created_at)}
 				</Banner>
 			) : null}
 			{data.partial ? (
@@ -806,7 +774,6 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 				</p>
 			) : null}
 
-			{panel === 'supply' ? <Supply_panel busy={busy === 'supply'} on_submit={(v) => void supply(v)} on_cancel={() => set_panel(null)} /> : null}
 			{panel === 'cancel' ? <Cancel_panel busy={busy === 'cancel'} on_confirm={() => void cancel()} on_cancel={() => set_panel(null)} /> : null}
 			{panel === 'resume' ? <Resume_panel phases={phases} initial={resume_initial} busy={busy === 'resume'} on_submit={(p) => void resume(p)} on_cancel={() => set_panel(null)} /> : null}
 
@@ -931,7 +898,6 @@ export function Component() {
 
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm?.id) ?? null;
 	const gates: Run_gates = {
-		inputs: access.realm(realm?.id, 'operate', 'teams.inputs'),
 		cancel: access.realm(realm?.id, 'operate', 'teams.cancel'),
 		run: access.realm(realm?.id, 'operate', 'teams.run'),
 	};
