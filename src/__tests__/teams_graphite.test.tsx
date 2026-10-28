@@ -487,6 +487,30 @@ describe('Team page', () => {
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
 	});
 
+	it('opened from a realm: the table follows the diagram — open a sub-team, or expand it under its step', async () => {
+		const SUB = [ph('code', 'standard', { role: 'Write the code.' }), ph('test', 'gate', { depends_on: ['code'], agent: 'cursor' })];
+		const with_sub = PHASES.map((p) => (p.name === 'open-pr' ? { ...p, type: 'map', agent: null, team: '@m/builder' } : p));
+		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, phases: with_sub, sub_teams: { '@m/builder': { scope: 'm', name: 'builder', version: '1', phases: SUB } } } } : {}));
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const table = await screen.findByTestId('phase-table');
+		const row_ids = () => within(screen.getByTestId('phase-table')).getAllByTestId('team-phase-row').map((r) => r.getAttribute('data-team-row'));
+		// Expanded: the sub-team's steps under its step, under a heading that folds; their rows open on their own.
+		fireEvent.click(screen.getByRole('button', { name: 'Expanded' }));
+		expect(within(table).getByText('builder', { selector: 'b' }).closest('[data-team-group]')).toHaveTextContent('builder · × each · 2 steps');
+		expect(row_ids()).toEqual([...PHASES.map((p) => p.name), 'open-pr/code', 'open-pr/test', 'git-resolver']);
+		fireEvent.click(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'open-pr/code')!);
+		expect(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'open-pr/code')).toHaveTextContent('Write the code.');
+		fireEvent.click(table.querySelector('[data-team-group="open-pr"]')!);
+		expect(row_ids()).not.toContain('open-pr/code');
+		// Open: the diagram and the table switch to the sub-team (no run inputs: they are the team's own).
+		fireEvent.click(screen.getByRole('button', { name: 'Collapsed' }));
+		fireEvent.click(within(screen.getByTestId('phase-table')).getByRole('button', { name: 'Open builder' }));
+		expect(row_ids()).toEqual(['code', 'test']);
+		expect(screen.queryByTestId('inputs-row')).toBeNull();
+		fireEvent.click(within(screen.getByTestId('workflow-path')).getByRole('button', { name: 'feature-dev-js' }));
+		expect(row_ids()).toContain('open-pr');
+	});
+
 	it('opened from a realm: Phases — the graph starts at the Run inputs; the table lists the inputs, then the phases; picking one picks it in both', async () => {
 		route_fetch();
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
