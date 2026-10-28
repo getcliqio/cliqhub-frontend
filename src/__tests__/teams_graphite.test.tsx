@@ -154,6 +154,15 @@ describe('team page helpers', () => {
 		const svg = container.querySelector('svg')!;
 		expect(Number.parseFloat(svg.style.minWidth)).toBeGreaterThan(0);
 	});
+	it('a step that runs another team is a sub-team; script steps name their script', () => {
+		const each = ph('build', 'map', { agent: null, team: '@measureone/parser-builder' });
+		expect(phase_kind(each).id).toBe('team');
+		expect(phase_subtitle(each)).toBe('× parser-builder');
+		expect(phase_subtitle(ph('call', 'team', { agent: null, team: '@acme/qa' }))).toBe('qa');
+		const script = ph('sort', 'standard', { agent: 'exec', commands: ['bash "${PARSER2_ROOT:-/opt/parser2.0}/cliq/steps/sort-failures.sh" --work-root "x"'] });
+		expect(phase_subtitle(script)).toBe('sort-failures.sh');
+		expect(phase_subtitle(ph('raw', 'standard', { agent: 'exec', commands: ['npm test', 'npm run lint'] }))).toBe('2 commands');
+	});
 	it('subtitles, overlay states, hrefs', () => {
 		expect(phase_subtitle(PHASES[0])).toBe('jira');
 		expect(phase_subtitle(PHASES[5])).toBe('2 checks');

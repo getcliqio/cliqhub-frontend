@@ -153,14 +153,16 @@ export interface Phase_kind { id: Kind_id | null; color: string; glyph: string; 
  */
 const LEGACY: Record<string, Kind_id> = { standard: 'agent', gate: 'gate', pull: 'connector', push: 'connector', team: 'team' };
 
-export function phase_kind_id(p: string | { type: string; agent?: string | null }): Kind_id | null {
+export function phase_kind_id(p: string | { type: string; agent?: string | null; team?: string | null }): Kind_id | null {
 	if (typeof p === 'string') return p in BUILDER_KINDS ? (p as Kind_id) : LEGACY[p] ?? null;
+	// A step that runs another team (type team, or a map over a team) is a sub-team.
+	if (p.team) return 'team';
 	if (p.type === 'pull' || p.type === 'push') return p.agent === 'curl' ? 'fetch' : 'connector';
 	if (p.type !== 'standard' && p.type !== 'gate' && p.type !== 'team') return null;
 	return kind_of({ type: p.type, agent: p.agent ?? undefined });
 }
 
-export function phase_kind(p: string | { type: string; agent?: string | null }): Phase_kind {
+export function phase_kind(p: string | { type: string; agent?: string | null; team?: string | null }): Phase_kind {
 	const id = phase_kind_id(p);
 	if (!id) return { id: null, color: '#8a8c93', glyph: '•', label: typeof p === 'string' ? p : p.type };
 	const k = BUILDER_KINDS[id];
@@ -179,10 +181,15 @@ export function phase_subtitle(p: Team_phase): string {
 		case 'human': return p.reviewers ? `reviewer · ${p.reviewers}` : 'reviewer set at run';
 		case 'connector': return p.sources.length ? hosts(p.sources) : p.targets.length ? hosts(p.targets) : p.agent ?? 'connector';
 		case 'fetch': return p.sources.length ? hosts(p.sources) : p.targets.length ? hosts(p.targets) : 'fetch';
-		case 'script': return `${p.commands.length} command${p.commands.length === 1 ? '' : 's'}`;
-		case 'team': return p.team ?? 'sub-team';
+		case 'script': return script_files(p.commands) ?? `${p.commands.length} command${p.commands.length === 1 ? '' : 's'}`;
+		case 'team': return p.team ? `${p.type === 'map' ? '× ' : ''}${p.team.replace(/^@[^/]+\//, '')}` : 'sub-team';
 		default: return p.agent ?? 'agent';
 	}
+}
+/** The script files a step runs ("sort-failures.sh"), when every command runs one. */
+function script_files(commands: string[]): string | null {
+	const files = commands.map((c) => /([\w.-]+\.(?:sh|js|mjs|cjs|py|ts|rb))\b/.exec(c)?.[1]);
+	return files.length && files.every(Boolean) ? [...new Set(files)].join(', ') : null;
 }
 function source_host(s: string): string {
 	const m = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)/i.exec(s);

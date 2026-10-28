@@ -270,7 +270,7 @@ function wrap_path(x1: number, y1: number, x2: number, y2: number, lane: number)
 }
 
 /** Legend for the graph (types, review, loop). */
-export function Workflow_legend({ phases }: { phases?: Array<{ type: string; agent?: string | null }> } = {}) {
+export function Workflow_legend({ phases }: { phases?: Array<{ type: string; agent?: string | null; team?: string | null }> } = {}) {
 	// Only the kinds this team uses (all of them when unknown).
 	const used = phases ? new Set(phases.map((p) => phase_kind_id(p))) : null;
 	const ids = LEGEND_KINDS.filter((id) => !used || used.has(id));
