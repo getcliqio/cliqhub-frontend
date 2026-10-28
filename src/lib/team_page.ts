@@ -108,14 +108,19 @@ export interface Team_change { kind: 'added' | 'removed' | 'changed'; target: 'p
 
 export type Team_view = 'overview' | 'workflow' | 'files' | 'runs' | 'installs' | 'versions' | 'settings';
 
+/** A team a step runs (BFF `sub_teams`, keyed by the reference as the step writes it). */
+export interface Team_sub_team { scope: string | null; name: string; version: string | null; phases: Team_phase[] }
+
 export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
 	view: Team_view;
-	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[] };
+	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team> };
 	workflow?: {
 		phases: Team_phase[];
 		support: Team_phase[];
+		/** Teams the steps run, at every depth. */
+		sub_teams?: Record<string, Team_sub_team>;
 		recent_runs: Team_run_row[];
 		overlay: { run: Team_run_row; version: string | null; phases: Team_phase[] | null; statuses: Record<string, string> } | null;
 	};
@@ -292,6 +297,40 @@ export function wrap_columns(L: Graph_layout, max = WRAP_STEPS): Array<{ band: n
 		start = end;
 	}
 	return out;
+}
+
+/** A sub-team drawn in place: a frame around its steps (members, at every depth below it). */
+export interface Workflow_group { id: string; ref: string; label: string; each: boolean; depth: number; members: string[] }
+
+/**
+ * Every step that runs a known sub-team replaced by that team's own steps, named
+ * "<step>/<its step>", at every depth; returns the steps and one frame per sub-team. The
+ * sub-team's first steps take the step's dependencies, and whatever depended on the step
+ * depends on the sub-team's last steps. A team already being expanded on the way down
+ * (a loop) stays one node.
+ */
+export function expand_sub_teams(
+	phases: Team_phase[], subs: Record<string, Team_sub_team>, prefix = '', depth = 0, path: ReadonlySet<string> = new Set(),
+): { phases: Team_phase[]; groups: Workflow_group[] } {
+	const inner = new Map<string, { phases: Team_phase[]; groups: Workflow_group[]; leaves: string[] }>();
+	for (const p of phases) {
+		const sub = p.team ? subs[p.team] : undefined;
+		if (!sub || !sub.phases.length || path.has(p.team!)) continue;
+		const e = expand_sub_teams(sub.phases, subs, `${prefix}${p.name}/`, depth + 1, new Set([...path, p.team!]));
+		const leaves = e.phases.filter((x) => !e.phases.some((y) => y.depends_on.includes(x.name))).map((x) => x.name);
+		inner.set(p.name, { ...e, leaves });
+	}
+	const dep = (d: string) => inner.get(d)?.leaves ?? [`${prefix}${d}`];
+	const out: Team_phase[] = [];
+	const groups: Workflow_group[] = [];
+	for (const p of phases) {
+		const e = inner.get(p.name);
+		if (!e) { out.push({ ...p, name: `${prefix}${p.name}`, depends_on: p.depends_on.flatMap(dep) }); continue; }
+		for (const x of e.phases) out.push(x.depends_on.length ? x : { ...x, depends_on: p.depends_on.flatMap(dep) });
+		const sub = subs[p.team!];
+		groups.push({ id: `${prefix}${p.name}`, ref: p.team!, label: sub.name, each: p.type === 'map', depth, members: e.phases.map((x) => x.name) }, ...e.groups);
+	}
+	return { phases: out, groups };
 }
 
 export function team_href(scope: string | null, name: string, tab?: Team_view): string {

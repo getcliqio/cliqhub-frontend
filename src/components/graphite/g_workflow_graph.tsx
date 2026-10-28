@@ -6,10 +6,13 @@
  * MIN_SCALE (it scrolls sideways instead). Long flows wrap into bands of a few steps,
  * like lines of text, with a connector from the end of one band to the start of the next.
  * With `start`, the flow begins at a "Run inputs" node (the inputs Run asks for) instead of a dot.
+ * A step that runs a known sub-team gets an "N steps ›" button (`on_open`); with `groups`
+ * (expand_sub_teams) the sub-teams' steps are drawn in place inside labelled frames.
  */
 import { useId, type KeyboardEvent, type ReactElement } from 'react';
 import {
-	REVIEW_COLOR, layout_phases, wrap_columns, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle, type Team_phase,
+	REVIEW_COLOR, layout_phases, wrap_columns, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle,
+	type Team_phase, type Team_sub_team, type Workflow_group,
 } from '@/lib/team_page';
 
 const W = 148;
@@ -21,6 +24,9 @@ const MARGIN_X = 72;
 const MIN_SCALE = 0.8;
 /** Space between bands for the wrap connectors (plus room for route-back arcs). */
 const BAND_GAP = 44;
+/** Room a sub-team frame takes around its steps, per level of nesting (label at the bottom, clear of route-back arcs). */
+const FRAME_PAD = 14;
+const FRAME_LABEL = 18;
 
 function hexa(hex: string, a: number): string {
 	const n = Number.parseInt(hex.slice(1), 16);
@@ -53,6 +59,9 @@ export function Workflow_graph({
 	height = 300,
 	label = 'Team workflow',
 	start = null,
+	sub_teams = null,
+	groups = null,
+	on_open,
 }: {
 	phases: Team_phase[];
 	selected?: string | null;
@@ -62,25 +71,34 @@ export function Workflow_graph({
 	height?: number;
 	label?: string;
 	start?: Workflow_start | null;
+	/** Known sub-teams (by reference): their nodes get an "N steps ›" button. */
+	sub_teams?: Record<string, Team_sub_team> | null;
+	/** Sub-teams drawn in place (from expand_sub_teams): one frame each. */
+	groups?: Workflow_group[] | null;
+	/** Open a sub-team (its reference). */
+	on_open?: (ref: string) => void;
 }) {
 	const uid = useId().replace(/[:]/g, '');
 	const L = layout_phases(phases);
 	if (!phases.length) {
 		return <div className="grid place-items-center text-[12.5px] text-[var(--g-ink-3)]" style={{ height }}>This version has no phases.</div>;
 	}
-	const top_pad = L.loops.length ? 64 : 34;
+	const nest = groups?.length ? Math.max(...groups.map((g) => g.depth)) + 1 : 0;
+	/** Room above and below the steps for the frames around them. */
+	const frame_room = nest ? nest * FRAME_PAD + FRAME_LABEL : 0;
+	const top_pad = (L.loops.length ? 64 : 34) + frame_room;
 	const shift = start ? START_SHIFT : 0;
 	const wrap = wrap_columns(L);
 	const bands = wrap[wrap.length - 1].band + 1;
 	const band_cols = Math.max(...wrap.map((c) => c.col)) + 1;
 	const band_h = L.rows * PITCH_Y;
-	const band_pitch = band_h + BAND_GAP + (L.loops.length ? 40 : 0);
+	const band_pitch = band_h + BAND_GAP + (L.loops.length ? 40 : 0) + frame_room * 2;
 	const w = MARGIN_X * 2 + shift + (band_cols - 1) * PITCH_X + W;
-	const h = Math.max(height, top_pad + band_h + (bands - 1) * band_pitch + 34);
-	const cy0 = top_pad + ((h - top_pad - 34 - (bands - 1) * band_pitch) / 2);
+	const h = Math.max(height, top_pad + band_h + (bands - 1) * band_pitch + 34 + frame_room);
+	const cy0 = top_pad + ((h - top_pad - 34 - frame_room - (bands - 1) * band_pitch) / 2);
 	const band_cy = (b: number) => cy0 + b * band_pitch;
 	/** Bottom edge of a band's lowest node. */
-	const band_bottom = (b: number) => band_cy(b) + ((L.rows - 1) / 2) * PITCH_Y + H / 2;
+	const band_bottom = (b: number) => band_cy(b) + ((L.rows - 1) / 2) * PITCH_Y + H / 2 + frame_room;
 	const cy = band_cy(0);
 	const at = (n: string) => {
 		const p = L.pos[n];
@@ -115,6 +133,26 @@ export function Workflow_graph({
 				</g>,
 			);
 		}
+	}
+
+	/** One rectangle per sub-team and band (a sub-team can wrap onto the next band); outer ones first. */
+	const frames: ReactElement[] = [];
+	for (const g of [...(groups ?? [])].sort((a, b) => a.depth - b.depth)) {
+		const pad = FRAME_PAD * (nest - g.depth);
+		const by_band = new Map<number, Array<{ x: number; y: number }>>();
+		for (const m of g.members) if (L.pos[m]) { const a = at(m); by_band.set(a.band, [...(by_band.get(a.band) ?? []), a]); }
+		[...by_band.entries()].sort((a, b) => a[0] - b[0]).forEach(([band, pts], k) => {
+			const x0 = Math.min(...pts.map((q) => q.x)) - pad; const x1 = Math.max(...pts.map((q) => q.x)) + W + pad;
+			const y0 = Math.min(...pts.map((q) => q.y)) - pad; const y1 = Math.max(...pts.map((q) => q.y)) + H + pad + FRAME_LABEL;
+			frames.push(
+				<g key={`${g.id}@${band}`} data-group={g.id} aria-hidden>
+					<rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} rx={14} strokeDasharray="4 3" strokeWidth={1.2} style={{ fill: 'var(--g-soft)', fillOpacity: 0.35, stroke: phase_kind('team').color }} strokeOpacity={0.55} />
+					<text x={x0 + 10} y={y1 - 6} fontSize={10.5} fontWeight={600} style={{ fill: 'var(--g-ink-2)' }} fontFamily="var(--g-font)">
+						⧉ {g.label}{g.each ? ' · × each' : ''}{k > 0 ? ' (continued)' : ''}
+					</text>
+				</g>,
+			);
+		});
 	}
 
 	return (
@@ -183,6 +221,7 @@ export function Workflow_graph({
 					</g>
 				); })}
 	
+				{frames}
 				{edges}
 	
 				{L.loops.map((lp) => {
@@ -208,7 +247,9 @@ export function Workflow_graph({
 					const badge = p.review && k.id !== 'human';
 					const is_sel = selected === p.name;
 					const st = statuses ? overlay_state(statuses[p.name]) : null;
-					const title = p.name.length > 15 ? `${p.name.slice(0, 14)}…` : p.name;
+					const short = p.name.slice(p.name.lastIndexOf('/') + 1);
+				const title = short.length > 15 ? `${short.slice(0, 14)}…` : short;
+				const inside = p.team && !groups?.some((g) => g.id === p.name) ? sub_teams?.[p.team] : undefined;
 					const sub = phase_subtitle(p);
 					return (
 						<g
@@ -236,6 +277,21 @@ export function Workflow_graph({
 									<rect width={74} height={19} rx={9.5} stroke={REVIEW_COLOR} style={{ fill: 'var(--g-hug-chip)' }} strokeOpacity={0.6} />
 									<circle cx={12} cy={9.5} r={3} fill="none" stroke={REVIEW_COLOR} strokeWidth={1.4} />
 									<text x={20} y={13.2} fontSize={9.5} fill={REVIEW_COLOR} fontWeight={700} letterSpacing=".04em" fontFamily="var(--g-font)">REVIEW</text>
+								</g>
+							) : null}
+							{inside && on_open ? (
+								<g
+									transform="translate(8,-10)"
+									role="button"
+									tabIndex={0}
+									aria-label={`Open ${inside.name}: ${inside.phases.length} steps`}
+									data-open={p.team}
+									onClick={(e) => { e.stopPropagation(); on_open(p.team!); }}
+									onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); on_open(p.team!); } }}
+									style={{ cursor: 'pointer', outline: 'none' }}
+								>
+									<rect width={78} height={19} rx={9.5} strokeOpacity={0.7} style={{ fill: 'var(--g-input)', stroke: k.color }} />
+									<text x={39} y={13.2} textAnchor="middle" fontSize={9.5} fontWeight={700} fill={k.color} fontFamily="var(--g-font)">{inside.phases.length} steps ›</text>
 								</g>
 							) : null}
 							{k.id === 'gate' && p.max_iterations ? (

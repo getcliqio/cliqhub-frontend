@@ -29,7 +29,8 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { use_access } from '@/lib/access';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
+import { Workflow_legend } from '@/components/graphite/g_workflow_graph';
+import { Team_workflow } from '@/components/graphite/g_team_workflow';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
@@ -415,8 +416,10 @@ export function Component() {
 			{mode === 'diagram' && in_realm ? (
 				<>
 					<div className="border-b border-[var(--g-line)] bg-[var(--g-input)]" data-testid="team-graph">
-						<Workflow_graph
+						<Team_workflow
+							team_name={team?.name ?? name}
 							phases={phases}
+							sub_teams={o.sub_teams}
 							height={220}
 							selected={sel?.name ?? null}
 							on_select={(p) => pick(p)}
@@ -427,7 +430,7 @@ export function Component() {
 				</>
 			) : mode === 'diagram' ? (
 				<div className="bg-[var(--g-input)]">
-					<Workflow_graph phases={phases} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
+					<Team_workflow team_name={team?.name ?? name} phases={phases} sub_teams={o.sub_teams} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5">
 						<Workflow_legend phases={phases} />
 						{o.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support: {o.support.map((s) => <button key={s.name} type="button" aria-pressed={sel?.name === s.name} onClick={() => set_params({ phase: s.name })} className={`g-mono rounded border px-1.5 text-[11px] ${sel?.name === s.name ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line-2)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{s.name}</button>)}</span> : null}

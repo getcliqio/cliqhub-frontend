@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
-import { layout_phases, wrap_columns, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
+import { layout_phases, wrap_columns, expand_sub_teams, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
 
 const auth = { scopes: [{ slug: 'sapan' }], user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
@@ -13,6 +13,7 @@ vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: ({ sco
 import { Component as ListPage } from '@/pages/teams/teams_graphite_page';
 import { Component as TeamPage } from '@/pages/teams/team_graphite_page';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
+import { Team_workflow } from '@/components/graphite/g_team_workflow';
 
 const ph = (name: string, type: string, over: Partial<Team_phase> = {}): Team_phase => ({ name, type, agent: type === 'standard' ? 'claude-code' : null, depends_on: [], review: false, reviewers: null, max_iterations: null, commands: [], sources: [], targets: [], team: null, role: null, support: false, ...over });
 const PHASES: Team_phase[] = [
@@ -162,6 +163,33 @@ describe('team page helpers', () => {
 		const script = ph('sort', 'standard', { agent: 'exec', commands: ['bash "${PARSER2_ROOT:-/opt/parser2.0}/cliq/steps/sort-failures.sh" --work-root "x"'] });
 		expect(phase_subtitle(script)).toBe('sort-failures.sh');
 		expect(phase_subtitle(ph('raw', 'standard', { agent: 'exec', commands: ['npm test', 'npm run lint'] }))).toBe('2 commands');
+	});
+	it('expands sub-teams in place at every depth, wiring their first and last steps; a loop stays one node', () => {
+		const subs = {
+			'@m/pipeline': { scope: 'm', name: 'pipeline', version: '1', phases: [ph('sort', 'standard', { agent: 'exec' }), ph('build', 'map', { agent: null, team: '@m/builder', depends_on: ['sort'] })] },
+			'@m/builder': { scope: 'm', name: 'builder', version: '1', phases: [ph('code', 'standard'), ph('test', 'standard', { depends_on: ['code'] }), ph('again', 'team', { agent: null, team: '@m/pipeline', depends_on: ['test'] })] },
+		};
+		const top = [ph('find', 'standard', { agent: 'exec' }), ph('start', 'map', { agent: null, team: '@m/pipeline', depends_on: ['find'] }), ph('report', 'standard', { depends_on: ['start'] })];
+		const e = expand_sub_teams(top, subs);
+		expect(e.phases.map((p) => p.name)).toEqual(['find', 'start/sort', 'start/build/code', 'start/build/test', 'start/build/again', 'report']);
+		expect(e.phases.find((p) => p.name === 'start/sort')!.depends_on).toEqual(['find']);
+		expect(e.phases.find((p) => p.name === 'start/build/code')!.depends_on).toEqual(['start/sort']);
+		expect(e.phases.find((p) => p.name === 'report')!.depends_on).toEqual(['start/build/again']);
+		expect(e.groups.map((g) => [g.id, g.label, g.each, g.depth])).toEqual([['start', 'pipeline', true, 0], ['start/build', 'builder', true, 1]]);
+		expect(e.groups[0].members).toContain('start/build/test');
+	});
+	it('opens a sub-team from its node, goes back up by the path, and expands sub-teams in frames', () => {
+		const subs = { '@m/builder': { scope: 'm', name: 'builder', version: '1', phases: [ph('code', 'standard'), ph('test', 'standard', { depends_on: ['code'] })] } };
+		const top = [ph('sort', 'standard', { agent: 'exec' }), ph('build', 'map', { agent: null, team: '@m/builder', depends_on: ['sort'] })];
+		const { container } = render(<Team_workflow team_name="pipeline" phases={top} sub_teams={subs} />);
+		fireEvent.click(screen.getByRole('button', { name: 'Open builder: 2 steps' }));
+		expect(within(screen.getByTestId('workflow-path')).getByText('builder').getAttribute('aria-current')).toBe('page');
+		expect(container.querySelector('[data-phase="code"]')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'pipeline' }));
+		expect(container.querySelector('[data-phase="sort"]')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Expanded' }));
+		expect(container.querySelector('[data-group="build"]')?.textContent).toContain('builder · × each');
+		expect(container.querySelector('[data-phase="build/test"]')).toBeTruthy();
 	});
 	it('subtitles, overlay states, hrefs', () => {
 		expect(phase_subtitle(PHASES[0])).toBe('jira');
