@@ -10,10 +10,10 @@ import { clear_builder_session_restores } from '@/lib/builder/session_restore';
 
 type BumpType = 'patch' | 'minor' | 'major';
 
-/** Group scopes into personal vs org for the scope selector. */
-function group_scopes(scopes: ClientScope[]) {
-    const personal = scopes.filter((s) => s.scope_type === 'user');
-    const org = scopes.filter((s) => s.scope_type === 'org');
+/** Group scopes for the selector: personal is the user's personal org's scope (slug = username). */
+function group_scopes(scopes: ClientScope[], username: string | undefined) {
+    const personal = scopes.filter((s) => s.slug === username);
+    const org = scopes.filter((s) => s.slug !== username);
     return { personal, org };
 }
 
@@ -34,9 +34,9 @@ function compute_next_version(current: string, bump: BumpType): string {
 export function PublishDialog({ onClose }: { onClose: () => void }) {
     const state = useBuilder();
     const dispatch = useBuilderDispatch();
-    const { scopes } = useAuth();
+    const { scopes, user } = useAuth();
     const authFetch = useOrgFetch();
-    const grouped = useMemo(() => group_scopes(scopes), [scopes]);
+    const grouped = useMemo(() => group_scopes(scopes, user?.username), [scopes, user?.username]);
 
     const default_scope = scopes.length > 0 ? scopes[0].slug : '';
 
@@ -44,6 +44,8 @@ export function PublishDialog({ onClose }: { onClose: () => void }) {
     const [changelog, setChangelog] = useState('');
     const [description, setDescription] = useState(state.team?.description || '');
     const [scope, setScope] = useState(default_scope);
+    /** Public or private (PLAN-team-visibility §3.3); null = untouched: private for a new team, unchanged on a republish. */
+    const [is_public, set_is_public] = useState<boolean | null>(null);
     const [publishing, setPublishing] = useState(false);
     const [error, setError] = useState('');
     const [published_url, setPublishedUrl] = useState('');
@@ -173,7 +175,7 @@ export function PublishDialog({ onClose }: { onClose: () => void }) {
                 changelog: changelog || undefined,
                 description,
                 tags: state.team.tags || [],
-                visibility: 'public',
+                ...(is_public !== null ? { visibility: is_public ? 'public' : 'private' } : {}),
                 data_base64,
                 agents: Object.keys(agents).length > 0 ? agents : undefined,
                 agent_uploads: Object.keys(agent_uploads).length > 0 ? agent_uploads : undefined,
@@ -368,6 +370,11 @@ export function PublishDialog({ onClose }: { onClose: () => void }) {
                             </select>
                         )}
                     </div>
+
+                    <label className="flex items-start gap-2 text-xs text-slate-700">
+                        <input type="checkbox" aria-label="Public (on the marketplace)" checked={is_public ?? false} onChange={(e) => set_is_public(e.target.checked)} className="mt-0.5" />
+                        <span><span className="font-bold">Public (on the marketplace)</span><span className="block text-slate-500">{is_initial ? 'Off = private: only the scope’s members see and install it.' : 'Leave it to keep the team’s current visibility.'}</span></span>
+                    </label>
 
                     <div>
                         <label className="mb-1 block text-xs font-bold text-slate-700">Changelog</label>

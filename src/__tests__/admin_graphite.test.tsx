@@ -151,7 +151,7 @@ describe('Admin › Organization', () => {
 			{ user_id: 'u-ana', username: 'ana', display_name: 'Ana Ruiz', email: 'ana@acme.com', role: 'admin', role_id: 'r-admin', status: 'active' as const, invited_at: null, joined_at: null, deleted_at: null },
 			{ user_id: 'u-tom', username: 'tom', display_name: 'Tom Lee', email: 'tom@acme.com', role: 'member', role_id: 'r-member', status: 'active' as const, invited_at: null, joined_at: null, deleted_at: null },
 		],
-		scopes: [{ id: 's1', slug: 'acme', display_name: 'Acme', visibility: 'private', member_count: 2, team_count: 4 }],
+		scopes: [{ id: 's1', slug: 'acme', display_name: 'Acme', member_count: 2, team_count: 4 }],
 		roles: [role('r-owner', 'owner', 'Owner'), role('r-admin', 'admin', 'Admin'), role('r-member', 'member', 'Member')],
 		...over,
 	});
@@ -289,8 +289,8 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 	it('scopes: create and edit org scopes; personal scopes are read-only', async () => {
 		const orgs = [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', display_name: 'Acme' }];
 		const rows = [
-			{ id: 's1', slug: 'acme', display_name: 'Acme', org_id: orgs[0].id, org_slug: 'acme', owner_username: 'ana', visibility: 'private', scope_type: 'org', team_count: 0, created_at: '2026-01-01T00:00:00Z' },
-			{ id: 's2', slug: 'sapan', display_name: 'sapan', org_id: null, org_slug: null, owner_username: 'sapan', visibility: 'public', scope_type: 'user', team_count: 3, created_at: '2026-01-01T00:00:00Z' },
+			{ id: 's1', slug: 'acme', display_name: 'Acme', org_id: orgs[0].id, org_slug: 'acme', owner_username: 'ana', team_count: 0, created_at: '2026-01-01T00:00:00Z' },
+			{ id: 's2', slug: 'sapan', display_name: 'sapan', org_id: null, org_slug: null, owner_username: 'sapan', team_count: 3, created_at: '2026-01-01T00:00:00Z' },
 		];
 		const calls = route_fetch({ '/v1/admin_list/get': () => list('scopes', rows), '/v1/orgs/get': () => ({ orgs, total: 1 }), '/v1/orgs/get_by_id': () => orgs[0], '/v1/orgs/new_scope': () => ({}), '/v1/orgs/update_scope': () => ({}) });
 		at('/admin/scopes', '/admin/scopes', <ScopesPage />);
@@ -301,12 +301,12 @@ describe('Admin › Realms / Workspaces / Runs / Logs / Scopes', () => {
 		await waitFor(() => expect(within(form).getByTestId('scope-prefix')).toHaveTextContent('@acme-'));
 		fireEvent.change(within(form).getByLabelText('Scope slug'), { target: { value: 'data' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Create scope' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/new_scope')?.body).toEqual({ org_id: orgs[0].id, slug: 'acme-data', visibility: 'private' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/new_scope')?.body).toEqual({ org_id: orgs[0].id, slug: 'acme-data' }));
 		fireEvent.click(await screen.findByTestId('scope-acme'));
 		const panel = await screen.findByTestId('scope-panel');
-		fireEvent.change(within(panel).getByLabelText('Visibility'), { target: { value: 'public' } });
+		fireEvent.change(within(panel).getByLabelText('Display name'), { target: { value: 'Acme Inc' } });
 		fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/update_scope')?.body).toEqual({ org_id: orgs[0].id, scope_id: 's1', display_name: 'Acme', visibility: 'public' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/update_scope')?.body).toEqual({ org_id: orgs[0].id, scope_id: 's1', display_name: 'Acme Inc' }));
 		fireEvent.click(await screen.findByTestId('scope-sapan'));
 		expect(await screen.findByText(/Personal scopes belong to one account/)).toBeInTheDocument();
 	});

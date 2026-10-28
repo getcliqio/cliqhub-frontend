@@ -281,7 +281,7 @@ function Scopes({ data, can_manage, reload }: { data: Org_page_data; can_manage:
 	const { org } = data;
 	const post = use_post();
 	const [open, set_open] = useState<string | null>(null);
-	const [f, set_f] = useState<{ slug: string; name: string; visibility: 'private' | 'public' } | null>(null);
+	const [f, set_f] = useState<{ slug: string; name: string } | null>(null);
 	const [msg, set_msg] = useState<Msg>(null);
 	const [busy, set_busy] = useState(false);
 	const [confirm, set_confirm] = useState<string | null>(null);
@@ -294,34 +294,32 @@ function Scopes({ data, can_manage, reload }: { data: Org_page_data; can_manage:
 		return r.ok;
 	}
 	const non_admins = org.members.filter((m) => m.status === 'active' && !['owner', 'admin'].includes(role_of(org, m)?.slug ?? m.role));
-	const ssort = use_table_sort({ keys: ['scope', 'visibility', 'members', 'teams'], mode: 'client', param: 'scopes', first_dir: { members: 'desc', teams: 'desc' } });
-	const scopes = sort_rows(org.scopes, ssort, { scope: (x) => x.slug, visibility: (x) => x.visibility, members: (x) => x.member_count, teams: (x) => x.team_count });
+	const ssort = use_table_sort({ keys: ['scope', 'members', 'teams'], mode: 'client', param: 'scopes', first_dir: { members: 'desc', teams: 'desc' } });
+	const scopes = sort_rows(org.scopes, ssort, { scope: (x) => x.slug, members: (x) => x.member_count, teams: (x) => x.team_count });
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="flex flex-wrap items-center gap-2">
-				<p className="text-[12.5px] text-[var(--g-ink-3)]">Publishing namespaces for this org (<span className="g-mono">@scope/team</span>). Owners and admins can publish to every scope; give other members access per scope.</p>
-				{can_manage ? <button type="button" onClick={() => set_f({ slug: '', name: '', visibility: 'private' })} className={`${G_PRIMARY} ml-auto`}><Plus className="h-3.5 w-3.5" /> New scope</button> : null}
+				<p className="text-[12.5px] text-[var(--g-ink-3)]">Publishing namespaces for this org (<span className="g-mono">@scope/team</span>). Anyone whose role can publish teams publishes to every scope. A scope's members also see its private teams; owners and admins are members of every scope.</p>
+				{can_manage ? <button type="button" onClick={() => set_f({ slug: '', name: '' })} className={`${G_PRIMARY} ml-auto`}><Plus className="h-3.5 w-3.5" /> New scope</button> : null}
 			</div>
 			{msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 			{f ? (
-				<form onSubmit={(e) => { e.preventDefault(); const slug = scope_slug(org.slug, f.slug); void run('/v1/orgs/new_scope', { slug, visibility: f.visibility, ...(f.name.trim() ? { display_name: f.name.trim() } : {}) }, `@${slug} created.`).then((ok) => ok && set_f(null)); }} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
+				<form onSubmit={(e) => { e.preventDefault(); const slug = scope_slug(org.slug, f.slug); void run('/v1/orgs/new_scope', { slug, ...(f.name.trim() ? { display_name: f.name.trim() } : {}) }, `@${slug} created.`).then((ok) => ok && set_f(null)); }} aria-label="New scope" className="flex flex-wrap items-end gap-3 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] p-4">
 					<Scope_slug_field org_slug={org.slug} value={f.slug} on_change={(rest) => set_f({ ...f, slug: rest })} />
 					<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Scope name" value={f.name} onChange={(e) => set_f({ ...f, name: e.target.value })} className={`${G_INPUT} mt-1 block w-[200px]`} /></label>
-					<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Scope visibility" value={f.visibility} onChange={(e) => set_f({ ...f, visibility: e.target.value as 'private' | 'public' })} className={`${G_INPUT} mt-1 block w-[120px]`}><option value="private">private</option><option value="public">public</option></select></label>
 					<button type="submit" disabled={busy || !scope_slug(org.slug, f.slug)} className={G_PRIMARY}>Create scope</button>
 					<button type="button" onClick={() => set_f(null)} className={G_BTN}>Cancel</button>
 				</form>
 			) : null}
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={ssort} k="scope" className={TH}>Scope</Sort_th><Sort_th sort={ssort} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={ssort} k="members" className={TH}>Members</Sort_th><Sort_th sort={ssort} k="teams" className={TH}>Teams</Sort_th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={ssort} k="scope" className={TH}>Scope</Sort_th><Sort_th sort={ssort} k="members" className={TH}>Members</Sort_th><Sort_th sort={ssort} k="teams" className={TH}>Teams</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
-						{!org.scopes.length ? <Empty_row cols={5}>No scopes.</Empty_row> : null}
+						{!org.scopes.length ? <Empty_row cols={4}>No scopes.</Empty_row> : null}
 						{scopes.map((s) => (
-							<FragmentScope key={s.id} open={open === s.id} cols={5} row={(
+							<FragmentScope key={s.id} open={open === s.id} cols={4} row={(
 								<tr className={TR} data-testid={`scope-${s.slug}`}>
 									<td className="px-4 py-2.5"><button type="button" aria-expanded={open === s.id} onClick={() => set_open(open === s.id ? null : s.id)} className="g-mono font-semibold hover:underline">@{s.slug}</button>{s.display_name && s.display_name !== s.slug ? <span className="ml-2 text-[var(--g-ink-3)]">{s.display_name}</span> : null}</td>
-									<td className="px-4"><Pill tone={s.visibility === 'public' ? 'ok' : 'muted'}>{s.visibility}</Pill></td>
 									<td className="g-mono px-4">{s.member_count}</td>
 									<td className="g-mono px-4">{s.team_count}</td>
 									<td className="px-4 text-right">

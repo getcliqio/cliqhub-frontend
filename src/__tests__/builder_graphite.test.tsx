@@ -495,19 +495,20 @@ describe('Graphite builder — publish', () => {
 		fireEvent.click(within(dlg).getByText('Publish 1.0.0'));
 		expect(await screen.findByTestId('publish-done')).toBeTruthy();
 		const body = calls.find((c) => c.url === '/v1/teams/publish')!.body;
-		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '1.0.0', visibility: 'public' });
+		// A new team starts private (PLAN-team-visibility §3.3).
+		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '1.0.0', visibility: 'private' });
 		const pkg = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(String(body.data_base64)), (c) => c.charCodeAt(0))));
 		expect(pkg['team.yml']).toContain('name: feature-dev');
 		expect(pkg.roles.map((r: { name: string }) => r.name)).toEqual(['design', 'build']);
 	});
 
-	it('next version: suggested bump, notes, private toggle, then upgrades ticked realms', async () => {
+	it('next version: suggested bump, notes, public toggle (starts at the current visibility), then upgrades ticked realms', async () => {
 		const installs = [
 			{ realm_id: 'r1', realm_slug: 'prod-us', realm_name: 'prod-us', org_slug: 'measureone', version: '1.0.0', behind: false, in_team_list: true, installed_count: 1, online_daemon_count: 1, last_run_at: null, missing_agents: [] },
 			{ realm_id: 'r2', realm_slug: 'staging', realm_name: 'staging', org_slug: 'measureone', version: '1.0.0', behind: false, in_team_list: true, installed_count: 1, online_daemon_count: 1, last_run_at: null, missing_agents: [] },
 		];
 		const calls = route_fetch({
-			'/v1/team_page/get': () => ({ body: { ok: true, data: { team: { latest_version: '1.0.0', status: 'published', listed: true }, installs: { items: installs, not_installed: [], realms_checked: 2, realms_total: 2 }, counts: {}, view: 'installs', partial: false } } }),
+			'/v1/team_page/get': () => ({ body: { ok: true, data: { team: { latest_version: '1.0.0', status: 'published', listed: true, visibility: 'public' }, installs: { items: installs, not_installed: [], realms_checked: 2, realms_total: 2 }, counts: {}, view: 'installs', partial: false } } }),
 			'/v1/teams/publish': () => ({ body: { ok: true, data: { version: '1.1.0' } } }),
 			'/v1/realms/add_team': () => ({ body: { ok: true, data: {} } }),
 		});
@@ -521,7 +522,8 @@ describe('Graphite builder — publish', () => {
 		fireEvent.click(within(dlg).getByRole('radio', { name: /Patch/ }));
 		expect(within(dlg).getByText('Publish 1.0.1')).toBeTruthy();
 		fireEvent.click(within(dlg).getByRole('radio', { name: /Minor/ }));
-		fireEvent.click(within(dlg).getByLabelText(/Listed in Marketplace/));
+		expect((within(dlg).getByLabelText(/Public \(on the marketplace\)/) as HTMLInputElement).checked).toBe(true);
+		fireEvent.click(within(dlg).getByLabelText(/Public \(on the marketplace\)/));
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: /staging/ }));
 		fireEvent.click(within(dlg).getByText('Publish 1.1.0'));
 		await screen.findByTestId('publish-done');

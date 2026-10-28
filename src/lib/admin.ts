@@ -124,7 +124,7 @@ export interface Admin_run_row {
 	workspace_name: string | null; started_at: number | null; last_updated_at: number | null; realm: Admin_realm_ref | null;
 }
 export interface Admin_log_row { id: string; run_id: string; run_name: string | null; created_at: number; level: string; message: string; daemon_name: string | null; team: string | null; realm: Admin_realm_ref | null }
-export interface Admin_scope_row { id: string; slug: string; display_name: string; org_id: string | null; org_slug: string | null; owner_username: string | null; visibility: string; scope_type: string; team_count: number; created_at: string | null }
+export interface Admin_scope_row { id: string; slug: string; display_name: string; org_id: string | null; org_slug: string | null; owner_username: string | null; team_count: number; created_at: string | null }
 
 export function realm_href(r: Admin_realm_ref | { slug: string; org_slug: string | null } | null): string | null {
 	return r?.org_slug ? `/o/${r.org_slug}/realms/${r.slug}` : null;
@@ -159,7 +159,7 @@ export interface Org_role {
 }
 
 /** A publishing scope of an org, with counts. */
-export interface Org_scope { id: string; slug: string; display_name: string; visibility: string; member_count: number; team_count: number }
+export interface Org_scope { id: string; slug: string; display_name: string; member_count: number; team_count: number }
 
 /** `orgs/get_by_id` (also `org_page/get`'s `org`). */
 export interface Org_detail {
@@ -304,7 +304,6 @@ export function as_deleted_details(d: Record<string, unknown> | null | undefined
 export interface Namespace_holder {
 	kind: 'org' | 'scope' | 'user';
 	slug: string;
-	scope_type?: string;
 	org_slug?: string | null;
 	owner_username?: string | null;
 	personal?: boolean;

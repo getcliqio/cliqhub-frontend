@@ -50,6 +50,8 @@ export interface Team_list_row {
 	phase_kinds?: string[] | null;
 	/** Phase names in workflow order (older BFFs omit them). */
 	phase_names?: string[] | null;
+	/** Why it is on the org's Teams list (All): own, cliq or added — only an added team can be removed. */
+	list_kind?: 'own' | 'cliq' | 'added' | null;
 	installs: Team_install[];
 }
 
@@ -80,6 +82,8 @@ export interface Team_header {
 	versions: Team_release[];
 	author: string | null;
 	listed: boolean;
+	/** public: everyone; private: the scope's members (PLAN-team-visibility §3.2); draft: never published. */
+	visibility: 'public' | 'private' | 'draft';
 	tags: string[];
 	can_edit: boolean;
 	can_delete: boolean;

@@ -1,8 +1,9 @@
 /**
- * Build › Teams (Graphite): tabs All (own teams and teams installed in the realms), Published and Drafts
- * (own teams only). Read: one `POST /v1/team_list/get` per page (BFF: counts per tab, phase shape per team). Follows the view
- * switcher: an org view shows that org's teams and realms. Write: `/v1/realms/add_team` (install
- * a published team into one realm). A row opens the team.
+ * Build › Teams (Graphite) — always one org's (PLAN-team-visibility §6): tabs All (the org's Teams list:
+ * its own teams, the @cliq teams and teams it added from other orgs), Published and Drafts (your own
+ * teams in the org's scopes). Read: one `POST /v1/team_list/get` per page (BFF: counts per tab, phase
+ * shape per team). Write: `/v1/realms/add_team` (install a team from the list into one realm). A row
+ * opens the team. With no org chosen it asks for one.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
@@ -173,7 +174,29 @@ export function Component() {
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
 	const [open_install, set_open_install] = useState<string | null>(null);
 	const [msg, set_msg] = useState<string | null>(null);
+	const [err, set_err] = useState<string | null>(null);
+	const [removing, set_removing] = useState<string | null>(null);
+	const auth_fetch = useAuthFetch();
 	const view_org = scope.kind === 'all' ? null : scope.org;
+
+	/** Take a team the org added off its Teams list (`orgs/remove_team`; refused while a realm has it). */
+	async function remove_from_list(t: Team_list_row) {
+		if (!view_org || !t.scope) return;
+		const label = `@${t.scope}/${t.name}`;
+		if (!window.confirm(`Remove ${label} from ${view_org.display_name}'s Teams list?`)) return;
+		set_removing(label); set_err(null); set_msg(null);
+		try {
+			const res = await auth_fetch('/v1/orgs/remove_team', { method: 'POST', body: JSON.stringify({ org_id: view_org.id, scope: t.scope, slug: t.name }) });
+			const payload = await res.json().catch(() => null);
+			if (!res.ok || !payload?.ok) { set_err(api_message(payload, `Could not remove ${label}.`)); return; }
+			set_msg(`${label} removed from the Teams list.`);
+			void read.reload();
+		} catch {
+			set_err('Network error — check your connection, then try again.');
+		} finally {
+			set_removing(null);
+		}
+	}
 
 	const set_param = (k: string, v: string | null, keep_page = false) => set_search((prev) => {
 		const p = new URLSearchParams(prev);
@@ -185,7 +208,7 @@ export function Component() {
 	// The BFF sorts the whole list before paging it (team_list/get sort_by).
 	const sort = use_table_sort({ keys: ['name'] });
 	const body = overview.data || overview.status === 'error'
-		? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...sort.body, ...(view_org ? { org_id: view_org.id, scope: view_org.slug } : {}) }
+		? (view_org ? { status, limit: TEAM_LIST_PAGE_SIZE, offset: page * TEAM_LIST_PAGE_SIZE, ...sort.body, org_id: view_org.id, scope: view_org.slug } : null)
 		: null;
 	const read = use_bff_read<Team_list_data>('/v1/team_list/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load teams.' });
 	const data = read.data;
@@ -202,11 +225,11 @@ export function Component() {
 				<div className="flex flex-wrap items-start gap-3">
 					<div className="min-w-0 flex-1">
 						<h1 className="text-[22px] font-semibold tracking-tight">Teams</h1>
-						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `Teams ${view_org.display_name} builds, and teams installed in its realms.` : 'Teams you and your orgs build, and teams installed in your realms.'} Build here, then install into any realm.</p>
+						<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{view_org ? `${view_org.display_name}'s teams: cliq's, its own, and those it added. Published and Drafts are your own.` : 'Choose an organization to see its teams.'} Build here, then install into any realm.</p>
 					</div>
 					<Link to="/builder" className={PRIMARY}><Plus aria-hidden className="h-3.5 w-3.5" />New team</Link>
 				</div>
-				{read.status === 'error' && !data ? (
+				{!view_org && overview.data ? null : read.status === 'error' && !data ? (
 					<Blocking_error http_status={read.http_status} code={read.code} error={read.error} on_retry={() => void read.reload()} what="teams" />
 				) : (
 					<>
@@ -218,6 +241,7 @@ export function Component() {
 							))}
 						</div>
 						{msg ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]">{msg}</p> : null}
+						{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
 						<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
 							{data && data.items.length === 0 ? (
@@ -256,6 +280,9 @@ export function Component() {
 														<span className="relative inline-flex items-center gap-1.5">
 															{t.status === 'published' && t.scope ? (
 																<button type="button" aria-expanded={open_install === key} onClick={() => set_open_install(open_install === key ? null : key)} className={ROW_ACTION_CLS}>Install ▾</button>
+															) : null}
+															{t.list_kind === 'added' ? (
+																<button type="button" disabled={removing === `@${t.scope}/${t.name}`} onClick={() => void remove_from_list(t)} className={ROW_ACTION_CLS}>Remove</button>
 															) : null}
 															{open_install === key && t.scope ? (
 																<Install_popover

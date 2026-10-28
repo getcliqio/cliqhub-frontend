@@ -49,7 +49,8 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 	const [installs, set_installs] = useState<Team_install[]>([]);
 	const [bump, set_bump] = useState<Bump>(suggest_bump(changes));
 	const [notes, set_notes] = useState(release_notes(changes));
-	const [listed, set_listed] = useState(true);
+	// Public (on the marketplace) or private to the scope's members; a new team starts private (PLAN-team-visibility §3.3).
+	const [listed, set_listed] = useState(false);
 	const [upgrade, set_upgrade] = useState<Set<string>>(new Set());
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
@@ -64,7 +65,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 				if (!live) return;
 				const d = res.ok && p?.ok ? (p.data as Team_page_data) : null;
 				set_current(d?.team.latest_version ?? null);
-				if (d) set_listed(d.team.listed || d.team.status === 'draft');
+				if (d) set_listed(d.team.visibility === 'public');
 				const items = d?.installs?.items ?? [];
 				set_installs(items);
 				set_upgrade(new Set(items.map((i) => i.realm_id)));
@@ -167,7 +168,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 							<div className="grid gap-4 md:grid-cols-2">
 								<label className="flex items-start gap-2.5 text-[13px]">
 									<input type="checkbox" checked={listed} onChange={(e) => set_listed(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[var(--g-acc)]" />
-									<span>Listed in Marketplace<span className="block text-[11.5px] text-[var(--g-ink-3)]">Off = private: only your scope can install it.</span></span>
+									<span>Public (on the marketplace)<span className="block text-[11.5px] text-[var(--g-ink-3)]">Off = private: only the scope’s members see and install it.</span></span>
 								</label>
 								{installs.length ? (
 									<div>

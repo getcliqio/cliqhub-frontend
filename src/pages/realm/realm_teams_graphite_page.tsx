@@ -5,8 +5,8 @@
  * daemons online now are on it. Writes are single Core routes: `/v1/realms/add_team` (add; with `version` to move
  * the realm to it — the same version again re-installs it on the online daemons) and `/v1/realms/remove_team`.
  * The version picker reads `/v1/teams/get_versions`.
- * The catalog search in "Install a team" is the existing `/v1/teams/get`, published teams only
- * (`@scope/name` or any part of the name, description or scope).
+ * "Install a team" searches the realm's org's Teams list (`/v1/team_list/get`, All): a realm installs
+ * only from it (PLAN-team-visibility §3.4).
  */
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router';
@@ -75,8 +75,8 @@ function Row_menu({ row, base, on_remove, on_add, manage }: { row: Realm_team_ro
 	);
 }
 
-/** Catalog search + install into this realm. */
-function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm_id: string; installed: Set<string>; on_close: () => void; on_installed: () => Promise<void> }) {
+/** Install into this realm from its org's Teams list (PLAN-team-visibility §3.4): search it, add one. */
+function Install_drawer({ realm_id, org_id, org_slug, installed, on_close, on_installed }: { realm_id: string; org_id: string | null; org_slug: string; installed: Set<string>; on_close: () => void; on_installed: () => Promise<void> }) {
 	const auth_fetch = useAuthFetch();
 	const post = use_post();
 	const [q, set_q] = useState('');
@@ -88,10 +88,11 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 	const seq = useRef(0);
 
 	async function load(query: string, offset: number) {
+		if (!org_id) return;
 		const my = ++seq.current;
 		set_loading(true);
 		try {
-			const res = await auth_fetch('/v1/teams/get', { method: 'POST', body: JSON.stringify({ ...(query ? { query } : {}), status: 'published', limit: 20, offset }) });
+			const res = await auth_fetch('/v1/team_list/get', { method: 'POST', body: JSON.stringify({ org_id, scope: org_slug, status: 'all', ...(query ? { q: query } : {}), limit: 20, offset }) });
 			const payload = await res.json().catch(() => null);
 			if (my !== seq.current) return;
 			const d = payload?.data ?? payload ?? {};
@@ -104,7 +105,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 			if (my === seq.current) set_loading(false);
 		}
 	}
-	useEffect(() => { const t = setTimeout(() => void load(q.trim(), 0), q ? 250 : 0); return () => clearTimeout(t); }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+	useEffect(() => { const t = setTimeout(() => void load(q.trim(), 0), q ? 250 : 0); return () => clearTimeout(t); }, [q, org_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
 	async function install(scope: string, name: string) {
 		const key = `${scope}/${name}`;
@@ -124,10 +125,10 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 					<h2 className="text-[18px] font-semibold">Install a team</h2>
 					<button type="button" onClick={on_close} aria-label="Close" className="ml-auto text-[var(--g-ink-3)] hover:text-[var(--g-ink)]"><X className="h-4 w-4" /></button>
 				</div>
-				<p className="text-[12.5px] text-[var(--g-ink-3)]">Your teams, your orgs’ teams and Marketplace. Adding a team puts it on this realm’s team list and installs it on the realm’s online daemons.</p>
+				<p className="text-[12.5px] text-[var(--g-ink-3)]">Teams on @{org_slug}’s Teams list: its own, cliq’s and those it added. Adding one puts it on this realm’s team list and installs it on the realm’s online daemons. Another org’s team goes on the <Link to={`/teams?org=${encodeURIComponent(org_slug)}`} className="text-[var(--g-acc)] hover:underline">Teams list</Link> first.</p>
 				<div className="flex items-center gap-2 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5">
 					<Search aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
-					<input autoFocus aria-label="Search teams to install" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search by name or @scope/name…" className="h-9 min-w-0 flex-1 bg-transparent text-[13px] text-[var(--g-ink)] outline-none" />
+					<input autoFocus aria-label="Search teams to install" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search by name or description…" className="h-9 min-w-0 flex-1 bg-transparent text-[13px] text-[var(--g-ink)] outline-none" />
 				</div>
 				{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 				<ul className="flex flex-col divide-y divide-[var(--g-line-2)] rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label="Teams">
@@ -146,7 +147,7 @@ function Install_drawer({ realm_id, installed, on_close, on_installed }: { realm
 							</li>
 						);
 					})}
-					{!loading && rows.length === 0 ? <li className="px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">{q ? 'No teams match.' : 'No teams yet.'}</li> : null}
+					{!loading && rows.length === 0 ? <li className="px-4 py-6 text-center text-[12.5px] text-[var(--g-ink-3)]">{q ? 'No teams match.' : 'No teams on the Teams list yet.'}</li> : null}
 				</ul>
 				{rows.length < total ? (
 					<button type="button" disabled={loading} onClick={() => void load(q.trim(), rows.length)} className="self-start text-[12.5px] font-semibold text-[var(--g-acc)] hover:underline disabled:opacity-50">{loading ? 'Loading…' : `Show more (${total - rows.length} left)`}</button>
@@ -377,7 +378,7 @@ export function Component() {
 				<Version_drawer realm_id={realm_id} row={versioning} on_close={() => set_versioning(null)} on_done={async (text) => { set_versioning(null); set_msg({ tone: 'ok', text }); await read.reload(); }} />
 			) : null}
 			{installing && realm_id ? (
-				<Install_drawer realm_id={realm_id} installed={new Set((data?.items ?? []).filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
+				<Install_drawer realm_id={realm_id} org_id={sidebar_realm?.org_id ?? null} org_slug={org ?? ''} installed={new Set((data?.items ?? []).filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
 			) : null}
 			{running && running.scope && data ? (
 				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }} on_close={() => set_running(null)} />

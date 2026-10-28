@@ -70,9 +70,6 @@ export function Component() {
 				<div className="mt-1 flex flex-wrap items-center gap-2.5">
 					<h1 className="g-mono text-[22px] font-semibold tracking-tight">@{slug}</h1>
 					{scope_info && scope_info.display_name !== slug ? <span className="text-[15px] text-[var(--g-ink-3)]">{scope_info.display_name}</span> : null}
-					{scope_info ? (
-						<span className={`rounded-full px-2 py-0.5 text-[11.5px] font-semibold ${scope_info.visibility === 'public' ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : 'bg-[var(--g-warn-soft)] text-[var(--g-warn-text)]'}`}>{scope_info.visibility}</span>
-					) : null}
 				</div>
 				<p className="mt-1 text-[13px] text-[var(--g-ink-3)]">{loading ? '…' : `${total} team${total === 1 ? '' : 's'}`}</p>
 			</div>

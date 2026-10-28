@@ -19,7 +19,7 @@ const LIMIT = 25;
 const G_DANGER = 'inline-flex items-center whitespace-nowrap rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)] disabled:opacity-40';
 function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg: string) => void }) {
 	const post = use_post();
-	const [f, set_f] = useState({ org_id: '', slug: '', display_name: '', visibility: 'private' });
+	const [f, set_f] = useState({ org_id: '', slug: '', display_name: '' });
 	const [busy, set_busy] = useState(false);
 	const [err, set_err] = useState<string | null>(null);
 	// The picked org's slug: the new scope's read-only prefix.
@@ -38,7 +38,7 @@ function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg:
 	async function submit(e: FormEvent) {
 		e.preventDefault();
 		set_busy(true); set_err(null);
-		const r = await post('/v1/orgs/new_scope', { org_id: f.org_id, slug, visibility: f.visibility, ...(f.display_name.trim() ? { display_name: f.display_name.trim() } : {}) });
+		const r = await post('/v1/orgs/new_scope', { org_id: f.org_id, slug, ...(f.display_name.trim() ? { display_name: f.display_name.trim() } : {}) });
 		set_busy(false);
 		if (!r.ok) { set_err(r.error); return; }
 		on_done(`@${slug} created`);
@@ -48,7 +48,6 @@ function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg:
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Org<div className="mt-1"><Org_filter value={f.org_id} on_change={(v) => set_f({ ...f, org_id: v })} all_label="Pick an org…" /></div></label>
 			<Scope_slug_field org_slug={org_slug} value={f.slug} on_change={(rest) => set_f({ ...f, slug: rest })} />
 			<label className="text-[12.5px] text-[var(--g-ink-2)]">Name<input aria-label="Name" value={f.display_name} onChange={(e) => set_f({ ...f, display_name: e.target.value })} className={`${G_INPUT} mt-1 block w-[180px]`} /></label>
-			<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Visibility" value={f.visibility} onChange={(e) => set_f({ ...f, visibility: e.target.value })} className={`${G_INPUT} mt-1 block w-[120px]`}><option value="private">private</option><option value="public">public</option></select></label>
 			<button type="submit" disabled={busy || !f.org_id || !slug} className={G_PRIMARY}>Create scope</button>
 			<button type="button" aria-label="Close" onClick={on_close} className="ml-auto self-start text-[var(--g-ink-3)]"><X className="h-4 w-4" /></button>
 			{err ? <p role="alert" className="w-full text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
@@ -59,7 +58,6 @@ function New_scope({ on_close, on_done }: { on_close: () => void; on_done: (msg:
 function Scope_editor({ s, on_close, on_done }: { s: Admin_scope_row; on_close: () => void; on_done: (msg: string) => void }) {
 	const post = use_post();
 	const [name, set_name] = useState(s.display_name);
-	const [vis, set_vis] = useState(s.visibility);
 	const [confirm, set_confirm] = useState('');
 	const [busy, set_busy] = useState(false);
 	const [err, set_err] = useState<string | null>(null);
@@ -77,8 +75,7 @@ function Scope_editor({ s, on_close, on_done }: { s: Admin_scope_row; on_close: 
 			{s.org_id ? (
 				<>
 					<label className="text-[12.5px] text-[var(--g-ink-2)]">Display name<input aria-label="Display name" value={name} onChange={(e) => set_name(e.target.value)} className={`${G_INPUT} mt-1 w-full`} /></label>
-					<label className="text-[12.5px] text-[var(--g-ink-2)]">Visibility<select aria-label="Visibility" value={vis} onChange={(e) => set_vis(e.target.value)} className={`${G_INPUT} mt-1 w-full`}><option value="private">private</option><option value="public">public</option></select></label>
-					<button type="button" disabled={busy || (name === s.display_name && vis === s.visibility)} onClick={() => void run('/v1/orgs/update_scope', { display_name: name, visibility: vis }, `@${s.slug} saved`)} className={`${G_PRIMARY} self-start`}>Save</button>
+					<button type="button" disabled={busy || name === s.display_name} onClick={() => void run('/v1/orgs/update_scope', { display_name: name }, `@${s.slug} saved`)} className={`${G_PRIMARY} self-start`}>Save</button>
 					<div className="mt-2 flex flex-col gap-2 border-t border-[var(--g-line)] pt-3">
 						{s.team_count ? (
 							<p className="text-[12.5px] text-[var(--g-ink-3)]">@{s.slug} can’t be deleted while it has {s.team_count} team{s.team_count === 1 ? '' : 's'} — delete or move them first.</p>
@@ -106,7 +103,7 @@ export function Component() {
 	const [draft, set_draft] = useState(q);
 	const [creating, set_creating] = useState(false);
 	const [flash, set_flash] = useState<string | null>(null);
-	const sort = use_table_sort({ keys: ['slug', 'visibility', 'team_count', 'created_at'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { team_count: 'desc', created_at: 'desc' } });
+	const sort = use_table_sort({ keys: ['slug', 'team_count', 'created_at'], default_sort: { by: 'created_at', dir: 'desc' }, first_dir: { team_count: 'desc', created_at: 'desc' } });
 	const read = use_bff_read<Admin_list_data<Admin_scope_row>>('/v1/admin_list/get', { kind: 'scopes', ...sort.body, limit: LIMIT, offset: p.offset, ...(q ? { query: q } : {}), ...(org_id ? { org_id } : {}) }, { fallback_error: 'Could not load scopes.' });
 	const cols = sort.with_sortable(read.data?.sortable);
 	const d = read.data;
@@ -127,16 +124,15 @@ export function Component() {
 			<div className={`grid gap-4 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_340px]' : ''}`}>
 				<div className={TABLE_WRAP}>
 					<table className="w-full text-[13px]">
-						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="slug" className={TH}>Scope</Sort_th><th className={TH}>Org</th><th className={TH}>Owner</th><Sort_th sort={cols} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={cols} k="team_count" className={TH}>Teams</Sort_th><Sort_th sort={cols} k="created_at" className={TH}>Created</Sort_th></tr></thead>
+						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={cols} k="slug" className={TH}>Scope</Sort_th><th className={TH}>Org</th><th className={TH}>Owner</th><Sort_th sort={cols} k="team_count" className={TH}>Teams</Sort_th><Sort_th sort={cols} k="created_at" className={TH}>Created</Sort_th></tr></thead>
 						<tbody>
-							{read.status === 'loading' ? <Empty_row cols={6}>Loading…</Empty_row> : null}
-							{d && !d.items.length ? <Empty_row cols={6}>{q ? `No scopes match “${q}”.` : 'No scopes.'}</Empty_row> : null}
+							{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
+							{d && !d.items.length ? <Empty_row cols={5}>{q ? `No scopes match “${q}”.` : 'No scopes.'}</Empty_row> : null}
 							{d?.items.map((s) => (
 								<tr key={s.id} {...row({ on_open: () => p.set({ s: s.id, offset: p.offset ? String(p.offset) : null }) })} className={`${TR} ${ROW_OPENS} ${sel === s.id ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid={`scope-${s.slug}`}>
 									<td className="px-4 py-2.5"><button type="button" onClick={() => p.set({ s: s.id, offset: p.offset ? String(p.offset) : null })} className="g-mono font-bold hover:underline">@{s.slug}</button>{s.display_name && s.display_name !== s.slug ? <span className="ml-2 text-[var(--g-ink-3)]">{s.display_name}</span> : null}</td>
 									<td className="g-mono px-4 text-[var(--g-ink-2)]">{s.org_slug ?? (s.org_id ? '…' : <span className="font-sans text-[var(--g-ink-3)]">personal</span>)}</td>
 									<td className="px-4 text-[var(--g-ink-2)]">{s.owner_username ?? '—'}</td>
-									<td className="px-4"><Pill tone={s.visibility === 'public' ? 'ok' : 'muted'}>{s.visibility}</Pill></td>
 									<td className="g-mono px-4">{s.team_count}</td>
 									<td className="px-4 text-[var(--g-ink-3)]">{month_year(s.created_at)}</td>
 								</tr>

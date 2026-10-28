@@ -29,8 +29,6 @@ export interface Scope {
   display_name: string;
   owner_id: string;
   org_id: string | null;
-  visibility: 'public' | 'private';
-  scope_type: 'user' | 'org';
   created_at: string;
 }
 
@@ -46,7 +44,6 @@ export interface Team {
   id: number;
   name: string;
   scope: string | null;
-  scope_type: 'user' | 'org' | null;
   description: string;
   author_id: number | null;
   license: string;

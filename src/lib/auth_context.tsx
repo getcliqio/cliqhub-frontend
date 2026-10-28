@@ -18,12 +18,10 @@ export interface ClientUser {
   preferences: Record<string, unknown>;
 }
 
+/** A scope the signed-in user can publish to (PLAN-team-visibility §3.3). */
 export interface ClientScope {
-  id: string;
   slug: string;
   display_name: string;
-  visibility: 'public' | 'private';
-  scope_type: 'user' | 'org';
 }
 
 /** Present when act_as_user_id !== user_id (admin operating as another account). */

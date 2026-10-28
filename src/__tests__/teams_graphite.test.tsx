@@ -43,7 +43,7 @@ const HEADER = {
 	id: 'tid', name: 'feature-dev-js', scope: 'measureone', label: '@measureone/feature-dev-js', description: 'Ticket to reviewed PR', status: 'published' as const,
 	latest_version: '1.4.2', version: '1.4.2',
 	versions: [{ version: '1.4.2', changelog: 'Parallel security scan', published_at: Date.now() - 86400000, is_latest: true }, { version: '1.3.0', changelog: null, published_at: Date.now() - 5 * 86400000, is_latest: false }],
-	author: 'sapan', listed: true, tags: [], can_edit: true, can_delete: true, can_toggle_listing: true,
+	author: 'sapan', listed: true, visibility: 'public' as const, tags: [], can_edit: true, can_delete: true, can_toggle_listing: true,
 };
 const INSTALLS = list_data().items[0].installs;
 const INPUTS = [{ name: 'ticket', description: 'Jira key', required: true, default: null }, { name: 'reviewers', description: 'Who reviews the design', required: false, default: null }];
@@ -198,6 +198,25 @@ describe('Build › Teams list', () => {
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-sand'] }));
 		expect(await screen.findByText(/added to sandbox/)).toBeInTheDocument();
+	});
+
+	it('only a team the org added has Remove; it takes it off the Teams list (PLAN-team-visibility §3.6)', async () => {
+		const calls = route_fetch();
+		const added = { id: 't3', name: 'tool', scope: 'other', description: 'A tool', status: 'published' as const, latest_version: '3.0.0', author: 'ben', phase_types: null, list_kind: 'added' as const, installs: [] };
+		const base = list_data();
+		const fetch_mock = vi.mocked(globalThis.fetch);
+		const routed = fetch_mock.getMockImplementation()!;
+		fetch_mock.mockImplementation(async (url, init) => (String(url) === '/v1/team_list/get'
+			? (calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }), new Response(JSON.stringify({ ok: true, data: { ...base, items: [{ ...base.items[0]!, list_kind: 'own' as const }, added] } })))
+			: routed(url, init)));
+		vi.spyOn(window, 'confirm').mockReturnValue(true);
+		render_at('/teams?org=measureone');
+		const own = await screen.findByTestId('team-measureone/feature-dev-js');
+		expect(within(own).queryByRole('button', { name: 'Remove' })).toBeNull();
+		const row = await screen.findByTestId('team-other/tool');
+		fireEvent.click(within(row).getByRole('button', { name: 'Remove' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/orgs/remove_team')?.body).toEqual({ org_id: expect.any(String), scope: 'other', slug: 'tool' }));
+		expect(await screen.findByText('@other/tool removed from the Teams list.')).toBeInTheDocument();
 	});
 });
 

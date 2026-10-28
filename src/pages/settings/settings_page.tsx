@@ -243,32 +243,33 @@ function Tokens() {
 	);
 }
 
-interface Scope_row { id: string; slug: string; display_name?: string; visibility?: string; scope_type?: string; team_count?: number | string; org_id?: string | null }
+interface Scope_row { id: string; slug: string; display_name?: string; team_count?: number | string; org_id?: string | null }
+
+/** Personal: the scope of the user's personal org (its slug is their username). */
+const scope_kind = (s: Scope_row, username: string | undefined) => (s.slug === username ? 'personal' : 'org');
 
 function Scopes() {
 	const row = use_row_open();
 	const { user } = useAuth();
 	// orgs/get_scopes answers PagedData (`items`); `scopes` is kept for older BFFs.
 	const read = use_bff_read<{ items?: Scope_row[]; scopes?: Scope_row[] }>('/v1/orgs/get_scopes', user ? { user_id: user.id, limit: 100 } : null, { fallback_error: 'Could not load your scopes.' });
-	const ssort = use_table_sort({ keys: ['slug', 'type', 'visibility', 'teams'], mode: 'client', param: 'scopes', first_dir: { teams: 'desc' } });
+	const ssort = use_table_sort({ keys: ['slug', 'type', 'teams'], mode: 'client', param: 'scopes', first_dir: { teams: 'desc' } });
 	const rows = sort_rows(read.data?.items ?? read.data?.scopes ?? [], ssort, {
-		slug: (s) => s.slug, type: (s) => (s.scope_type === 'user' || !s.org_id ? 'personal' : 'org'),
-		visibility: (s) => s.visibility ?? 'private', teams: (s) => Number(s.team_count ?? 0),
+		slug: (s) => s.slug, type: (s) => scope_kind(s, user?.username), teams: (s) => Number(s.team_count ?? 0),
 	});
 	return (
 		<div className="flex flex-col gap-3">
 			<p className="text-[12.5px] text-[var(--g-ink-3)]">Namespaces you can publish teams under (<span className="g-mono">@scope/team</span>). Org scopes are managed in Manage › Organization › Scopes.</p>
 			<div className={TABLE_WRAP}>
 				<table className="w-full text-[13px]">
-					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={ssort} k="slug" className={TH}>Scope</Sort_th><Sort_th sort={ssort} k="type" className={TH}>Type</Sort_th><Sort_th sort={ssort} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={ssort} k="teams" className={TH}>Teams</Sort_th><th className={TH} /></tr></thead>
+					<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={ssort} k="slug" className={TH}>Scope</Sort_th><Sort_th sort={ssort} k="type" className={TH}>Type</Sort_th><Sort_th sort={ssort} k="teams" className={TH}>Teams</Sort_th><th className={TH} /></tr></thead>
 					<tbody>
-						{read.status === 'loading' ? <Empty_row cols={5}>Loading…</Empty_row> : null}
-						{read.data && !rows.length ? <Empty_row cols={5}>No scopes.</Empty_row> : null}
+						{read.status === 'loading' ? <Empty_row cols={4}>Loading…</Empty_row> : null}
+						{read.data && !rows.length ? <Empty_row cols={4}>No scopes.</Empty_row> : null}
 						{rows.map((s) => (
 							<tr key={s.id} {...row({ to: `/browse/s/${encodeURIComponent(s.slug)}` })} className={`${TR} ${ROW_OPENS}`}>
 								<td className="g-mono px-4 py-2.5"><Link to={`/browse/s/${encodeURIComponent(s.slug)}`} className="hover:underline">@{s.slug}</Link></td>
-								<td className="px-4 text-[var(--g-ink-3)]">{s.scope_type === 'user' || !s.org_id ? 'personal' : 'org'}</td>
-								<td className="px-4"><Pill tone={s.visibility === 'public' ? 'ok' : 'muted'}>{s.visibility ?? 'private'}</Pill></td>
+								<td className="px-4 text-[var(--g-ink-3)]">{scope_kind(s, user?.username)}</td>
 								<td className="g-mono px-4">{Number(s.team_count ?? 0)}</td>
 								<td className="px-4 text-right"><Link to={`/browse/s/${encodeURIComponent(s.slug)}`} className="text-[12.5px] text-[var(--g-acc)]">View →</Link></td>
 							</tr>

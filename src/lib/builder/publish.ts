@@ -39,6 +39,7 @@ function b64_utf8(s: string): string {
 	return btoa(bin);
 }
 
+/** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
 export function publish_body(team: GeneratedTeam, o: { scope: string; current: string | null; bump: Bump; changelog: string; listed: boolean }): Record<string, unknown> {
 	const agents: Record<string, Record<string, unknown>> = {};
 	for (const a of team.agents ?? []) {

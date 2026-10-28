@@ -38,7 +38,7 @@ function route_fetch() {
 		calls.push({ url: u, body });
 		if (u === '/v1/realm_teams/get') return new Response(JSON.stringify({ ok: true, data: teams() }));
 		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: true, data: { name: body.name, scope: body.scope, version: '2.5.0', versions: [{ version: '2.5.0', changelog: 'Faster PRs', published_at: Date.now() }, { version: '2.4.1', changelog: null, published_at: null }] } }));
-		if (u === '/v1/teams/get') return new Response(JSON.stringify({ ok: true, data: { teams: [{ name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
+		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: { items: [{ name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
 		return new Response(JSON.stringify({ ok: true, team_list: [] }));
 	});
 	return calls;
@@ -140,15 +140,15 @@ describe('Realm teams page', () => {
 		expect(screen.getByRole('menuitem', { name: 'View team' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/cliq/feature-dev-js?v=2.4.1');
 	});
 
-	it('install drawer searches the catalog and adds with one write', async () => {
+	it("install drawer searches the org's Teams list and adds with one write", async () => {
 		const calls = route_fetch();
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		fireEvent.click(screen.getByRole('button', { name: 'Install a team' }));
 		const dlg = screen.getByRole('dialog', { name: 'Install a team' });
 		expect(await within(dlg).findByText('@cliq/hello-world')).toBeInTheDocument();
-		// Published teams only (drafts can't be installed).
-		expect(calls.find((c) => c.url === '/v1/teams/get')?.body).toEqual({ status: 'published', limit: 20, offset: 0 });
+		// The realm's org's Teams list (PLAN-team-visibility §3.4): a realm installs only from it.
+		expect(calls.find((c) => c.url === '/v1/team_list/get')?.body).toMatchObject({ org_id: expect.any(String), scope: 'measureone', status: 'all', limit: 20, offset: 0 });
 		// Already in the realm → no add button.
 		expect(within(within(dlg).getByText(/@cliq\/feature-dev-js/).closest('li')!).getByText('In this realm')).toBeInTheDocument();
 		fireEvent.click(within(within(dlg).getByText(/@cliq\/hello-world/).closest('li')!).getByRole('button', { name: 'Add to realm' }));

@@ -68,7 +68,7 @@ export function Component() {
 	const [confirm, set_confirm] = useState('');
 	// Members / scopes / roles all come with the org (no paging): sorted here.
 	const member_sort = use_table_sort({ keys: ['member', 'member_role'], mode: 'client' });
-	const scope_sort = use_table_sort({ keys: ['scope', 'visibility', 'scope_members', 'scope_teams'], mode: 'client', first_dir: { scope_members: 'desc', scope_teams: 'desc' } });
+	const scope_sort = use_table_sort({ keys: ['scope', 'scope_members', 'scope_teams'], mode: 'client', first_dir: { scope_members: 'desc', scope_teams: 'desc' } });
 	const role_sort = use_table_sort({ keys: ['role', 'role_members', 'role_type'], mode: 'client', first_dir: { role_members: 'desc' } });
 	const invite = use_invite({ target_type: 'org', org_id: id }, async () => { await read.reload(); });
 
@@ -86,7 +86,7 @@ export function Component() {
 	if (!org) return <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />;
 
 	const members = sort_rows(org.members, member_sort, { member: (m) => person_name(m), member_role: (m) => role_of(org, m)?.name ?? m.role });
-	const scopes = sort_rows(org.scopes, scope_sort, { scope: (x) => x.slug, visibility: (x) => x.visibility, scope_members: (x) => x.member_count, scope_teams: (x) => x.team_count });
+	const scopes = sort_rows(org.scopes, scope_sort, { scope: (x) => x.slug, scope_members: (x) => x.member_count, scope_teams: (x) => x.team_count });
 	const roles = sort_rows(org.roles, role_sort, { role: (r) => r.name, role_members: (r) => org.members.filter((m) => role_of(org, m)?.id === r.id).length, role_type: (r) => (r.is_system ? 'built-in' : 'custom') });
 	const owners = owners_of(org);
 	const owner_role = org.roles.find((r) => r.slug === 'owner') ?? null;
@@ -159,11 +159,11 @@ export function Component() {
 			{tab === 'scopes' ? (
 				<div className={TABLE_WRAP}>
 					<table className="w-full text-[13px]">
-						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={scope_sort} k="scope" className={TH}>Scope</Sort_th><Sort_th sort={scope_sort} k="visibility" className={TH}>Visibility</Sort_th><Sort_th sort={scope_sort} k="scope_members" className={TH}>Members</Sort_th><Sort_th sort={scope_sort} k="scope_teams" className={TH}>Teams</Sort_th></tr></thead>
+						<thead><tr className="border-b border-[var(--g-line)]"><Sort_th sort={scope_sort} k="scope" className={TH}>Scope</Sort_th><Sort_th sort={scope_sort} k="scope_members" className={TH}>Members</Sort_th><Sort_th sort={scope_sort} k="scope_teams" className={TH}>Teams</Sort_th></tr></thead>
 						<tbody>
 							{org.scopes.length === 0 ? <Empty_row cols={4}>No scopes.</Empty_row> : null}
 							{scopes.map((s) => (
-								<tr key={s.id} className={TR}><td className="g-mono px-4 py-2.5">@{s.slug}</td><td className="px-4 text-[var(--g-ink-3)]">{s.visibility}</td><td className="g-mono px-4">{s.member_count}</td><td className="g-mono px-4">{s.team_count}</td></tr>
+								<tr key={s.id} className={TR}><td className="g-mono px-4 py-2.5">@{s.slug}</td><td className="g-mono px-4">{s.member_count}</td><td className="g-mono px-4">{s.team_count}</td></tr>
 							))}
 						</tbody>
 					</table>
