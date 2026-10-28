@@ -473,6 +473,17 @@ html.palette-measureone.dark [class*="divide-slate-"] > :not([hidden]) ~ :not([h
   border-color: #1c2028 !important;
 }
 
+/* Neutral text (dark): the light-mode paper greys above are near-black and would
+   win over html.dark's remap (same specificity, later in the file) — repaint them
+   light here, warm to match the charcoal. */
+html.palette-measureone.dark .text-slate-900 { color: #f4f2ee !important; }
+html.palette-measureone.dark .text-slate-800 { color: #ebe9e4 !important; }
+html.palette-measureone.dark .text-slate-700 { color: #dcd9d3 !important; }
+html.palette-measureone.dark .text-slate-600 { color: #c6c3bc !important; }
+html.palette-measureone.dark .text-slate-500 { color: #b3b0a9 !important; }
+html.palette-measureone.dark .text-slate-400 { color: #8f949b !important; }
+html.palette-measureone.dark .text-slate-300 { color: #8f949b !important; }
+
 /* Brand (dark): lighter navy so it lifts off the warm charcoal */
 html.palette-measureone.dark .text-indigo-700,
 html.palette-measureone.dark .text-indigo-600,

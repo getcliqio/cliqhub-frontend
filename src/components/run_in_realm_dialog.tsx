@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { parse_run_inputs_text } from '@/lib/realm_teams_coverage';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
@@ -175,8 +175,8 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 export function Run_in_realm_dialog({
 	scope,
 	slug,
-	fixed_realm,
-	prefill_from,
+	fixed_realm: fixed_realm_prop,
+	prefill_from: prefill_prop,
 	on_close,
 }: {
 	scope: string;
@@ -194,6 +194,14 @@ export function Run_in_realm_dialog({
 }) {
 	const auth_fetch = useOrgFetch();
 	const { current_id } = useOrg();
+	// Callers rebuild these objects on every render (and pages re-render on each background
+	// refresh): key them on their values, or the form reloads and loses what was typed.
+	const fixed_realm = useMemo(
+		() => (fixed_realm_prop ? { id: fixed_realm_prop.id, slug: fixed_realm_prop.slug, name: fixed_realm_prop.name } : undefined),
+		[fixed_realm_prop?.id, fixed_realm_prop?.slug, fixed_realm_prop?.name], // eslint-disable-line react-hooks/exhaustive-deps
+	);
+	const prefill_key = JSON.stringify(prefill_prop ?? null);
+	const prefill_from = useMemo(() => prefill_prop ?? null, [prefill_key]); // eslint-disable-line react-hooks/exhaustive-deps
 	const [realms, set_realms] = useState<Realm_option[]>([]);
 	const [loading_realms, set_loading_realms] = useState(!fixed_realm);
 	const [selected, set_selected] = useState(fixed_realm?.id ?? '');
@@ -291,13 +299,14 @@ export function Run_in_realm_dialog({
 			// extras textarea (see split_prefill_by_spec) so the round
 			// trip through submit is stable. Without prefill, all
 			// fields start blank as before.
+			// Values already typed survive a re-read; a prefill fills only what is still empty.
 			if (prefill_from) {
 				const { declared, extras_text } = split_prefill_by_spec(prefill_from, spec);
-				set_input_values(Object.fromEntries(spec.map((s) => [s.name, declared[s.name] ?? ''])));
-				if (extras_text) set_extra_inputs_text(extras_text);
+				set_input_values((prev) => Object.fromEntries(spec.map((s) => [s.name, prev[s.name] || declared[s.name] || ''])));
+				if (extras_text) set_extra_inputs_text((prev) => prev || extras_text);
 				return;
 			}
-			set_input_values(Object.fromEntries(spec.map((s) => [s.name, ''])));
+			set_input_values((prev) => Object.fromEntries(spec.map((s) => [s.name, prev[s.name] ?? ''])));
 		} catch {
 			set_inputs_spec([]);
 		} finally {

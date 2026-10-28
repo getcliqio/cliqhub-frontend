@@ -244,3 +244,27 @@ describe('Run_in_realm_dialog — required, optional and field kind', () => {
         expect(field('notes').querySelector('textarea')).toBeTruthy();
     });
 });
+
+describe('Run_in_realm_dialog — a page refresh keeps what was typed', () => {
+    beforeEach(() => auth_fetch.mockReset());
+
+    it('a rebuilt but identical fixed_realm does not reload the inputs or clear the fields', async () => {
+        auth_fetch.mockResolvedValue({ json: async () => stub_team_inputs([{ name: 'item_ids' }]) });
+        const view = (realm: { id: string; slug: string; name: string }) => (
+            <MemoryRouter>
+                <Run_in_realm_dialog scope="acme" slug="feature-dev" fixed_realm={realm} on_close={vi.fn()} />
+            </MemoryRouter>
+        );
+        const { rerender } = render(view({ ...FIXED_REALM }));
+        await waitFor(() => screen.getByText('item_ids'));
+        const field = () => screen.getByText('item_ids').closest('label')!.querySelector('input')!;
+        fireEvent.change(field(), { target: { value: 'itm_A,itm_B' } });
+        const calls = auth_fetch.mock.calls.length;
+        // The page re-renders on a background refresh and passes a new object with the same values.
+        rerender(view({ ...FIXED_REALM }));
+        rerender(view({ ...FIXED_REALM }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(auth_fetch.mock.calls.length).toBe(calls);
+        expect(field().value).toBe('itm_A,itm_B');
+    });
+});
