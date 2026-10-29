@@ -30,6 +30,7 @@ import { Hug_context } from '@/components/hug/hug_context';
 import { Hug_form } from '@/components/hug/hug_form';
 import { Hug_responses } from '@/components/hug/hug_responses';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
+import { G_BTN, G_PRIMARY } from '@/components/graphite/g_agents';
 
 const PANEL = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
 
@@ -111,7 +112,7 @@ function Workflow({ hug, run, run_href }: { hug: Hug; run: Hug_run; run_href: st
 					</span>
 				) : null}
 				<span className="text-[var(--g-ink-3)]">{[hug.realm_slug, run.run_name].filter(Boolean).join(' · ')}</span>
-				{run_href ? <Link to={run_href} className="ml-auto text-[var(--g-acc-text)] hover:underline">Open run ↗</Link> : null}
+				{run_href ? <Link to={run_href} className="ml-auto text-[var(--g-acc-text)] hover:underline">Open run</Link> : null}
 			</div>
 			<Workflow_graph
 				phases={phases}
@@ -158,6 +159,16 @@ function Others_line({ hug, me }: { hug: Hug; me: string | null | undefined }) {
 	);
 }
 
+/** Where to go once the Hug is answered or over: back to its run, or to the other Hugs. */
+function Next_steps({ run_href, waiting }: { run_href: string | null; waiting: number }) {
+	return (
+		<div className="flex flex-wrap gap-2" data-testid="hug-next">
+			{run_href ? <Link to={run_href} className={G_PRIMARY}>Back to the run</Link> : null}
+			<Link to="/hugs" className={G_BTN}>{waiting > 0 ? `All HUGs (${waiting} waiting)` : 'All HUGs'}</Link>
+		</div>
+	);
+}
+
 export function Component() {
 	const { hug_id = '' } = useParams();
 	const overview = use_overview();
@@ -180,6 +191,7 @@ export function Component() {
 	const mine = my_response(h, user?.id);
 	const run = read.data?.run ?? null;
 	const run_href = h.org_slug && h.realm_slug ? `/o/${h.org_slug}/realms/${h.realm_slug}/runs/${encodeURIComponent(h.run_id)}` : null;
+	const waiting = overview.data?.orgs.find((o) => o.slug === h.org_slug)?.counts.needs_you ?? 0;
 
 	return (
 		<Graphite_shell data={overview.data} title="Hug" current_realm_id={h.realm_id}>
@@ -203,7 +215,12 @@ export function Component() {
 					<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-acc-line)] bg-[var(--g-panel)] px-5 py-4" aria-label="Your response" data-testid="answer">
 						<h2 className="text-[15px] font-semibold">Your response</h2>
 						<Others_line hug={h} me={user?.id} />
-						{sent ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]">Response submitted. You can change it while the Hug is open.</p> : null}
+						{sent ? (
+							<div className="flex flex-col gap-2.5" data-testid="hug-sent">
+								<p role="status" className="text-[12.5px] text-[var(--g-ok)]">Response submitted. You can change it while the Hug is open.</p>
+								<Next_steps run_href={run_href} waiting={waiting} />
+							</div>
+						) : null}
 						<Hug_form key={mine?.response_id ?? 'new'} hug={h} mine={mine} on_sent={() => { set_sent(true); void read.reload(); }} />
 					</section>
 				) : (
@@ -213,6 +230,7 @@ export function Component() {
 							<p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">{h.outcome ? `${h.outcome} · ` : ''}This Hug no longer takes responses.</p>
 						</div>
 						{h.responses.length ? <Hug_responses hug={h} me={user?.id} /> : null}
+						<Next_steps run_href={run_href} waiting={waiting} />
 					</section>
 				)}
 			</div>

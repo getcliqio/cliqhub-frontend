@@ -1,7 +1,7 @@
 /** `/` (Graphite) — signed-out landing; signed-in users go straight to /home. */
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ArrowRight, Eye, Hand, Package, Terminal } from 'lucide-react';
+import { ArrowRight, Eye, Package, Terminal, UserRoundCheck } from 'lucide-react';
 import { useAuth } from '@/lib/auth_context';
 import { Cliq_mark } from '@/components/cliq_mark';
 import '@/styles/graphite.css';
@@ -17,7 +17,7 @@ const PIPELINE: Array<{ label: string; tone: string }> = [
 
 const FEATURES = [
 	{ icon: Package, title: 'Ready-made teams', text: 'Install a team someone already built, or design your own in the builder and share it.' },
-	{ icon: Hand, title: 'Humans in the loop', text: 'Teams stop at review points so a person can approve, send back or change course.' },
+	{ icon: UserRoundCheck, title: 'Humans in the loop', text: 'Teams stop at review points so a person can approve, send back or change course.' },
 	{ icon: Eye, title: 'See every run', text: 'Phases, gates, cost and output for every run, live — from one inbox.' },
 	{ icon: Terminal, title: 'Your machines', text: 'Runs happen on your own daemons, so your code and keys stay with you.' },
 ];

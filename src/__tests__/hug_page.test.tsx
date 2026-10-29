@@ -195,7 +195,7 @@ describe('Hug page', () => {
 		render_page();
 		const wf = await screen.findByRole('region', { name: 'Workflow' });
 		expect(within(wf).getByTestId('hug-team')).toHaveTextContent('@cliq/feature-dev-js v1.4.0');
-		expect(within(wf).getByRole('link', { name: 'Open run ↗' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
+		expect(within(wf).getByRole('link', { name: 'Open run' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
 		expect(within(wf).getByRole('button', { name: /^approve,/ })).toHaveAttribute('aria-label', expect.stringContaining('waiting'));
 		expect(calls.some((c) => c.url === '/v1/run_detail/get')).toBe(false);
 		fireEvent.click(within(wf).getByRole('button', { name: /^draft,/ }));
@@ -245,6 +245,10 @@ describe('Hug page', () => {
 		await waitFor(() => expect(stale).toHaveBeenCalledTimes(1));
 		window.removeEventListener(OVERVIEW_STALE_EVENT, stale);
 		expect(await screen.findByRole('status')).toHaveTextContent('Response submitted.');
+		// Then a way back: the run first, or the other Hugs.
+		const next = screen.getByTestId('hug-next');
+		expect(within(next).getByRole('link', { name: 'Back to the run' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
+		expect(within(next).getByRole('link', { name: /^All HUGs/ })).toHaveAttribute('href', '/hugs');
 	});
 
 	it("shows Core's refusal next to the input it is about", async () => {
@@ -282,6 +286,7 @@ describe('Hug page', () => {
 		expect(screen.queryByRole('form', { name: 'Your response' })).toBeNull();
 		expect(screen.getByTestId('not-sent')).toHaveTextContent('Not sent to kai (via legal)');
 		expect(screen.getByTestId('hug-meta')).toHaveTextContent(/Ended .*ago/);
+		expect(within(screen.getByRole('region', { name: 'Outcome' })).getByRole('link', { name: 'Back to the run' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
 	});
 });
 

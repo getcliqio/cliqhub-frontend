@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { Hand, RefreshCw } from 'lucide-react';
+import { RefreshCw, UserRoundCheck } from 'lucide-react';
 import { use_overview, type Overview_item } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope, type View_scope } from '@/lib/view_scope';
@@ -55,7 +55,7 @@ function in_view(i: { org_id: string | null; realm_id: string | null }, scope: V
 function Empty({ title, body }: { title: string; body: string }) {
 	return (
 		<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-			<Hand aria-hidden className="h-6 w-6 text-[var(--g-ink-3)]" />
+			<UserRoundCheck aria-hidden className="h-6 w-6 text-[var(--g-ink-3)]" />
 			<p className="text-[14px] font-semibold">{title}</p>
 			<p className="text-[12.5px] text-[var(--g-ink-3)]">{body}</p>
 		</div>

@@ -24,13 +24,13 @@ import {
 	Shield,
 	UsersRound,
 	UserRound,
+	UserRoundCheck,
 	KeyRound,
 	ChevronRight,
 	type LucideIcon,
 	Bot,
 	Building2,
 	FolderTree,
-	Hand,
 	Layers,
 	LayoutDashboard,
 	UserCog,
@@ -519,7 +519,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
-	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: Hand, badge: hugs_waiting };
+	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: UserRoundCheck, badge: hugs_waiting };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
 	// Members, Notifications and Org settings are views of the org page (`?tab=`): only the one open is current.
 	const org_tab = view_org && location.pathname === `/orgs/${view_org.id}` ? (new URLSearchParams(location.search).get('tab') ?? 'members') : null;

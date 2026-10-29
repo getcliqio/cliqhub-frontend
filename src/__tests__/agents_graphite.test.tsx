@@ -225,7 +225,7 @@ describe('Agent page (org)', () => {
 	});
 
 	it('a refresh of the same agent keeps what is being typed (a new view object does not reset the form)', () => {
-		const view = page().settings;
+		const view = page().settings!;
 		const props = { org_id: ORG_A, agent_id: JIRA, on_saved: () => undefined };
 		const { rerender } = render(<Settings_form view={view} {...props} />);
 		const form = screen.getByTestId('settings-form');
