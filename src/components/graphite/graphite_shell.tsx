@@ -41,6 +41,7 @@ import {
 	PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { useOrgOptional } from '@/lib/org_context';
 import { apply_theme, sync_from_profile, use_theme, type Theme } from '@/lib/theme';
 import { avatar_outline } from '@/lib/admin';
 import { use_bff_read } from '@/lib/use_bff_read';
@@ -484,6 +485,16 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	// Remember the org for the next visit in this browser.
 	const scope_org_slug = scope.org?.slug ?? null;
 	useEffect(() => { if (scope_org_slug) write_last_org(scope_org_slug); }, [scope_org_slug]);
+	// The page's org (from the URL) is the current org: keep the org context (`useOrg().current_id`,
+	// read by the channel picker, the run dialog and the activity feed) on it, or they ask Core
+	// about another org than the one on screen.
+	const org_ctx = useOrgOptional();
+	const scope_org_id = scope.org?.id ?? scope.realm?.org_id ?? null;
+	const ctx_org_id = org_ctx?.current_id ?? null;
+	const switch_ctx_org = org_ctx?.switch_org;
+	useEffect(() => {
+		if (scope_org_id && switch_ctx_org && ctx_org_id !== scope_org_id) switch_ctx_org(scope_org_id);
+	}, [scope_org_id, ctx_org_id, switch_ctx_org]);
 	const needs_org = Boolean(data && data.orgs.length > 0 && !scope.org
 		&& ORG_PAGES.some((p) => (p.endsWith('/') ? location.pathname.startsWith(p) : location.pathname === p || location.pathname.startsWith(`${p}/`))));
 	const progress = use_bff_read<Getting_started_data>('/v1/getting_started/get', {}, { refresh_ms: 120_000 });

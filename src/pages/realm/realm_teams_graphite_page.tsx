@@ -383,7 +383,7 @@ export function Component() {
 				<Install_drawer realm_id={realm_id} org_id={sidebar_realm?.org_id ?? null} org_slug={org ?? ''} installed={new Set((data?.items ?? []).filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
 			) : null}
 			{running && running.scope && data ? (
-				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }} on_close={() => set_running(null)} />
+				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name, org_id: sidebar_realm?.org_id }} on_close={() => set_running(null)} />
 			) : null}
 			</Realm_nav>
 		</Graphite_shell>

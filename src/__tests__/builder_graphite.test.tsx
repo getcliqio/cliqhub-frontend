@@ -9,7 +9,7 @@ import type { GeneratedTeam } from '@/lib/builder/store';
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, scopes: [{ slug: 'measureone', scope_type: 'org' }], loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
-vi.mock('@/lib/org_context', () => ({ useOrgFetch: () => stable_fetch }));
+vi.mock('@/lib/org_context', () => ({ useOrgFetch: () => stable_fetch, useOrgOptional: () => null }));
 
 import { Component as BuilderPage } from '@/pages/builder/builder_graphite_page';
 import { import_text, template_team, with_starter_roles } from '@/components/gbuilder/gb_start';

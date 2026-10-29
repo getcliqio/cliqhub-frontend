@@ -658,7 +658,7 @@ export function Component() {
 									{/* In a realm: only the installed version — no version history; its danger zone is uninstalling from the realm. */}
 								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
 								</div>
-								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name }} on_close={() => set_run_open(false)} /> : null}
+								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name, org_id: sidebar_realm.org_id }} on_close={() => set_run_open(false)} /> : null}
 							</>
 						)}
 					</>

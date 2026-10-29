@@ -129,6 +129,11 @@ export function useOrg(): OrgContextValue {
     return ctx;
 }
 
+/** The org context, or null outside an OrgProvider (pages and tests that render without one). */
+export function useOrgOptional(): OrgContextValue | null {
+    return useContext(OrgContext);
+}
+
 /**
  * Authenticated fetch with org context available via `useOrg()`.
  * Drop-in replacement for useAuthFetch when the current org id is needed.

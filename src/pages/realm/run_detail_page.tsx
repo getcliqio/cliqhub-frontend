@@ -561,7 +561,7 @@ const BTN_WAIT = 'inline-flex h-8 cursor-not-allowed items-center rounded-md bor
 export interface Run_gates { cancel: Gate; run: Gate }
 const ALL_ALLOWED: Run_gates = { cancel: { ok: true, reason: null }, run: { ok: true, reason: null } };
 
-export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: { data: Run_detail_data; org_slug: string; slug: string; reload: () => Promise<void>; gates?: Run_gates }) {
+export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, realm_org_id = null }: { data: Run_detail_data; org_slug: string; slug: string; reload: () => Promise<void>; gates?: Run_gates; /** The realm's org id ("Run again" searches its channels and people). */ realm_org_id?: string | null }) {
 	const auth_fetch = useAuthFetch();
 	const { run } = data;
 	const base = realm_path(org_slug, slug);
@@ -853,7 +853,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED }: 
 				<Run_in_realm_dialog
 					scope={again_target.scope}
 					slug={again_target.slug}
-					fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name }}
+					fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name, org_id: realm_org_id }}
 					prefill_from={{ inputs: inputs ?? {}, run_name: run.run_name ? `${run.run_name} (rerun)` : null, source_run_id: run.run_id }}
 					on_close={() => { set_run_again(false); void reload(); }}
 				/>
@@ -928,7 +928,7 @@ export function Component() {
 				{detail.status === 'error' && !data ? (
 					<Blocking_error http_status={detail.http_status} code={detail.code} error={detail.error} on_retry={() => void detail.reload()} what="run" />
 				) : null}
-				{data ? <Run_view data={data} org_slug={org} slug={slug} reload={detail.reload} gates={gates} /> : null}
+				{data ? <Run_view data={data} org_slug={org} slug={slug} reload={detail.reload} gates={gates} realm_org_id={sidebar_realm?.org_id ?? null} /> : null}
 			</div>
 			</Realm_nav>
 		</Graphite_shell>

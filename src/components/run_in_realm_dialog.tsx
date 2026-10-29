@@ -182,8 +182,11 @@ export function Run_in_realm_dialog({
 }: {
 	scope: string;
 	slug: string;
-	/** When set (realm team detail), skip the realm picker. */
-	fixed_realm?: { id: string; slug: string; name: string };
+	/**
+	 * When set (realm team detail), skip the realm picker. `org_id` is the realm's own org: the
+	 * channel picker searches that org (the org selected in CliqHub may be another one).
+	 */
+	fixed_realm?: { id: string; slug: string; name: string; org_id?: string | null };
 	/**
 	 * When set, seed the form with the given inputs — used by
 	 * "Run again" on the run detail page to copy a prior run's
@@ -198,8 +201,8 @@ export function Run_in_realm_dialog({
 	// Callers rebuild these objects on every render (and pages re-render on each background
 	// refresh): key them on their values, or the form reloads and loses what was typed.
 	const fixed_realm = useMemo(
-		() => (fixed_realm_prop ? { id: fixed_realm_prop.id, slug: fixed_realm_prop.slug, name: fixed_realm_prop.name } : undefined),
-		[fixed_realm_prop?.id, fixed_realm_prop?.slug, fixed_realm_prop?.name], // eslint-disable-line react-hooks/exhaustive-deps
+		() => (fixed_realm_prop ? { id: fixed_realm_prop.id, slug: fixed_realm_prop.slug, name: fixed_realm_prop.name, org_id: fixed_realm_prop.org_id ?? null } : undefined),
+		[fixed_realm_prop?.id, fixed_realm_prop?.slug, fixed_realm_prop?.name, fixed_realm_prop?.org_id], // eslint-disable-line react-hooks/exhaustive-deps
 	);
 	const prefill_key = JSON.stringify(prefill_prop ?? null);
 	const prefill_from = useMemo(() => prefill_prop ?? null, [prefill_key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -572,6 +575,7 @@ export function Run_in_realm_dialog({
 															placeholder="Search channels…"
 															class_name="mt-1"
 															realm_id={selected_realm?.id}
+															org_id={fixed_realm?.org_id ?? undefined}
 														/>
 													</div>
 												);

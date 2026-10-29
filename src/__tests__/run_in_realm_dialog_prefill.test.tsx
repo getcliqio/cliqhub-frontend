@@ -198,6 +198,20 @@ describe('Run_in_realm_dialog — channel inputs (PLAN-notifications-v2 B4.2)', 
         });
         expect(await screen.findByText('ops')).toBeTruthy();
     });
+
+    it('the channel picker searches the realm\'s own org, not the org selected in CliqHub', async () => {
+        auth_fetch.mockImplementation(async (url: string) => ({
+            json: async () => (url === '/v1/orgs/get_reviewable_targets'
+                ? { ok: true, data: { people: { items: [], total: 0 }, channels: { items: [], total: 0 } } }
+                : stub_team_inputs([{ name: 'reviewers', type: 'channel', required: true }])),
+        }));
+        render_dialog({ fixed_realm: { ...FIXED_REALM, org_id: 'org-measureone' } });
+        fireEvent.focus(await screen.findByPlaceholderText('Search channels…'));
+        await waitFor(() => {
+            const call = auth_fetch.mock.calls.find((c) => c[0] === '/v1/orgs/get_reviewable_targets');
+            expect(JSON.parse(call![1].body)).toMatchObject({ org_id: 'org-measureone', realm_id: 'realm-1' });
+        });
+    });
 });
 
 describe('Run_in_realm_dialog — typed team inputs', () => {
