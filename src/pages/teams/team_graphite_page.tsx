@@ -23,13 +23,14 @@ import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { relative_time, use_overview } from '@/lib/overview';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope } from '@/lib/view_scope';
-import { phase_kind, phase_subtitle, team_href, type Team_input, type Team_page_data, type Team_phase } from '@/lib/team_page';
+import { phase_kind, phase_subtitle, team_href, type Team_input, type Team_page_data, type Team_phase, type Team_sub_team } from '@/lib/team_page';
 import { Yaml_view, find_item, yaml_outline } from '@/components/graphite/g_yaml_view';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { use_access } from '@/lib/access';
 import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
-import { Workflow_graph, Workflow_legend } from '@/components/graphite/g_workflow_graph';
+import { Workflow_legend } from '@/components/graphite/g_workflow_graph';
+import { Team_workflow } from '@/components/graphite/g_team_workflow';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
@@ -110,74 +111,117 @@ const ROW = 'grid grid-cols-[minmax(0,1.1fr)_110px_96px_minmax(0,1.7fr)_14px] it
  * The team in a realm: its Run inputs, then its phases (support ones last), one row each. The
  * picked row (also picked on the graph) opens — inputs: each one's description, default and the
  * phases that use it; a phase: what it runs after, its agent's brief, commands, review.
+ * It follows the diagram: a step that runs a known sub-team can be opened (`on_open`), and with
+ * `expanded` each sub-team's steps are listed under it, indented, under a heading that folds.
+ * Steps of a sub-team (and every row when `inputs` is null: a sub-team opened on its own) are
+ * the sub-team's: they show what they do, not which of this team's inputs they use.
  */
-function Phase_table({ phases, support, inputs, team_yml, selected, on_pick }: {
-	phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; team_yml: string | null;
+function Phase_table({ phases, support, inputs, team_yml, selected, on_pick, sub_teams = {}, expanded = false, on_open }: {
+	phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[] | null; team_yml: string | null;
 	selected: string | null; on_pick: (name: string) => void;
+	sub_teams?: Record<string, Team_sub_team>; expanded?: boolean; on_open?: (ref: string) => void;
 }) {
+	const [folded, set_folded] = useState<Set<string>>(new Set());
+	/** The open row inside an expanded sub-team ("build/code"): the page only selects the team's own steps. */
+	const [inner, set_inner] = useState<string | null>(null);
+	const own_inputs = inputs ?? [];
 	const all = [...phases, ...support];
-	const users = new Map(inputs.map((i) => [i.name, all.filter((p) => inputs_used(p, team_yml, inputs).includes(i.name)).map((p) => p.name)]));
+	const users = new Map(own_inputs.map((i) => [i.name, all.filter((p) => inputs_used(p, team_yml, own_inputs).includes(i.name)).map((p) => p.name)]));
 	const row_cls = (on: boolean) => `${ROW} cursor-pointer border-b border-[var(--g-line-2)] last:border-b-0 ${on ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : 'hover:bg-[var(--g-soft)]'}`;
 	const open_cls = 'col-span-full mt-1 cursor-default rounded-lg border border-[var(--g-line-2)] bg-[var(--g-bg)] px-3 py-2.5 text-[12.5px]';
-	const key = (n: string) => (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); on_pick(n); } };
+	const choose = (n: string) => { if (n.includes('/')) set_inner((cur) => (cur === n ? null : n)); else on_pick(n); };
+	const key = (n: string) => (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(n); } };
 	const ins_on = selected === INPUTS_SEL;
-	const required = inputs.filter((i) => i.required).length;
-	return (
-		<div role="table" aria-label="Inputs and phases" data-testid="phase-table">
-			<div role="row" className={`${ROW} border-b border-[var(--g-line)] py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--g-ink-3)]`}>
-				<span role="columnheader">Phase</span><span role="columnheader">Kind</span><span role="columnheader">Agent</span><span role="columnheader">What it does</span><span />
-			</div>
-			<div role="row" tabIndex={0} aria-expanded={ins_on} onClick={() => on_pick(INPUTS_SEL)} onKeyDown={key(INPUTS_SEL)} className={row_cls(ins_on)} data-team-row={INPUTS_SEL} data-testid="inputs-row">
-				<span><b className="text-[13px]">Run inputs</b> <span className="text-[12px] text-[var(--g-ink-3)]">· asked on Run…</span></span>
-				<span className="text-[12.5px] text-[var(--g-ink-2)]">start</span>
-				<span className="text-[var(--g-ink-3)]">—</span>
-				<span className="text-[12.5px] text-[var(--g-ink-3)]">{inputs.length ? `${inputs.length} input${inputs.length === 1 ? '' : 's'}${required ? ` · ${required} required` : ''}` : 'None — runs start straight away.'}</span>
-				<span aria-hidden className="text-[var(--g-ink-3)]">{ins_on ? '⌄' : '›'}</span>
-				{ins_on && inputs.length ? (
-					<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="inputs-open">
-						<table className="w-full text-left">
-							<thead><tr className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--g-ink-3)]"><th className="pb-1 font-semibold">Input</th><th className="pb-1 font-semibold">Required</th><th className="pb-1 font-semibold">Default</th><th className="pb-1 font-semibold">Used by</th></tr></thead>
-							<tbody>
-								{inputs.map((i) => (
-									<tr key={i.name} className="border-t border-[var(--g-line-2)] align-top" data-testid={`input-${i.name}`}>
-										<td className="py-1.5 pr-3"><span className="g-mono">{i.name}</span>{i.description ? <p className="text-[12px] text-[var(--g-ink-3)]">{i.description}</p> : null}</td>
-										<td className="py-1.5 pr-3">{i.required ? 'yes' : 'no'}</td>
-										<td className="g-mono py-1.5 pr-3 text-[var(--g-ink-2)]">{i.default ?? '—'}</td>
-										<td className="g-mono py-1.5 text-[var(--g-ink-2)]">{users.get(i.name)?.join(', ') || <span className="font-sans text-[var(--g-ink-3)]">not referenced</span>}</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
+	const required = own_inputs.filter((i) => i.required).length;
+	const toggle = (id: string) => set_folded((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+	/** One step's row; `id` is its name in the table ("build/code" inside an expanded sub-team). */
+	const phase_row = (p: Team_phase, id: string, depth: number, own: boolean) => {
+		const on = id.includes('/') ? inner === id : selected === id;
+		const k = phase_kind(p);
+		const used = own && inputs ? inputs_used(p, team_yml, own_inputs) : [];
+		const sub = p.team ? sub_teams[p.team] : undefined;
+		return (
+			<div key={id} role="row" tabIndex={0} aria-expanded={on} onClick={() => choose(id)} onKeyDown={key(id)} className={row_cls(on)} data-team-row={id} data-testid="team-phase-row">
+				<span className="min-w-0" style={depth ? { paddingLeft: depth * 18 } : undefined}>
+					<b className="g-mono text-[13px]">{p.name}</b>{p.support ? <span className="ml-1.5 text-[11.5px] text-[var(--g-ink-3)]">support</span> : null}
+					{p.team ? <span className="ml-1.5 text-[12px] text-[var(--g-ink-3)]">↳ <span className="g-mono">{p.team}</span></span> : null}
+					{sub && on_open && !expanded ? <button type="button" onClick={(e) => { e.stopPropagation(); on_open(p.team!); }} className="ml-1.5 rounded border border-[var(--g-line-strong)] px-1.5 text-[11px] text-[var(--g-ink-2)] hover:text-[var(--g-ink)]" aria-label={`Open ${sub.name}`}>{sub.phases.length} steps ›</button> : null}
+				</span>
+				<span className="flex items-center gap-1.5 text-[12.5px]"><Kind_tile phase={p} size={16} /><span style={{ color: k.color }}>{k.label}</span></span>
+				<span className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{p.agent ?? '—'}</span>
+				<span className="min-w-0 truncate text-[12.5px] text-[var(--g-ink-3)]" title={phase_line(p)}>{phase_line(p)}</span>
+				<span aria-hidden className="text-[var(--g-ink-3)]">{on ? '⌄' : '›'}</span>
+				{on ? (
+					<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="phase-open">
+						<dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1">
+							<dt className="text-[var(--g-ink-3)]">Runs after</dt><dd>{p.depends_on.length ? <span className="g-mono">{p.depends_on.join(', ')}</span> : depth ? 'the start of its team' : 'the run inputs'}</dd>
+							{p.team ? <><dt className="text-[var(--g-ink-3)]">Runs team</dt><dd className="g-mono">{p.team}</dd></> : null}
+							{p.review || p.reviewers ? <><dt className="text-[var(--g-ink-3)]">Reviewed by</dt><dd>{p.reviewers ? readable_refs(p.reviewers) : 'a person'}</dd></> : null}
+							{p.max_iterations ? <><dt className="text-[var(--g-ink-3)]">Rounds</dt><dd>up to {p.max_iterations}</dd></> : null}
+							{used.length ? <><dt className="text-[var(--g-ink-3)]">Uses inputs</dt><dd className="g-mono">{used.join(', ')}</dd></> : null}
+							{p.commands.length ? <><dt className="text-[var(--g-ink-3)]">Commands</dt><dd><pre className="g-mono whitespace-pre-wrap text-[12px] text-[var(--g-ink-2)]">{p.commands.join('\n')}</pre></dd></> : null}
+						</dl>
+						{p.role ? <pre className="mt-2 max-h-[240px] overflow-auto whitespace-pre-wrap border-t border-[var(--g-line-2)] pt-2 font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid="phase-brief">{p.role}</pre> : null}
 					</div>
 				) : null}
 			</div>
-			{all.map((p) => {
-				const on = selected === p.name;
-				const k = phase_kind(p);
-				const used = inputs_used(p, team_yml, inputs);
-				return (
-					<div key={p.name} role="row" tabIndex={0} aria-expanded={on} onClick={() => on_pick(p.name)} onKeyDown={key(p.name)} className={row_cls(on)} data-team-row={p.name} data-testid="team-phase-row">
-						<span className="min-w-0"><b className="g-mono text-[13px]">{p.name}</b>{p.support ? <span className="ml-1.5 text-[11.5px] text-[var(--g-ink-3)]">support</span> : null}{p.team ? <span className="ml-1.5 text-[12px] text-[var(--g-ink-3)]">↳ <span className="g-mono">{p.team}</span></span> : null}</span>
-						<span className="flex items-center gap-1.5 text-[12.5px]"><Kind_tile phase={p} size={16} /><span style={{ color: k.color }}>{k.label}</span></span>
-						<span className="g-mono truncate text-[12.5px] text-[var(--g-ink-2)]">{p.agent ?? '—'}</span>
-						<span className="min-w-0 truncate text-[12.5px] text-[var(--g-ink-3)]" title={phase_line(p)}>{phase_line(p)}</span>
-						<span aria-hidden className="text-[var(--g-ink-3)]">{on ? '⌄' : '›'}</span>
-						{on ? (
-							<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="phase-open">
-								<dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-3 gap-y-1">
-									<dt className="text-[var(--g-ink-3)]">Runs after</dt><dd>{p.depends_on.length ? <span className="g-mono">{p.depends_on.join(', ')}</span> : 'the run inputs'}</dd>
-									{p.team ? <><dt className="text-[var(--g-ink-3)]">Runs team</dt><dd className="g-mono">{p.team}</dd></> : null}
-									{p.review || p.reviewers ? <><dt className="text-[var(--g-ink-3)]">Reviewed by</dt><dd>{p.reviewers ? readable_refs(p.reviewers) : 'a person'}</dd></> : null}
-									{p.max_iterations ? <><dt className="text-[var(--g-ink-3)]">Rounds</dt><dd>up to {p.max_iterations}</dd></> : null}
-									{used.length ? <><dt className="text-[var(--g-ink-3)]">Uses inputs</dt><dd className="g-mono">{used.join(', ')}</dd></> : null}
-									{p.commands.length ? <><dt className="text-[var(--g-ink-3)]">Commands</dt><dd><pre className="g-mono whitespace-pre-wrap text-[12px] text-[var(--g-ink-2)]">{p.commands.join('\n')}</pre></dd></> : null}
-								</dl>
-								{p.role ? <pre className="mt-2 max-h-[240px] overflow-auto whitespace-pre-wrap border-t border-[var(--g-line-2)] pt-2 font-[inherit] text-[12.5px] leading-relaxed text-[var(--g-ink-2)]" data-testid="phase-brief">{p.role}</pre> : null}
-							</div>
-						) : null}
-					</div>
-				);
-			})}
+		);
+	};
+
+	/** Rows for a list of steps; expanded sub-teams follow their step, at any depth (a loop is not repeated). */
+	const rows = (list: Team_phase[], prefix: string, depth: number, path: ReadonlySet<string>): ReactNode[] => list.flatMap((p) => {
+		const id = `${prefix}${p.name}`;
+		const out: ReactNode[] = [phase_row(p, id, depth, depth === 0)];
+		const sub = p.team ? sub_teams[p.team] : undefined;
+		if (!expanded || !sub || !sub.phases.length || path.has(p.team!)) return out;
+		const open = !folded.has(id);
+		out.push(
+			<div key={`${id}::team`} role="row" tabIndex={0} aria-expanded={open} onClick={() => toggle(id)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(id); } }} className={`${ROW} cursor-pointer border-b border-[var(--g-line-2)] bg-[var(--g-soft)] py-1.5 text-[12px] text-[var(--g-ink-2)]`} data-team-group={id}>
+				<span className="col-span-4 min-w-0" style={{ paddingLeft: depth * 18 + 18 }}>
+					<span aria-hidden>{open ? '▾' : '▸'}</span> <b>{sub.name}</b>{p.type === 'map' ? ' · × each' : ''} · {sub.phases.length} steps
+					{on_open ? <button type="button" onClick={(e) => { e.stopPropagation(); on_open(p.team!); }} className="ml-2 text-[var(--g-ink-3)] hover:text-[var(--g-ink)] hover:underline">open ›</button> : null}
+				</span>
+				<span />
+			</div>,
+		);
+		if (open) out.push(...rows(sub.phases, `${id}/`, depth + 1, new Set([...path, p.team!])));
+		return out;
+	});
+
+	return (
+		<div role="table" aria-label={inputs ? 'Inputs and phases' : 'Phases'} data-testid="phase-table">
+			<div role="row" className={`${ROW} border-b border-[var(--g-line)] py-2 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-[var(--g-ink-3)]`}>
+				<span role="columnheader">Phase</span><span role="columnheader">Kind</span><span role="columnheader">Agent</span><span role="columnheader">What it does</span><span />
+			</div>
+			{inputs ? (
+				<div role="row" tabIndex={0} aria-expanded={ins_on} onClick={() => on_pick(INPUTS_SEL)} onKeyDown={key(INPUTS_SEL)} className={row_cls(ins_on)} data-team-row={INPUTS_SEL} data-testid="inputs-row">
+					<span><b className="text-[13px]">Run inputs</b> <span className="text-[12px] text-[var(--g-ink-3)]">· asked on Run…</span></span>
+					<span className="text-[12.5px] text-[var(--g-ink-2)]">start</span>
+					<span className="text-[var(--g-ink-3)]">—</span>
+					<span className="text-[12.5px] text-[var(--g-ink-3)]">{inputs.length ? `${inputs.length} input${inputs.length === 1 ? '' : 's'}${required ? ` · ${required} required` : ''}` : 'None — runs start straight away.'}</span>
+					<span aria-hidden className="text-[var(--g-ink-3)]">{ins_on ? '⌄' : '›'}</span>
+					{ins_on && inputs.length ? (
+						<div className={open_cls} onClick={(e) => e.stopPropagation()} data-testid="inputs-open">
+							<table className="w-full text-left">
+								<thead><tr className="text-[10.5px] uppercase tracking-[0.06em] text-[var(--g-ink-3)]"><th className="pb-1 font-semibold">Input</th><th className="pb-1 font-semibold">Required</th><th className="pb-1 font-semibold">Default</th><th className="pb-1 font-semibold">Used by</th></tr></thead>
+								<tbody>
+									{inputs.map((i) => (
+										<tr key={i.name} className="border-t border-[var(--g-line-2)] align-top" data-testid={`input-${i.name}`}>
+											<td className="py-1.5 pr-3"><span className="g-mono">{i.name}</span>{i.description ? <p className="text-[12px] text-[var(--g-ink-3)]">{i.description}</p> : null}</td>
+											<td className="py-1.5 pr-3">{i.required ? 'yes' : 'no'}</td>
+											<td className="g-mono py-1.5 pr-3 text-[var(--g-ink-2)]">{i.default ?? '—'}</td>
+											<td className="g-mono py-1.5 text-[var(--g-ink-2)]">{users.get(i.name)?.join(', ') || <span className="font-sans text-[var(--g-ink-3)]">not referenced</span>}</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					) : null}
+				</div>
+			) : null}
+			{rows(phases, '', 0, new Set())}
+			{support.map((p) => phase_row(p, p.name, 0, true))}
 		</div>
 	);
 }
@@ -413,21 +457,22 @@ export function Component() {
 				</div>
 			</div>
 			{mode === 'diagram' && in_realm ? (
-				<>
-					<div className="border-b border-[var(--g-line)] bg-[var(--g-input)]" data-testid="team-graph">
-						<Workflow_graph
-							phases={phases}
-							height={220}
-							selected={sel?.name ?? null}
-							on_select={(p) => pick(p)}
-							start={{ inputs: o.inputs, selected: inputs_sel, on_select: () => pick(INPUTS_SEL) }}
-						/>
-					</div>
-					<Phase_table phases={phases} support={o.support} inputs={o.inputs} team_yml={team_yml} selected={inputs_sel ? INPUTS_SEL : sel?.name ?? null} on_pick={pick} />
-				</>
+				<Team_workflow
+					team_name={team?.name ?? name}
+					phases={phases}
+					sub_teams={o.sub_teams}
+					height={220}
+					graph_class="border-b border-[var(--g-line)] bg-[var(--g-input)]"
+					selected={sel?.name ?? null}
+					on_select={(p) => pick(p)}
+					start={{ inputs: o.inputs, selected: inputs_sel, on_select: () => pick(INPUTS_SEL) }}
+					below={(v) => (v.top
+						? <Phase_table phases={phases} support={o.support} inputs={o.inputs} team_yml={team_yml} selected={inputs_sel ? INPUTS_SEL : v.selected} on_pick={pick} sub_teams={v.sub_teams} expanded={v.expanded} on_open={v.open} />
+						: <Phase_table phases={v.phases} support={[]} inputs={null} team_yml={null} selected={v.selected} on_pick={v.pick} sub_teams={v.sub_teams} expanded={v.expanded} on_open={v.open} />)}
+				/>
 			) : mode === 'diagram' ? (
 				<div className="bg-[var(--g-input)]">
-					<Workflow_graph phases={phases} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
+					<Team_workflow team_name={team?.name ?? name} phases={phases} sub_teams={o.sub_teams} height={220} selected={sel?.name ?? null} on_select={(p) => set_params({ phase: p })} />
 					<div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5">
 						<Workflow_legend phases={phases} />
 						{o.support.length ? <span className="ml-auto flex items-center gap-1.5 text-[11.5px] text-[var(--g-ink-3)]">support: {o.support.map((s) => <button key={s.name} type="button" aria-pressed={sel?.name === s.name} onClick={() => set_params({ phase: s.name })} className={`g-mono rounded border px-1.5 text-[11px] ${sel?.name === s.name ? 'border-[var(--g-acc-line)] text-[var(--g-ink)]' : 'border-[var(--g-line-2)] bg-[var(--g-soft)] text-[var(--g-ink-2)]'}`}>{s.name}</button>)}</span> : null}

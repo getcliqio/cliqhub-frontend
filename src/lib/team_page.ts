@@ -112,14 +112,19 @@ export interface Team_change { kind: 'added' | 'removed' | 'changed'; target: 'p
 
 export type Team_view = 'overview' | 'workflow' | 'files' | 'runs' | 'installs' | 'versions' | 'settings';
 
+/** A team a step runs (BFF `sub_teams`, keyed by the reference as the step writes it). */
+export interface Team_sub_team { scope: string | null; name: string; version: string | null; phases: Team_phase[] }
+
 export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
 	view: Team_view;
-	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[] };
+	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team> };
 	workflow?: {
 		phases: Team_phase[];
 		support: Team_phase[];
+		/** Teams the steps run, at every depth. */
+		sub_teams?: Record<string, Team_sub_team>;
 		recent_runs: Team_run_row[];
 		overlay: { run: Team_run_row; version: string | null; phases: Team_phase[] | null; statuses: Record<string, string> } | null;
 	};
@@ -157,14 +162,16 @@ export interface Phase_kind { id: Kind_id | null; color: string; glyph: string; 
  */
 const LEGACY: Record<string, Kind_id> = { standard: 'agent', gate: 'gate', pull: 'connector', push: 'connector', team: 'team' };
 
-export function phase_kind_id(p: string | { type: string; agent?: string | null }): Kind_id | null {
+export function phase_kind_id(p: string | { type: string; agent?: string | null; team?: string | null }): Kind_id | null {
 	if (typeof p === 'string') return p in BUILDER_KINDS ? (p as Kind_id) : LEGACY[p] ?? null;
+	// A step that runs another team (type team, or a map over a team) is a sub-team.
+	if (p.team) return 'team';
 	if (p.type === 'pull' || p.type === 'push') return p.agent === 'curl' ? 'fetch' : 'connector';
 	if (p.type !== 'standard' && p.type !== 'gate' && p.type !== 'team') return null;
 	return kind_of({ type: p.type, agent: p.agent ?? undefined });
 }
 
-export function phase_kind(p: string | { type: string; agent?: string | null }): Phase_kind {
+export function phase_kind(p: string | { type: string; agent?: string | null; team?: string | null }): Phase_kind {
 	const id = phase_kind_id(p);
 	if (!id) return { id: null, color: '#8a8c93', glyph: '•', label: typeof p === 'string' ? p : p.type };
 	const k = BUILDER_KINDS[id];
@@ -183,10 +190,15 @@ export function phase_subtitle(p: Team_phase): string {
 		case 'human': return p.reviewers ? `reviewer · ${p.reviewers}` : 'reviewer set at run';
 		case 'connector': return p.sources.length ? hosts(p.sources) : p.targets.length ? hosts(p.targets) : p.agent ?? 'connector';
 		case 'fetch': return p.sources.length ? hosts(p.sources) : p.targets.length ? hosts(p.targets) : 'fetch';
-		case 'script': return `${p.commands.length} command${p.commands.length === 1 ? '' : 's'}`;
-		case 'team': return p.team ?? 'sub-team';
+		case 'script': return script_files(p.commands) ?? `${p.commands.length} command${p.commands.length === 1 ? '' : 's'}`;
+		case 'team': return p.team ? `${p.type === 'map' ? '× ' : ''}${p.team.replace(/^@[^/]+\//, '')}` : 'sub-team';
 		default: return p.agent ?? 'agent';
 	}
+}
+/** The script files a step runs ("sort-failures.sh"), when every command runs one. */
+function script_files(commands: string[]): string | null {
+	const files = commands.map((c) => /([\w.-]+\.(?:sh|js|mjs|cjs|py|ts|rb))\b/.exec(c)?.[1]);
+	return files.length && files.every(Boolean) ? [...new Set(files)].join(', ') : null;
 }
 function source_host(s: string): string {
 	const m = /^([a-z][a-z0-9+.-]*):\/\/([^/]*)/i.exec(s);
@@ -264,6 +276,65 @@ export function layout_phases(phases: Team_phase[]): Graph_layout {
 		})
 		.filter((x): x is Graph_layout['loops'][number] => Boolean(x));
 	return { pos, cols, rows, loops };
+}
+
+/** Steps per band before a long flow wraps onto the next band. */
+export const WRAP_STEPS = 6;
+
+/**
+ * Wraps a long layout into bands, like lines of text: column → band and the column
+ * within it. Bands are balanced (7 steps → 4 + 3, not 6 + 1) and a break
+ * never falls inside a gate's route-back when it can be moved a step or two.
+ */
+export function wrap_columns(L: Graph_layout, max = WRAP_STEPS): Array<{ band: number; col: number }> {
+	const per = Math.ceil(L.cols / Math.max(1, Math.ceil(L.cols / max)));
+	const splits = (end: number) => L.loops.some((lp) => L.pos[lp.to].col < end && L.pos[lp.from].col >= end);
+	const out: Array<{ band: number; col: number }> = [];
+	let start = 0;
+	for (let band = 0; start < L.cols; band++) {
+		let end = Math.min(L.cols, start + per);
+		if (end < L.cols && splits(end)) {
+			const tries = [end - 1, end + 1, end - 2, end + 2].filter((e) => e > start + 1 && e < L.cols && e <= start + max + 1);
+			end = tries.find((e) => !splits(e)) ?? end;
+		}
+		for (let c = start; c < end; c++) out.push({ band, col: c - start });
+		start = end;
+	}
+	return out;
+}
+
+/** A sub-team drawn in place: a frame around its steps (members, at every depth below it). */
+export interface Workflow_group { id: string; ref: string; label: string; each: boolean; depth: number; members: string[] }
+
+/**
+ * Every step that runs a known sub-team replaced by that team's own steps, named
+ * "<step>/<its step>", at every depth; returns the steps and one frame per sub-team. The
+ * sub-team's first steps take the step's dependencies, and whatever depended on the step
+ * depends on the sub-team's last steps. A team already being expanded on the way down
+ * (a loop) stays one node.
+ */
+export function expand_sub_teams(
+	phases: Team_phase[], subs: Record<string, Team_sub_team>, prefix = '', depth = 0, path: ReadonlySet<string> = new Set(),
+): { phases: Team_phase[]; groups: Workflow_group[] } {
+	const inner = new Map<string, { phases: Team_phase[]; groups: Workflow_group[]; leaves: string[] }>();
+	for (const p of phases) {
+		const sub = p.team ? subs[p.team] : undefined;
+		if (!sub || !sub.phases.length || path.has(p.team!)) continue;
+		const e = expand_sub_teams(sub.phases, subs, `${prefix}${p.name}/`, depth + 1, new Set([...path, p.team!]));
+		const leaves = e.phases.filter((x) => !e.phases.some((y) => y.depends_on.includes(x.name))).map((x) => x.name);
+		inner.set(p.name, { ...e, leaves });
+	}
+	const dep = (d: string) => inner.get(d)?.leaves ?? [`${prefix}${d}`];
+	const out: Team_phase[] = [];
+	const groups: Workflow_group[] = [];
+	for (const p of phases) {
+		const e = inner.get(p.name);
+		if (!e) { out.push({ ...p, name: `${prefix}${p.name}`, depends_on: p.depends_on.flatMap(dep) }); continue; }
+		for (const x of e.phases) out.push(x.depends_on.length ? x : { ...x, depends_on: p.depends_on.flatMap(dep) });
+		const sub = subs[p.team!];
+		groups.push({ id: `${prefix}${p.name}`, ref: p.team!, label: sub.name, each: p.type === 'map', depth, members: e.phases.map((x) => x.name) }, ...e.groups);
+	}
+	return { phases: out, groups };
 }
 
 export function team_href(scope: string | null, name: string, tab?: Team_view): string {

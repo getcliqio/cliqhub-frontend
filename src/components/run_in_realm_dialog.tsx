@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { parse_run_inputs_text } from '@/lib/realm_teams_coverage';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
@@ -104,16 +104,32 @@ function api_error_message(data: { error?: string | { message?: string } }): str
 	return data.error?.message ?? 'Request failed';
 }
 
-const MULTILINE_TOKENS = [
-	'schema', 'description', 'body', 'config', 'yaml', 'json',
-	'sql', 'query', 'template', 'prompt', 'text', 'markdown',
-	'instructions', 'rules', 'context', 'notes',
-] as const;
+const MULTILINE_TOKENS = ['prompt', 'json', 'template', 'description'] as const;
 
+/** A text area when the team declares `type: textarea`, or an untyped input is named like long text; else one line. */
 function is_multiline_input(spec: Input_spec): boolean {
+	if (spec.type === 'textarea') return true;
+	if (spec.type) return false;
 	const name = spec.name.toLowerCase();
-	if (MULTILINE_TOKENS.some((t) => name.includes(t))) return true;
-	return (spec.description ?? '').trim().length > 140;
+	return MULTILINE_TOKENS.some((t) => name.includes(t));
+}
+
+/** As cliq reads it: required unless `required: false` or the team gives a default. */
+function is_required(raw: unknown): boolean {
+	const r = (raw ?? {}) as { required?: unknown; default?: unknown };
+	return r.required !== false && r.default === undefined;
+}
+
+/** Placeholder for a field left blank: what the team uses instead. */
+function default_hint(spec: Input_spec): string | undefined {
+	return spec.default !== undefined && spec.default !== '' ? `Default: ${String(spec.default)}` : undefined;
+}
+
+/** Red star for a required input, "optional" for the rest. */
+function Required_mark({ required }: { required?: boolean }) {
+	return required
+		? <span className="ml-1 text-red-500" title="Required">*</span>
+		: <span className="ml-1.5 font-sans text-[10px] font-normal text-slate-400">optional</span>;
 }
 
 function normalize_inputs(raw: unknown): Input_spec[] {
@@ -129,7 +145,7 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 			.map((i) => ({
 				name: i.name.trim(),
 				description: typeof i.description === 'string' ? i.description : undefined,
-				required: !!(i as { required?: unknown }).required,
+				required: is_required(i),
 				type: typeof (i as { type?: unknown }).type === 'string' ? (i as { type: string }).type : undefined,
 				label: typeof (i as { label?: unknown }).label === 'string' ? (i as { label: string }).label : undefined,
 				help: typeof (i as { help?: unknown }).help === 'string' ? (i as { help: string }).help : undefined,
@@ -142,7 +158,7 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 			description: typeof (meta as { description?: unknown })?.description === 'string'
 				? (meta as { description: string }).description
 				: undefined,
-			required: !!(meta as { required?: unknown })?.required,
+			required: is_required(meta),
 			type: typeof (meta as { type?: unknown })?.type === 'string' ? (meta as { type: string }).type : undefined,
 			label: typeof (meta as { label?: unknown })?.label === 'string' ? (meta as { label: string }).label : undefined,
 			help: typeof (meta as { help?: unknown })?.help === 'string' ? (meta as { help: string }).help : undefined,
@@ -159,8 +175,8 @@ function normalize_inputs(raw: unknown): Input_spec[] {
 export function Run_in_realm_dialog({
 	scope,
 	slug,
-	fixed_realm,
-	prefill_from,
+	fixed_realm: fixed_realm_prop,
+	prefill_from: prefill_prop,
 	on_close,
 }: {
 	scope: string;
@@ -178,6 +194,14 @@ export function Run_in_realm_dialog({
 }) {
 	const auth_fetch = useOrgFetch();
 	const { current_id } = useOrg();
+	// Callers rebuild these objects on every render (and pages re-render on each background
+	// refresh): key them on their values, or the form reloads and loses what was typed.
+	const fixed_realm = useMemo(
+		() => (fixed_realm_prop ? { id: fixed_realm_prop.id, slug: fixed_realm_prop.slug, name: fixed_realm_prop.name } : undefined),
+		[fixed_realm_prop?.id, fixed_realm_prop?.slug, fixed_realm_prop?.name], // eslint-disable-line react-hooks/exhaustive-deps
+	);
+	const prefill_key = JSON.stringify(prefill_prop ?? null);
+	const prefill_from = useMemo(() => prefill_prop ?? null, [prefill_key]); // eslint-disable-line react-hooks/exhaustive-deps
 	const [realms, set_realms] = useState<Realm_option[]>([]);
 	const [loading_realms, set_loading_realms] = useState(!fixed_realm);
 	const [selected, set_selected] = useState(fixed_realm?.id ?? '');
@@ -275,13 +299,14 @@ export function Run_in_realm_dialog({
 			// extras textarea (see split_prefill_by_spec) so the round
 			// trip through submit is stable. Without prefill, all
 			// fields start blank as before.
+			// Values already typed survive a re-read; a prefill fills only what is still empty.
 			if (prefill_from) {
 				const { declared, extras_text } = split_prefill_by_spec(prefill_from, spec);
-				set_input_values(Object.fromEntries(spec.map((s) => [s.name, declared[s.name] ?? ''])));
-				if (extras_text) set_extra_inputs_text(extras_text);
+				set_input_values((prev) => Object.fromEntries(spec.map((s) => [s.name, prev[s.name] || declared[s.name] || ''])));
+				if (extras_text) set_extra_inputs_text((prev) => prev || extras_text);
 				return;
 			}
-			set_input_values(Object.fromEntries(spec.map((s) => [s.name, ''])));
+			set_input_values((prev) => Object.fromEntries(spec.map((s) => [s.name, prev[s.name] ?? ''])));
 		} catch {
 			set_inputs_spec([]);
 		} finally {
@@ -393,7 +418,7 @@ export function Run_in_realm_dialog({
 				if (e.target === e.currentTarget) on_close();
 			}}
 		>
-			<div className="flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100vh-4rem)] sm:w-full sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-200 sm:dark:border-slate-700">
+			<div className="flex h-full w-full flex-col overflow-hidden bg-white text-slate-900 shadow-2xl dark:bg-slate-900 dark:text-slate-100 sm:h-auto sm:max-h-[calc(100vh-4rem)] sm:w-full sm:max-w-2xl sm:rounded-2xl sm:border sm:border-slate-200 sm:dark:border-slate-700">
 				<header className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
 					<div className="min-w-0">
 						<p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
@@ -450,13 +475,13 @@ export function Run_in_realm_dialog({
 													value={filter}
 													onChange={(e) => set_filter(e.target.value)}
 													placeholder="Filter realms…"
-													className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950"
+													className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 												/>
 											) : null}
 											<select
 												value={selected}
 												onChange={(e) => set_selected(e.target.value)}
-												className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+												className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 											>
 												{filtered.map((r) => (
 													<option key={r.id} value={r.id}>
@@ -486,7 +511,7 @@ export function Run_in_realm_dialog({
 										value={run_name}
 										onChange={(e) => set_run_name(e.target.value)}
 										placeholder="Leave blank to auto-generate"
-										className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+										className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 									/>
 								</label>
 								<label className="block">
@@ -498,7 +523,7 @@ export function Run_in_realm_dialog({
 										value={workspace_path}
 										onChange={(e) => set_workspace_path(e.target.value)}
 										placeholder="/path/on/daemon"
-										className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+										className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 									/>
 								</label>
 							</div>
@@ -526,10 +551,10 @@ export function Run_in_realm_dialog({
 													<div key={spec.name} className="block">
 														<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
 															{display_label}
-															{spec.required ? <span className="ml-1 text-red-500" title="Required">*</span> : null}
+															<Required_mark required={spec.required} />
 														</span>
 														{help_text ? (
-															<span className="mt-0.5 block text-[11px] text-slate-500">
+															<span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
 																{help_text}
 															</span>
 														) : null}
@@ -558,7 +583,7 @@ export function Run_in_realm_dialog({
 														<input type="checkbox" checked={on} onChange={(e) => set_value(e.target.checked ? 'true' : 'false')} className="mt-0.5" />
 														<span>
 															<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">{display_label}</span>
-															{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500">{help_text}</span> : null}
+															{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">{help_text}</span> : null}
 														</span>
 													</label>
 												);
@@ -570,13 +595,13 @@ export function Run_in_realm_dialog({
 													<label key={spec.name} className="block">
 														<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
 															{display_label}
-															{spec.required ? <span className="ml-1 text-red-500" title="Required">*</span> : null}
+															<Required_mark required={spec.required} />
 														</span>
-														{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500">{help_text}</span> : null}
+														{help_text ? <span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">{help_text}</span> : null}
 														<select
 															value={input_values[spec.name] ?? (typeof spec.default === 'string' ? spec.default : '')}
 															onChange={(e) => set_value(e.target.value)}
-															className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+															className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 														>
 															<option value="">{spec.required ? 'Choose…' : '(team default)'}</option>
 															{spec.choices.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -589,10 +614,10 @@ export function Run_in_realm_dialog({
 												<label key={spec.name} className="block">
 													<span className="block font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100">
 														{display_label}
-														{spec.required ? <span className="ml-1 text-red-500" title="Required">*</span> : null}
+														<Required_mark required={spec.required} />
 													</span>
 													{help_text ? (
-														<span className="mt-0.5 block text-[11px] text-slate-500">
+														<span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">
 															{help_text}
 														</span>
 													) : null}
@@ -600,21 +625,23 @@ export function Run_in_realm_dialog({
 														<textarea
 															rows={4}
 															value={input_values[spec.name] ?? ''}
+															placeholder={default_hint(spec)}
 															onChange={(e) => set_input_values((prev) => ({
 																...prev,
 																[spec.name]: e.target.value,
 															}))}
-															className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+															className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 														/>
 													) : (
 														<input
 															type={spec.type === 'number' ? 'number' : 'text'}
 															value={input_values[spec.name] ?? ''}
+															placeholder={default_hint(spec)}
 															onChange={(e) => set_input_values((prev) => ({
 																...prev,
 																[spec.name]: e.target.value,
 															}))}
-															className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+															className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 														/>
 													)}
 												</label>
@@ -633,7 +660,7 @@ export function Run_in_realm_dialog({
 									value={extra_inputs_text}
 									onChange={(e) => set_extra_inputs_text(e.target.value)}
 									placeholder={'claim_id=CLM-1042\nregion=us-west'}
-									className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950"
+									className="mt-1 w-full resize-y rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
 								/>
 							</label>
 

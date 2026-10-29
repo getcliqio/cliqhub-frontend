@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { gs_response, multi_org_overview } from './fixtures_overview';
-import { layout_phases, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
+import { layout_phases, wrap_columns, expand_sub_teams, overlay_state, phase_kind, phase_subtitle, team_href, type Team_list_data, type Team_page_data, type Team_phase, type Team_view } from '@/lib/team_page';
 
 const auth = { scopes: [{ slug: 'sapan' }], user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
@@ -12,6 +12,8 @@ vi.mock('@/components/run_in_realm_dialog', () => ({ Run_in_realm_dialog: ({ sco
 
 import { Component as ListPage } from '@/pages/teams/teams_graphite_page';
 import { Component as TeamPage } from '@/pages/teams/team_graphite_page';
+import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
+import { Team_workflow } from '@/components/graphite/g_team_workflow';
 
 const ph = (name: string, type: string, over: Partial<Team_phase> = {}): Team_phase => ({ name, type, agent: type === 'standard' ? 'claude-code' : null, depends_on: [], review: false, reviewers: null, max_iterations: null, commands: [], sources: [], targets: [], team: null, role: null, support: false, ...over });
 const PHASES: Team_phase[] = [
@@ -134,6 +136,60 @@ describe('team page helpers', () => {
 		const b = layout_phases([ph('root', 'standard'), ph('alpha', 'standard', { depends_on: ['root'] }), ph('zeta', 'standard', { depends_on: ['root'] })]);
 		expect(b.pos.alpha.row).toBeLessThan(b.pos.zeta.row);
 		expect(layout_phases(PHASES).pos.tests.row).toBeLessThan(layout_phases(PHASES).pos['security-scan'].row);
+	});
+	it('wraps long flows into balanced bands, never breaking inside a route-back', () => {
+		const chain = (n: number, over: Record<number, Partial<Team_phase>> = {}) => Array.from({ length: n }, (_, i) => ph(`p${i}`, 'standard', { depends_on: i ? [`p${i - 1}`] : [], ...over[i] }));
+		expect(wrap_columns(layout_phases(PHASES)).every((c) => c.band === 0)).toBe(true);
+		const seven = wrap_columns(layout_phases(chain(7)));
+		expect(seven.map((c) => c.band)).toEqual([0, 0, 0, 0, 1, 1, 1]);
+		expect(seven[4].col).toBe(0);
+		// p4 is a gate routing back to p3: the break moves so both stay on one band.
+		const looped = wrap_columns(layout_phases(chain(7, { 4: { type: 'gate', max_iterations: 2 } })));
+		expect(looped[3].band).toBe(looped[4].band);
+	});
+	it('draws a wrapped flow with a connector between bands', () => {
+		const long = Array.from({ length: 9 }, (_, i) => ph(`step-${i}`, 'standard', { depends_on: i ? [`step-${i - 1}`] : [] }));
+		const { container } = render(<Workflow_graph phases={long} />);
+		expect(container.querySelectorAll('[data-wrap]')).toHaveLength(1);
+		expect(container.querySelector('[data-wrap]')?.getAttribute('data-edge')).toBe('step-4->step-5');
+		const svg = container.querySelector('svg')!;
+		expect(Number.parseFloat(svg.style.minWidth)).toBeGreaterThan(0);
+	});
+	it('a step that runs another team is a sub-team; script steps name their script', () => {
+		const each = ph('build', 'map', { agent: null, team: '@measureone/parser-builder' });
+		expect(phase_kind(each).id).toBe('team');
+		expect(phase_subtitle(each)).toBe('× parser-builder');
+		expect(phase_subtitle(ph('call', 'team', { agent: null, team: '@acme/qa' }))).toBe('qa');
+		const script = ph('sort', 'standard', { agent: 'exec', commands: ['bash "${PARSER2_ROOT:-/opt/parser2.0}/cliq/steps/sort-failures.sh" --work-root "x"'] });
+		expect(phase_subtitle(script)).toBe('sort-failures.sh');
+		expect(phase_subtitle(ph('raw', 'standard', { agent: 'exec', commands: ['npm test', 'npm run lint'] }))).toBe('2 commands');
+	});
+	it('expands sub-teams in place at every depth, wiring their first and last steps; a loop stays one node', () => {
+		const subs = {
+			'@m/pipeline': { scope: 'm', name: 'pipeline', version: '1', phases: [ph('sort', 'standard', { agent: 'exec' }), ph('build', 'map', { agent: null, team: '@m/builder', depends_on: ['sort'] })] },
+			'@m/builder': { scope: 'm', name: 'builder', version: '1', phases: [ph('code', 'standard'), ph('test', 'standard', { depends_on: ['code'] }), ph('again', 'team', { agent: null, team: '@m/pipeline', depends_on: ['test'] })] },
+		};
+		const top = [ph('find', 'standard', { agent: 'exec' }), ph('start', 'map', { agent: null, team: '@m/pipeline', depends_on: ['find'] }), ph('report', 'standard', { depends_on: ['start'] })];
+		const e = expand_sub_teams(top, subs);
+		expect(e.phases.map((p) => p.name)).toEqual(['find', 'start/sort', 'start/build/code', 'start/build/test', 'start/build/again', 'report']);
+		expect(e.phases.find((p) => p.name === 'start/sort')!.depends_on).toEqual(['find']);
+		expect(e.phases.find((p) => p.name === 'start/build/code')!.depends_on).toEqual(['start/sort']);
+		expect(e.phases.find((p) => p.name === 'report')!.depends_on).toEqual(['start/build/again']);
+		expect(e.groups.map((g) => [g.id, g.label, g.each, g.depth])).toEqual([['start', 'pipeline', true, 0], ['start/build', 'builder', true, 1]]);
+		expect(e.groups[0].members).toContain('start/build/test');
+	});
+	it('opens a sub-team from its node, goes back up by the path, and expands sub-teams in frames', () => {
+		const subs = { '@m/builder': { scope: 'm', name: 'builder', version: '1', phases: [ph('code', 'standard'), ph('test', 'standard', { depends_on: ['code'] })] } };
+		const top = [ph('sort', 'standard', { agent: 'exec' }), ph('build', 'map', { agent: null, team: '@m/builder', depends_on: ['sort'] })];
+		const { container } = render(<Team_workflow team_name="pipeline" phases={top} sub_teams={subs} />);
+		fireEvent.click(screen.getByRole('button', { name: 'Open builder: 2 steps' }));
+		expect(within(screen.getByTestId('workflow-path')).getByText('builder').getAttribute('aria-current')).toBe('page');
+		expect(container.querySelector('[data-phase="code"]')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'pipeline' }));
+		expect(container.querySelector('[data-phase="sort"]')).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Expanded' }));
+		expect(container.querySelector('[data-group="build"]')?.textContent).toContain('builder · × each');
+		expect(container.querySelector('[data-phase="build/test"]')).toBeTruthy();
 	});
 	it('subtitles, overlay states, hrefs', () => {
 		expect(phase_subtitle(PHASES[0])).toBe('jira');
@@ -448,6 +504,30 @@ describe('Team page', () => {
 		for (const name of [/Fork/, /^Download$/, /^Edit$/, /Install/]) expect(screen.queryByRole('button', { name })).toBeNull();
 		expect(screen.queryByTestId('versions')).toBeNull();
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
+	});
+
+	it('opened from a realm: the table follows the diagram — open a sub-team, or expand it under its step', async () => {
+		const SUB = [ph('code', 'standard', { role: 'Write the code.' }), ph('test', 'gate', { depends_on: ['code'], agent: 'cursor' })];
+		const with_sub = PHASES.map((p) => (p.name === 'open-pr' ? { ...p, type: 'map', agent: null, team: '@m/builder' } : p));
+		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, phases: with_sub, sub_teams: { '@m/builder': { scope: 'm', name: 'builder', version: '1', phases: SUB } } } } : {}));
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const table = await screen.findByTestId('phase-table');
+		const row_ids = () => within(screen.getByTestId('phase-table')).getAllByTestId('team-phase-row').map((r) => r.getAttribute('data-team-row'));
+		// Expanded: the sub-team's steps under its step, under a heading that folds; their rows open on their own.
+		fireEvent.click(screen.getByRole('button', { name: 'Expanded' }));
+		expect(within(table).getByText('builder', { selector: 'b' }).closest('[data-team-group]')).toHaveTextContent('builder · × each · 2 steps');
+		expect(row_ids()).toEqual([...PHASES.map((p) => p.name), 'open-pr/code', 'open-pr/test', 'git-resolver']);
+		fireEvent.click(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'open-pr/code')!);
+		expect(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'open-pr/code')).toHaveTextContent('Write the code.');
+		fireEvent.click(table.querySelector('[data-team-group="open-pr"]')!);
+		expect(row_ids()).not.toContain('open-pr/code');
+		// Open: the diagram and the table switch to the sub-team (no run inputs: they are the team's own).
+		fireEvent.click(screen.getByRole('button', { name: 'Collapsed' }));
+		fireEvent.click(within(screen.getByTestId('phase-table')).getByRole('button', { name: 'Open builder' }));
+		expect(row_ids()).toEqual(['code', 'test']);
+		expect(screen.queryByTestId('inputs-row')).toBeNull();
+		fireEvent.click(within(screen.getByTestId('workflow-path')).getByRole('button', { name: 'feature-dev-js' }));
+		expect(row_ids()).toContain('open-pr');
 	});
 
 	it('opened from a realm: Phases — the graph starts at the Run inputs; the table lists the inputs, then the phases; picking one picks it in both', async () => {

@@ -26,7 +26,7 @@ vi.mock('@/lib/org_context', () => ({
 
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 
-function stub_team_inputs(spec: Array<{ name: string; required?: boolean; description?: string; type?: string }>) {
+function stub_team_inputs(spec: Array<{ name: string; required?: boolean; description?: string; type?: string; default?: unknown }>) {
     // Response shape matches /v1/teams/get_by_id — the dialog reads
     // `data.data.inputs` first, falling back to `data.inputs`.
     return {
@@ -214,5 +214,57 @@ describe('Run_in_realm_dialog — typed team inputs', () => {
         await waitFor(() => expect(auth_fetch.mock.calls.some((c) => c[0] === '/v1/runs/enqueue')).toBe(true));
         const body = JSON.parse(auth_fetch.mock.calls.find((c) => c[0] === '/v1/runs/enqueue')![1].body);
         expect(body.payload.inputs).toEqual({ index: true, strict: true, limit: 3, mode: 'ensure' });
+    });
+});
+
+describe('Run_in_realm_dialog — required, optional and field kind', () => {
+    beforeEach(() => auth_fetch.mockReset());
+
+    it('reads required as cliq does, marks the rest optional, shows defaults, and keeps long help on one line', async () => {
+        auth_fetch.mockResolvedValueOnce({
+            json: async () => stub_team_inputs([
+                { name: 'item_ids', description: 'x'.repeat(300) },
+                { name: 'parsers_branch', required: false, default: 'master' },
+                { name: 'root', default: '/opt/parser2.0' },
+                { name: 'prompt_text' },
+                { name: 'notes', type: 'textarea' },
+            ]),
+        });
+        render_dialog();
+        await waitFor(() => screen.getByText('item_ids'));
+        const field = (name: string) => screen.getByText(name).closest('label')!;
+        // No `required:` → required (as cliq reads it); a default or required: false → optional.
+        expect(within(field('item_ids')).getByTitle('Required')).toBeTruthy();
+        expect(within(field('parsers_branch')).getByText('optional')).toBeTruthy();
+        expect(within(field('root')).getByText('optional')).toBeTruthy();
+        expect(field('root').querySelector('input')?.placeholder).toBe('Default: /opt/parser2.0');
+        // A long description no longer makes a text area; the name or `type: textarea` does.
+        expect(field('item_ids').querySelector('textarea')).toBeNull();
+        expect(field('prompt_text').querySelector('textarea')).toBeTruthy();
+        expect(field('notes').querySelector('textarea')).toBeTruthy();
+    });
+});
+
+describe('Run_in_realm_dialog — a page refresh keeps what was typed', () => {
+    beforeEach(() => auth_fetch.mockReset());
+
+    it('a rebuilt but identical fixed_realm does not reload the inputs or clear the fields', async () => {
+        auth_fetch.mockResolvedValue({ json: async () => stub_team_inputs([{ name: 'item_ids' }]) });
+        const view = (realm: { id: string; slug: string; name: string }) => (
+            <MemoryRouter>
+                <Run_in_realm_dialog scope="acme" slug="feature-dev" fixed_realm={realm} on_close={vi.fn()} />
+            </MemoryRouter>
+        );
+        const { rerender } = render(view({ ...FIXED_REALM }));
+        await waitFor(() => screen.getByText('item_ids'));
+        const field = () => screen.getByText('item_ids').closest('label')!.querySelector('input')!;
+        fireEvent.change(field(), { target: { value: 'itm_A,itm_B' } });
+        const calls = auth_fetch.mock.calls.length;
+        // The page re-renders on a background refresh and passes a new object with the same values.
+        rerender(view({ ...FIXED_REALM }));
+        rerender(view({ ...FIXED_REALM }));
+        await new Promise((r) => setTimeout(r, 0));
+        expect(auth_fetch.mock.calls.length).toBe(calls);
+        expect(field().value).toBe('itm_A,itm_B');
     });
 });
