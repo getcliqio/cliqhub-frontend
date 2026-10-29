@@ -24,6 +24,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
+import { Team_purpose_line } from '@/components/graphite/g_team_purpose';
 
 export const TEAMS_PAGE_SIZE = 25;
 
@@ -303,7 +304,7 @@ export function Component() {
 				) : (
 					<>
 						<div className="flex flex-wrap items-center gap-2">
-							<input aria-label="Search teams" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search teams in this realm…" className={`${INPUT} w-[260px]`} />
+							<input aria-label="Search teams" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search by name or what you want to do…" className={`${INPUT} w-[300px]`} />
 							<button type="button" disabled={!realm_id || !manage.ok} title={manage.reason ?? undefined} onClick={() => set_installing(true)} className={`${PRIMARY} ${GATED} ml-auto`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</button>
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
@@ -326,15 +327,16 @@ export function Component() {
 										{data.items.map((r) => {
 											return (
 												<tr key={r.label} {...row({ to: r.scope ? `${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}` : null })} className={`border-b border-[var(--g-line-2)] last:border-b-0 ${r.scope ? ROW_OPENS : ''}`} data-testid={`team-${r.label}`}>
-													<td className="max-w-[360px] px-4 py-2.5">
+													<td className="max-w-[520px] px-4 py-2.5">
 														{/* The team with the realm's version, e.g. @cliq/hello-world · 2.0.0 (↑ newer published). */}
 														<span className="flex min-w-0 items-center gap-1.5">
 															{r.scope ? <Link to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}`} className="truncate text-[13px] font-semibold hover:underline">{r.label}</Link> : <span className="truncate text-[13px] font-semibold">{r.label}</span>}
 															{r.version ? <span className="g-mono shrink-0 text-[12px] text-[var(--g-ink-3)]" data-testid="team-version">· {r.version}</span> : null}
 															{r.update_available ? <button type="button" disabled={!manage.ok} title={manage.reason ?? 'Update this realm'} onClick={(e) => { e.stopPropagation(); set_versioning(r); }} className={`shrink-0 rounded-full bg-[var(--g-acc-soft)] px-2 py-0.5 text-[11px] text-[var(--g-acc)] hover:underline ${GATED}`} data-testid="update-badge">↑ {r.latest_version} available</button> : null}
 														</span>
-														<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
-															{r.origin === 'cli' ? <span>local install (not on Hub)</span> : null}
+														<Team_purpose_line purpose={r} />
+															<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
+															{r.origin === 'cli' ? <span>local install (not on Hub; nothing known about when to use it)</span> : null}
 															{!r.in_team_list ? <span>on a daemon, not on the realm’s team list</span> : null}
 															{r.missing_agents.length ? <span className="inline-flex items-center gap-1 text-[var(--g-warn-text)]"><AlertTriangle aria-hidden className="h-3 w-3" />needs agents: {r.missing_agents.join(', ')}</span> : null}
 														</span>

@@ -18,9 +18,9 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 	return {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
-			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [] },
-			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'] },
-			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [] },
+			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [], description: 'Builds JS features', use_when: ['You have a Jira ticket for a JS change', 'A failing JS test to fix'], not_for: ['Python services'], required_inputs: [{ name: 'ticket', description: 'The Jira key' }] },
+			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'], description: 'Matches ledgers', use_when: [], not_for: [], required_inputs: [] },
+			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [], description: null, use_when: [], not_for: [], required_inputs: [] },
 		],
 		total: 3, offset: 0, limit: 25,
 		...over,
@@ -71,6 +71,25 @@ describe('Realm teams page', () => {
 		// No coverage chips: the Online daemons column says what matters.
 		expect(screen.queryByRole('group', { name: 'Coverage' })).toBeNull();
 		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Teams/ })).toHaveAttribute('aria-current', 'page');
+	});
+
+	it('each row says when to use the team: first use_when (else the description), the inputs it needs, the rest on a toggle', async () => {
+		route_fetch();
+		render_page();
+		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
+		const line = within(fd).getByTestId('team-purpose-line');
+		expect(line).toHaveTextContent('You have a Jira ticket for a JS change');
+		expect(line).toHaveTextContent('needs ticket');
+		expect(within(fd).queryByTestId('team-purpose')).toBeNull();
+		fireEvent.click(within(fd).getByTestId('purpose-toggle'));
+		const lists = within(fd).getByTestId('team-purpose');
+		expect(lists).toHaveTextContent('A failing JS test to fix');
+		expect(lists).toHaveTextContent('Python services');
+		// The toggle doesn't open the team.
+		expect(screen.queryByTestId('where')).toBeNull();
+		// No use_when: the description; nothing known (a local install): no line.
+		expect(within(screen.getByTestId('team-@measureone/recon')).getByTestId('team-purpose-line')).toHaveTextContent('Matches ledgers');
+		expect(within(screen.getByTestId('team-@sapan/scratch')).queryByTestId('team-purpose-line')).toBeNull();
 	});
 
 	it('a row opens its team: the name is the link, Open leads the row\'s buttons, other buttons do only their own thing', async () => {

@@ -71,6 +71,17 @@ describe('Run_in_realm_dialog — prefill_from', () => {
         expect(claim_input).toBeTruthy();
     });
 
+    it('shows when to use the team (and when another one) above the inputs', async () => {
+        auth_fetch.mockResolvedValueOnce({
+            json: async () => ({ ok: true, data: { inputs: [{ name: 'item_ids' }], use_when: ['You have failed item IDs'], not_for: ['Finding failed documents — use parser-scout'] } }),
+        });
+        render_dialog();
+        const purpose = await screen.findByTestId('team-purpose');
+        expect(purpose).toHaveTextContent('Use when');
+        expect(purpose).toHaveTextContent('You have failed item IDs');
+        expect(purpose).toHaveTextContent('Finding failed documents — use parser-scout');
+    });
+
     it('prefills declared inputs with the previous run\'s values', async () => {
         auth_fetch.mockResolvedValueOnce({
             json: async () => stub_team_inputs([

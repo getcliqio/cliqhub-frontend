@@ -14,6 +14,13 @@ export interface Realm_team_row {
 	online_stale: number | null;
 	last_run_at: number | null;
 	missing_agents: string[];
+	/** What the team does (catalog); null for local installs. */
+	description: string | null;
+	/** When to start this team, and when to start another one instead (team.yml, the realm's version). */
+	use_when: string[];
+	not_for: string[];
+	/** The inputs a run must be given. */
+	required_inputs: Array<{ name: string; description: string | null }>;
 }
 
 export interface Realm_teams_data {

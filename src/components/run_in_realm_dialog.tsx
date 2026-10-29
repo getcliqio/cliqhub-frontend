@@ -3,6 +3,7 @@ import { useOrgFetch, useOrg } from '@/lib/org_context';
 import { parse_run_inputs_text } from '@/lib/realm_teams_coverage';
 import { ChannelUserPicker } from '@/components/channel_user_picker';
 import { hub_payload } from '@/lib/hub_envelope';
+import { Team_purpose, type Team_purpose_data } from '@/components/graphite/g_team_purpose';
 
 interface Realm_option {
 	id: string;
@@ -207,6 +208,8 @@ export function Run_in_realm_dialog({
 	const [selected, set_selected] = useState(fixed_realm?.id ?? '');
 	const [filter, set_filter] = useState('');
 	const [inputs_spec, set_inputs_spec] = useState<Input_spec[]>([]);
+	/** When to use this team (and when another one): shown above the inputs. */
+	const [purpose, set_purpose] = useState<Team_purpose_data>({});
 	const [input_values, set_input_values] = useState<Record<string, string>>({});
 	const [loading_inputs, set_loading_inputs] = useState(true);
 	const [run_name, set_run_name] = useState(prefill_from?.run_name ?? '');
@@ -289,9 +292,10 @@ export function Run_in_realm_dialog({
 				method: 'POST',
 				body: JSON.stringify({ scope, name: slug }),
 			});
-			const data = await res.json() as { ok?: boolean; data?: { inputs?: unknown }; inputs?: unknown };
+			const data = await res.json() as { ok?: boolean; data?: { inputs?: unknown } & Team_purpose_data; inputs?: unknown };
 			/** The Hub wraps the detail DTO under `data` (BFF) or at the top level. */
 			const raw_inputs = data.data?.inputs ?? data.inputs;
+			if (data.ok && data.data) set_purpose({ use_when: data.data.use_when ?? [], not_for: data.data.not_for ?? [] });
 			const spec = data.ok ? normalize_inputs(raw_inputs) : [];
 			set_inputs_spec(spec);
 			// Seed the field values. When a prefill is present, apply
@@ -454,6 +458,7 @@ export function Run_in_realm_dialog({
 
 				<div className="flex-1 overflow-y-auto px-5 py-4">
 						<div className="grid gap-4">
+							<Team_purpose purpose={purpose} className="rounded-lg bg-slate-50 p-3 dark:bg-slate-800/60" />
 							{!fixed_realm ? (
 								<div>
 									<p className="text-[10px] font-semibold uppercase text-slate-400">
