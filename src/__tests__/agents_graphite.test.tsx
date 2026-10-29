@@ -13,7 +13,7 @@ vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => 
 import { Component as AgentsPage, matches } from '@/pages/agents/agents_page';
 import { Component as AgentPage } from '@/pages/agents/agent_page';
 import { Component as RealmAgentsPage } from '@/pages/realm/realm_agents_page';
-import { parse_manifest } from '@/components/graphite/g_agents';
+import { parse_manifest, Settings_form } from '@/components/graphite/g_agents';
 
 const JIRA = '22222222-2222-4222-8222-222222222222';
 const row = (over: Partial<Agent_list_data['items'][number]>) => ({ id: `${over.name}-id`, name: 'x', version: '1.0.0', versions: ['1.0.0'], description: '', agent_type: 'connector', is_system: true, setup: { has_settings: true, required_total: 1, required_configured: 1, ready: true }, overrides: [], used_by: [], used_count: 0, ...over });
@@ -222,6 +222,16 @@ describe('Agent page (org)', () => {
 		expect(within(screen.getByTestId('field-webhook')).getByLabelText('webhook is set')).toHaveTextContent('••••');
 		fireEvent.click(within(screen.getByTestId('field-webhook')).getByText('Replace'));
 		expect(within(screen.getByTestId('field-webhook')).getByLabelText('webhook')).toBeInTheDocument();
+	});
+
+	it('a refresh of the same agent keeps what is being typed (a new view object does not reset the form)', () => {
+		const view = page().settings;
+		const props = { org_id: ORG_A, agent_id: JIRA, on_saved: () => undefined };
+		const { rerender } = render(<Settings_form view={view} {...props} />);
+		const form = screen.getByTestId('settings-form');
+		fireEvent.change(within(form).getByLabelText('email'), { target: { value: 'x@y.z' } });
+		rerender(<Settings_form view={{ ...view, fields: view.fields.map((f) => ({ ...f })) }} {...props} />);
+		expect((within(form).getByLabelText('email') as HTMLInputElement).value).toBe('x@y.z');
 	});
 
 	it('Core permission errors surface on save', async () => {

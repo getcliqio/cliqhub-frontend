@@ -89,7 +89,9 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 	const [open_optional, set_open_optional] = useState(false);
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
-	useEffect(() => { set_edits({}); set_clears(new Set()); set_error(null); }, [view]);
+	// A different agent, scope or realm starts clean; a refresh of the same one keeps what's being typed.
+	const realm_id = view.realm?.id ?? null;
+	useEffect(() => { set_edits({}); set_clears(new Set()); set_error(null); }, [agent_id, mode, realm_id]);
 
 	// Current values (as far as visibility of `when` keys goes).
 	const current = useMemo(() => {
@@ -119,6 +121,7 @@ export function Settings_form({ view, org_id, agent_id, on_saved }: { view: Agen
 		const r = await post('/v1/agents/update_settings', { org_id, id: agent_id, ...(view.realm ? { realm_id: view.realm.id } : {}), settings: { ...(Object.keys(patch.values).length ? { values: patch.values } : {}), ...(patch.clear.length ? { clear: patch.clear } : {}) } });
 		set_busy(false);
 		if (!r.ok) { set_error(r.error); return; }
+		set_edits({}); set_clears(new Set());
 		on_saved(mode === 'realm' ? `Saved for ${realm_slug}.` : 'Saved for the org.');
 	}
 
