@@ -40,7 +40,21 @@ export function team_files(team: GeneratedTeam): Record<string, string> {
 }
 
 /** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
-export function publish_body(team: GeneratedTeam, o: { scope: string; current: string | null; bump: Bump; changelog: string; listed: boolean }): Record<string, unknown> {
+/**
+ * The multipart body of `teams/files/upload` (PLAN-team-bundle §2.6): a JSON `payload` part and each of the team's
+ * files as an attachment named by its path. Without a `version_id`, CliqHub starts a new draft.
+ */
+export function upload_form(team: GeneratedTeam, payload: { team_id: string; version_id?: string }): FormData {
+	const form = new FormData();
+	form.append('payload', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
+	for (const [path, text] of Object.entries(team_files(team))) {
+		form.append('files', new Blob([text], { type: path.endsWith('.md') ? 'text/markdown' : 'text/yaml' }), path);
+	}
+	return form;
+}
+
+/** The `teams/publish` body: publishes the draft `version_id` (its files uploaded with `upload_form`). */
+export function publish_body(team: GeneratedTeam, o: { scope: string; current: string | null; bump: Bump; changelog: string; listed: boolean; version_id: string }): Record<string, unknown> {
 	const agents: Record<string, Record<string, unknown>> = {};
 	for (const a of team.agents ?? []) {
 		const def: Record<string, unknown> = {};
@@ -54,7 +68,7 @@ export function publish_body(team: GeneratedTeam, o: { scope: string; current: s
 		description: team.description,
 		tags: team.tags ?? [],
 		visibility: o.listed ? 'public' : 'private',
-		files: team_files(team),
+		version_id: o.version_id,
 		...(o.changelog.trim() ? { changelog: o.changelog.trim() } : {}),
 		...(Object.keys(agents).length ? { agents } : {}),
 	};

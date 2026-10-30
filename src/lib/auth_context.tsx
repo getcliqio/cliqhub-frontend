@@ -257,7 +257,8 @@ export function useAuthFetch() {
   return useCallback(
     async (url: string, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
-      if (!headers.has('Content-Type')) {
+      // A FormData body (a team-files upload) gets its multipart type and boundary from the browser.
+      if (!headers.has('Content-Type') && !(init?.body instanceof FormData)) {
         headers.set('Content-Type', 'application/json');
       }
       headers.set('X-Requested-With', 'XMLHttpRequest');

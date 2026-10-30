@@ -14,7 +14,7 @@ import { api_message } from '@/lib/use_bff_read';
 import type { GeneratedTeam } from '@/lib/builder/store';
 import type { Problem } from '@/lib/builder/checks';
 import { diff_teams, release_notes } from '@/lib/builder/graph_ops';
-import { next_version, publish_body, suggest_bump, team_scope, team_slug, type Bump } from '@/lib/builder/publish';
+import { next_version, publish_body, suggest_bump, team_scope, team_slug, upload_form, type Bump } from '@/lib/builder/publish';
 import type { Team_install, Team_page_data } from '@/lib/team_page';
 import { team_href } from '@/lib/team_page';
 
@@ -46,6 +46,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 	const changes = useMemo(() => diff_teams(baseline, team), [baseline, team]);
 	const [loading, set_loading] = useState(true);
 	const [current, set_current] = useState<string | null>(null);
+	const [team_id, set_team_id] = useState<string | null>(null);
 	const [installs, set_installs] = useState<Team_install[]>([]);
 	const [bump, set_bump] = useState<Bump>(suggest_bump(changes));
 	const [notes, set_notes] = useState(release_notes(changes));
@@ -65,6 +66,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 				if (!live) return;
 				const d = res.ok && p?.ok ? (p.data as Team_page_data) : null;
 				set_current(d?.team.latest_version ?? null);
+				set_team_id(d?.team.id ?? null);
 				if (d) set_listed(d.team.visibility === 'public');
 				const items = d?.installs?.items ?? [];
 				set_installs(items);
@@ -82,7 +84,19 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 	async function publish() {
 		set_busy(true); set_error(null);
 		try {
-			const body = publish_body(team, { scope, current, bump, changelog: notes, listed });
+			// PLAN-team-bundle §2.6: the team (created on its first publish), its files uploaded into a new draft, then that draft published.
+			let id = team_id;
+			if (!id) {
+				const c = await auth_fetch('/v1/teams/create', { method: 'POST', body: JSON.stringify({ name: slug, scope, description: team.description || '' }) });
+				const cp = await c.json().catch(() => null);
+				if (!c.ok || !cp?.ok || !cp.data?.id) { set_error(api_message(cp, 'Couldn’t create the team.')); return; }
+				id = String(cp.data.id);
+				set_team_id(id);
+			}
+			const up = await auth_fetch('/v1/teams/files/upload', { method: 'POST', body: upload_form(team, { team_id: id }) });
+			const upp = await up.json().catch(() => null);
+			if (!up.ok || !upp?.ok || !upp.data?.version_id) { set_error(api_message(upp, 'Couldn’t upload the team’s files.')); return; }
+			const body = publish_body(team, { scope, current, bump, changelog: notes, listed, version_id: String(upp.data.version_id) });
 			const res = await auth_fetch('/v1/teams/publish', { method: 'POST', body: JSON.stringify(body) });
 			const p = await res.json().catch(() => null);
 			if (!res.ok || !p?.ok) {

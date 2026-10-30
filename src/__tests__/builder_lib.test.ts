@@ -8,7 +8,7 @@ import {
 } from '@/lib/builder/graph_ops';
 import { check_team, closest, find_cycle, has_reviewer, phases_using_input } from '@/lib/builder/checks';
 import { error_position, format_yaml, has_comments, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
-import { next_version, publish_body, suggest_bump, team_scope, team_slug } from '@/lib/builder/publish';
+import { next_version, publish_body, suggest_bump, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
 
 const P = (name: string, over: Partial<GeneratedPhase> = {}): GeneratedPhase => ({ name, type: 'standard', agent: 'claude-code', depends_on: [], ...over });
 function team(over: Partial<GeneratedTeam> = {}): GeneratedTeam {
@@ -274,14 +274,22 @@ describe('publish', () => {
 		expect(team_slug({ name: '@acme/Feature Dev' })).toBe('feature-dev');
 		expect(team_scope({ name: '@acme/x' }, 'me')).toBe('acme');
 		expect(team_scope({ name: 'x' }, 'me')).toBe('me');
-		const b = publish_body(team(), { scope: 'acme', current: '1.0.0', bump: 'minor', changelog: ' notes ', listed: false });
-		expect(b).toMatchObject({ name: 'feature-dev', scope: 'acme', bump: 'minor', changelog: 'notes', visibility: 'private' });
+		const DRAFT = '0d0d0d0d-1111-4222-8333-555555555555';
+		const b = publish_body(team(), { scope: 'acme', current: '1.0.0', bump: 'minor', changelog: ' notes ', listed: false, version_id: DRAFT });
+		expect(b).toMatchObject({ name: 'feature-dev', scope: 'acme', bump: 'minor', changelog: 'notes', visibility: 'private', version_id: DRAFT });
 		expect(b.version).toBeUndefined();
-		// The team's files, not a package (PLAN-team-bundle S1.3a): team.yml and one roles/<name>.md per role.
-		const files = b.files as Record<string, string>;
-		expect(files['team.yml']).toMatch(/phases:/);
-		expect(Object.keys(files).filter((p) => p.startsWith('roles/') && p.endsWith('.md'))).toHaveLength(5);
+		// Publish names the draft; the files go up first with upload_form (PLAN-team-bundle S1.3b).
+		expect(b.files).toBeUndefined();
 		expect(b.data_base64).toBeUndefined();
-		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true })).toMatchObject({ version: '1.0.0', visibility: 'public' });
+		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true, version_id: DRAFT })).toMatchObject({ version: '1.0.0', visibility: 'public' });
+	});
+
+	it('upload_form: a JSON payload part and each file of the team as an attachment named by its path', async () => {
+		const form = upload_form(team(), { team_id: '11111111-2222-4333-8444-555555555555' });
+		expect(JSON.parse(await (form.get('payload') as Blob).text())).toEqual({ team_id: '11111111-2222-4333-8444-555555555555' });
+		const names = form.getAll('files').map((f) => (f as File).name);
+		expect(names).toContain('team.yml');
+		expect(names.filter((n) => n.startsWith('roles/') && n.endsWith('.md'))).toHaveLength(5);
+		expect(await (form.getAll('files').find((f) => (f as File).name === 'team.yml') as File).text()).toMatch(/phases:/);
 	});
 });

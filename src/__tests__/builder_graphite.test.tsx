@@ -38,7 +38,8 @@ function route_fetch(handlers: Record<string, Handler> = {}) {
 		const u = String(url);
 		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: multi_org_overview() }));
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
-		const body = init?.body ? JSON.parse(String(init.body)) : {};
+		// A team-files upload is multipart (PLAN-team-bundle S1.3b): keep its FormData as it is.
+		const body = init?.body instanceof FormData ? { form: init.body } : init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
 		const key = u === '/v1/teams/build' ? `build:${body.action}` : u;
 		const h = handlers[key]?.(body, calls);
@@ -46,6 +47,7 @@ function route_fetch(handlers: Record<string, Handler> = {}) {
 		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: { items: [{ id: 'd1', name: 'loan-review', scope: 'measureone', description: '', status: 'draft', latest_version: null, author: 'sapan', phase_types: ['standard', 'gate'], installs: [] }], total: 1, offset: 0, limit: 5, counts: { all: 1, published: 0, draft: 1 }, realms_checked: 0, realms_total: 0, partial: false } }));
 		if (key === 'build:validate') return new Response(JSON.stringify({ ok: true, data: { valid: true, errors: [], warnings: [] } }));
 		if (u === '/v1/teams/create') return new Response(JSON.stringify({ ok: true, data: { id: 'draft-9' } }));
+		if (u === '/v1/teams/files/upload') return new Response(JSON.stringify({ ok: true, data: { version_id: 'v-draft', files: [] } }), { status: 201 });
 		if (u === '/v1/teams/update') return new Response(JSON.stringify({ ok: true, data: { id: body.team_id } }));
 		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { team_json: JSON.stringify(TEAM) } }));
 		if (u === '/v1/team_page/get') return new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
@@ -483,7 +485,7 @@ describe('Graphite builder — layout', () => {
 });
 
 describe('Graphite builder — publish', () => {
-	it('first publish: 1.0.0 with the package, then the done screen', async () => {
+	it('first publish: creates the team, uploads its files into a draft, publishes that draft as 1.0.0', async () => {
 		const calls = route_fetch({ '/v1/teams/publish': () => ({ body: { ok: true, data: { version: '1.0.0' } } }) });
 		render_at('/builder?draft=d1');
 		await screen.findByTestId('canvas');
@@ -494,12 +496,17 @@ describe('Graphite builder — publish', () => {
 		expect(calls.find((c) => c.url === '/v1/team_page/get')!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev', view: 'installs' });
 		fireEvent.click(within(dlg).getByText('Publish 1.0.0'));
 		expect(await screen.findByTestId('publish-done')).toBeTruthy();
+		const steps = ['/v1/teams/create', '/v1/teams/files/upload', '/v1/teams/publish'];
+		expect(calls.map((c) => c.url).filter((u) => steps.includes(u))).toEqual(steps);
+		const form = calls.find((c) => c.url === '/v1/teams/files/upload')!.body.form as FormData;
+		expect(JSON.parse(await (form.get('payload') as Blob).text())).toEqual({ team_id: 'draft-9' });
+		const files = form.getAll('files') as File[];
+		expect(files.map((f) => f.name)).toEqual(['team.yml', 'roles/design.md', 'roles/build.md']);
+		expect(await files[0].text()).toContain('name: feature-dev');
 		const body = calls.find((c) => c.url === '/v1/teams/publish')!.body;
-		// A new team starts private (PLAN-team-visibility §3.3).
-		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '1.0.0', visibility: 'private' });
-		const pkg = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(String(body.data_base64)), (c) => c.charCodeAt(0))));
-		expect(pkg['team.yml']).toContain('name: feature-dev');
-		expect(pkg.roles.map((r: { name: string }) => r.name)).toEqual(['design', 'build']);
+		// A new team starts private (PLAN-team-visibility §3.3); publish names the uploaded draft.
+		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '1.0.0', visibility: 'private', version_id: 'v-draft' });
+		expect(body.files).toBeUndefined();
 	});
 
 	it('next version: suggested bump, notes, public toggle (starts at the current visibility), then upgrades ticked realms', async () => {
