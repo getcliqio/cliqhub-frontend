@@ -71,15 +71,8 @@ export function upload_form(files: Record<string, string>, payload: { team_id: s
 }
 
 /** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
-/** The `teams/publish` body: publishes the draft `version_id` (its files uploaded with `upload_form`). */
+/** The `teams/publish` body: publishes the draft `version_id` (its files uploaded with `upload_form`; agents are in its team.yml). */
 export function publish_body(team: GeneratedTeam, o: { scope: string; current: string | null; bump: Bump; changelog: string; listed: boolean; version_id: string }): Record<string, unknown> {
-	const agents: Record<string, Record<string, unknown>> = {};
-	for (const a of team.agents ?? []) {
-		const def: Record<string, unknown> = {};
-		if (a.entry) def.entry = a.entry;
-		if (a.env?.length) def.env = a.env;
-		agents[a.name] = def;
-	}
 	const body: Record<string, unknown> = {
 		name: team_slug(team),
 		scope: o.scope || undefined,
@@ -88,7 +81,6 @@ export function publish_body(team: GeneratedTeam, o: { scope: string; current: s
 		visibility: o.listed ? 'public' : 'private',
 		version_id: o.version_id,
 		...(o.changelog.trim() ? { changelog: o.changelog.trim() } : {}),
-		...(Object.keys(agents).length ? { agents } : {}),
 	};
 	if (o.current) body.bump = o.bump; else body.version = '1.0.0';
 	return body;

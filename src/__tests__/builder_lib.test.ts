@@ -281,6 +281,8 @@ describe('publish', () => {
 		expect(b.version).toBeUndefined();
 		// Publish names the draft; the files go up first with upload_form (PLAN-team-bundle S1.3b).
 		expect(b.files).toBeUndefined();
+		// agents travel in team.yml, not beside it (PLAN-team-bundle S1.4b)
+		expect(publish_body(team({ agents: [{ name: 'claude-code', entry: 'x' }] as never }), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true, version_id: DRAFT })).not.toHaveProperty('agents');
 		expect(b.data_base64).toBeUndefined();
 		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true, version_id: DRAFT })).toMatchObject({ version: '1.0.0', visibility: 'public' });
 	});
