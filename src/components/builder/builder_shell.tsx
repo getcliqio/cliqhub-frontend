@@ -1,10 +1,9 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { BuilderProvider, useBuilder, useBuilderDispatch } from '@/lib/builder/store';
+import { BuilderProvider, useBuilder, useBuilderDispatch, type Builder_source } from '@/lib/builder/store';
+import { detail_from_files } from '@/lib/builder/publish';
 import {
-	adopt_source,
 	BUILDER_SESSION_KEYS,
-	normalize_builder_team,
 	read_builder_session_team,
 } from '@/lib/builder/session_restore';
 import { useAuth} from '@/lib/auth_context';
@@ -52,36 +51,39 @@ export function StateRestorer() {
 			/* keep spark unless session present */
 		}
 
-		// ?draft=<team id>: a saved team. Its unversioned working copy wins unless
-		// ?fresh=1 (start again from the latest version); either way the copy is
-		// remembered so Cancel can put it back.
+		// ?draft=<team id>: a saved team. Its open draft wins unless ?fresh=1 (start from the latest version;
+		// the first save starts a new draft). The builder saves into the draft it opened (PLAN-team-bundle S1.3c).
 		const draft_id = searchParams.get('draft');
 		if (draft_id && user) {
-			authFetch('/v1/teams/get_by_id', {
-				method: 'POST',
-				body: JSON.stringify({ team_id: draft_id }),
-			})
-				.then((res) => res.json())
-				.then((data) => {
-					if (!data.ok) {
-						set_load_error(data.error?.message || 'Failed to load draft');
+			const post = (url: string, body: Record<string, unknown>) =>
+				authFetch(url, { method: 'POST', body: JSON.stringify(body) }).then((res) => res.json());
+			(async () => {
+				const data = await post('/v1/teams/get_by_id', { team_id: draft_id });
+				if (!data.ok) {
+					set_load_error(data.error?.message || 'Failed to load draft');
+					return;
+				}
+				const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; status?: string; visibility?: string; draft?: { version_id: string; saved_at: string | null } | null };
+				let copy: Builder_source['copy'] = null;
+				if (d.draft?.version_id && searchParams.get('fresh') !== '1') {
+					const f = await post('/v1/teams/files/get', { team_id: draft_id, version_id: d.draft.version_id, content: true });
+					if (!f.ok) {
+						set_load_error(f.error?.message || 'Failed to load draft');
 						return;
 					}
-					const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; team_json?: string | null; status?: string; visibility?: string; draft?: { manifest: string; description: string | null; saved_at: string | null } | null };
-					const copy = d.draft?.manifest ? { team_json: d.draft.manifest, description: d.draft.description ?? null, saved_at: d.draft.saved_at ?? null } : null;
-					const as_json = (text: string | null | undefined) => { if (!text) return null; try { return normalize_builder_team(JSON.parse(text)); } catch { return null; } };
-					// Working copy (builder JSON) → the published version, read from its team.yml.
-					const published = builder_team_from_detail(d, { label: d.scope ? `@${d.scope}/${d.name}` : String(d.name ?? ''), version: d.latest_version ?? null });
-					const working = searchParams.get('fresh') !== '1' ? as_json(copy?.team_json) : null;
-					const team = working && published ? adopt_source(working, published) : working ?? published;
-					if (!team) return;
-					dispatch({ type: 'SET_TEAM', team, validation: null });
-					dispatch({ type: 'SET_DRAFT_ID', draft_id });
-					dispatch({ type: 'SET_SOURCE', source: { published: d.status === 'published' && d.visibility !== 'draft', copy } });
-				})
-				.catch(() => {
-					set_load_error('Network error — could not load draft');
-				});
+					const files = Object.fromEntries((f.data?.files as Array<{ path: string; content?: string }> ?? []).map((x) => [x.path, x.content ?? '']));
+					copy = { version_id: d.draft.version_id, saved_at: d.draft.saved_at ?? null, files };
+				}
+				const opts = { label: d.scope ? `@${d.scope}/${d.name}` : String(d.name ?? ''), version: d.latest_version ?? null };
+				// The draft's own files, else the published version (its team.yml).
+				const team = copy ? builder_team_from_detail({ ...d, ...detail_from_files(copy.files) }, opts) : builder_team_from_detail(d, opts);
+				if (!team) return;
+				dispatch({ type: 'SET_TEAM', team, validation: null });
+				dispatch({ type: 'SET_DRAFT_ID', draft_id, version_id: copy?.version_id ?? null });
+				dispatch({ type: 'SET_SOURCE', source: { published: d.status === 'published' && d.visibility !== 'draft', copy } });
+			})().catch(() => {
+				set_load_error('Network error — could not load draft');
+			});
 		}
 	}, [dispatch, searchParams, user, authFetch, state.view, state.team]);
 

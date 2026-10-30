@@ -93,7 +93,10 @@ export interface BuilderState {
 	view: BuilderView;
 	team: GeneratedTeam | null;
 	validation: ValidationResult | null;
+	/** The saved team being edited (its team id). */
 	draft_id: string | null;
+	/** The team's draft version this builder saves into (PLAN-team-bundle S1.3c); null until the first save. */
+	version_id: string | null;
 	generating: boolean;
 	error: string | null;
 	selected_role: string | null;
@@ -106,15 +109,16 @@ export interface BuilderState {
 	undo_tick: number;
 	/**
 	 * The saved team the builder was opened on (`?draft=`): whether it is
-	 * published, and its unversioned working copy at that moment (null = none).
-	 * Cancel puts that copy back, or discards the copy when there was none.
+	 * published, and the draft it had open at that moment (null = none), which
+	 * the builder carries on. Discard deletes that draft.
 	 */
 	source: Builder_source | null;
 }
 
 export interface Builder_source {
 	published: boolean;
-	copy: { team_json: string; description: string | null; saved_at: string | null } | null;
+	/** The draft opened, with its files as loaded (what a save compares against). */
+	copy: { version_id: string; saved_at: string | null; files: Record<string, string> } | null;
 }
 
 export const INITIAL_STATE: BuilderState = {
@@ -122,6 +126,7 @@ export const INITIAL_STATE: BuilderState = {
 	team: null,
 	validation: null,
 	draft_id: null,
+	version_id: null,
 	generating: false,
 	error: null,
 	selected_role: null,
@@ -141,7 +146,8 @@ export type SingleAction =
 	| { type: 'SET_TEAM'; team: GeneratedTeam; validation: ValidationResult | null }
 	| { type: 'UPDATE_TEAM'; team: GeneratedTeam }
 	| { type: 'SET_VALIDATION'; validation: ValidationResult }
-	| { type: 'SET_DRAFT_ID'; draft_id: string | null }
+	/** The saved team, and the draft it saves into (left as is when `version_id` is omitted). */
+	| { type: 'SET_DRAFT_ID'; draft_id: string | null; version_id?: string | null }
 	| { type: 'SET_SOURCE'; source: Builder_source | null }
 	| { type: 'SELECT_ROLE'; name: string | null }
 	| { type: 'SELECT_PHASE'; name: string | null }
@@ -220,7 +226,7 @@ function apply_action(state: BuilderState, action: SingleAction): BuilderState {
 		case 'SET_VALIDATION':
 			return { ...state, validation: action.validation };
 		case 'SET_DRAFT_ID':
-			return { ...state, draft_id: action.draft_id, dirty: false };
+			return { ...state, draft_id: action.draft_id, version_id: action.draft_id === null ? null : action.version_id !== undefined ? action.version_id : state.version_id, dirty: false };
 		case 'SET_SOURCE':
 			return { ...state, source: action.source };
 	case 'SELECT_ROLE': {
@@ -349,7 +355,7 @@ function apply_action(state: BuilderState, action: SingleAction): BuilderState {
 			return { ...state, dirty: action.dirty };
 		case 'LOAD_DRAFT': {
 			const team = { ...action.team, agents: action.team.agents || [] };
-			return { ...state, team, draft_id: action.draft_id, view: 'canvas', dirty: false, history: [] };
+			return { ...state, team, draft_id: action.draft_id, version_id: null, view: 'canvas', dirty: false, history: [] };
 		}
 		case 'RESET':
 			return INITIAL_STATE;

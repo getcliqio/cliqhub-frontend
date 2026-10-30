@@ -5,7 +5,8 @@
  *
  * Read: one `POST /v1/team_page/get {view: 'installs'}` (current version +
  * where it's installed; 404 = first publish).
- * Writes: `/v1/teams/publish`, then `/v1/realms/add_team` per ticked realm.
+ * Writes: the builder's draft is saved (`teams/create` on a first publish, then its changed files), then
+ * `/v1/teams/publish` publishes that draft, then `/v1/realms/add_team` per ticked realm.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -14,7 +15,8 @@ import { api_message } from '@/lib/use_bff_read';
 import type { GeneratedTeam } from '@/lib/builder/store';
 import type { Problem } from '@/lib/builder/checks';
 import { diff_teams, release_notes } from '@/lib/builder/graph_ops';
-import { next_version, publish_body, suggest_bump, team_scope, team_slug, upload_form, type Bump } from '@/lib/builder/publish';
+import { next_version, publish_body, suggest_bump, team_scope, team_slug, type Bump } from '@/lib/builder/publish';
+import type { Draft_ref } from '@/components/gbuilder/gb_app';
 import type { Team_install, Team_page_data } from '@/lib/team_page';
 import { team_href } from '@/lib/team_page';
 
@@ -30,13 +32,17 @@ const BUMPS: Array<{ id: Bump; label: string; hint: string }> = [
 	{ id: 'major', label: 'Major', hint: 'breaking inputs' },
 ];
 
-export function Gb_publish({ team, baseline, problems, on_close, on_published }: {
+export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft, on_close, on_published }: {
 	team: GeneratedTeam;
 	/** What the team looked like when opened (for the change set). */
 	baseline: GeneratedTeam | null;
 	problems: Problem[];
+	/** The saved team the builder edits, if any. */
+	draft_team_id: string | null;
+	/** Save the builder's draft now (into `adopt`, a team this dialog found or created). */
+	save_draft: (adopt?: Draft_ref | { team_id: string; version_id: null }) => Promise<Draft_ref | string>;
 	on_close: () => void;
-	on_published: (version: string) => void;
+	on_published: (version: string, draft: Draft_ref) => void;
 }) {
 	const auth_fetch = useAuthFetch();
 	const { scopes, user } = useAuth();
@@ -84,19 +90,21 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 	async function publish() {
 		set_busy(true); set_error(null);
 		try {
-			// PLAN-team-bundle §2.6: the team (created on its first publish), its files uploaded into a new draft, then that draft published.
-			let id = team_id;
-			if (!id) {
+			// PLAN-team-bundle §2.6 / S1.3c: the builder's draft is saved (the team created on its first publish,
+			// with its first draft), then that draft is published.
+			let adopt: Draft_ref | { team_id: string; version_id: null } | undefined;
+			if (!team_id) {
 				const c = await auth_fetch('/v1/teams/create', { method: 'POST', body: JSON.stringify({ name: slug, scope, description: team.description || '' }) });
 				const cp = await c.json().catch(() => null);
-				if (!c.ok || !cp?.ok || !cp.data?.id) { set_error(api_message(cp, 'Couldn’t create the team.')); return; }
-				id = String(cp.data.id);
-				set_team_id(id);
+				if (!c.ok || !cp?.ok || !cp.data?.id || !cp.data?.version_id) { set_error(api_message(cp, 'Couldn’t create the team.')); return; }
+				adopt = { team_id: String(cp.data.id), version_id: String(cp.data.version_id) };
+				set_team_id(adopt.team_id);
+			} else if (team_id !== draft_team_id) {
+				adopt = { team_id, version_id: null };
 			}
-			const up = await auth_fetch('/v1/teams/files/upload', { method: 'POST', body: upload_form(team, { team_id: id }) });
-			const upp = await up.json().catch(() => null);
-			if (!up.ok || !upp?.ok || !upp.data?.version_id) { set_error(api_message(upp, 'Couldn’t upload the team’s files.')); return; }
-			const body = publish_body(team, { scope, current, bump, changelog: notes, listed, version_id: String(upp.data.version_id) });
+			const draft = await save_draft(adopt);
+			if (typeof draft === 'string') { set_error(draft); return; }
+			const body = publish_body(team, { scope, current, bump, changelog: notes, listed, version_id: draft.version_id });
 			const res = await auth_fetch('/v1/teams/publish', { method: 'POST', body: JSON.stringify(body) });
 			const p = await res.json().catch(() => null);
 			if (!res.ok || !p?.ok) {
@@ -115,7 +123,7 @@ export function Gb_publish({ team, baseline, problems, on_close, on_published }:
 				(r?.ok && rp?.ok ? upgraded : failed).push(i.realm_slug);
 			}
 			set_done({ version: v, upgraded, failed });
-			on_published(v);
+			on_published(v, draft);
 		} catch {
 			set_error('Network error — try again.');
 		} finally {

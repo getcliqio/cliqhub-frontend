@@ -8,7 +8,8 @@ import {
 } from '@/lib/builder/graph_ops';
 import { check_team, closest, find_cycle, has_reviewer, phases_using_input } from '@/lib/builder/checks';
 import { error_position, format_yaml, has_comments, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
-import { next_version, publish_body, suggest_bump, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
+import { detail_from_files, draft_changes, next_version, publish_body, suggest_bump, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
+import { builder_team_from_detail } from '@/lib/team_builder';
 
 const P = (name: string, over: Partial<GeneratedPhase> = {}): GeneratedPhase => ({ name, type: 'standard', agent: 'claude-code', depends_on: [], ...over });
 function team(over: Partial<GeneratedTeam> = {}): GeneratedTeam {
@@ -285,11 +286,31 @@ describe('publish', () => {
 	});
 
 	it('upload_form: a JSON payload part and each file of the team as an attachment named by its path', async () => {
-		const form = upload_form(team(), { team_id: '11111111-2222-4333-8444-555555555555' });
+		const form = upload_form(team_files(team()), { team_id: '11111111-2222-4333-8444-555555555555' });
 		expect(JSON.parse(await (form.get('payload') as Blob).text())).toEqual({ team_id: '11111111-2222-4333-8444-555555555555' });
 		const names = form.getAll('files').map((f) => (f as File).name);
 		expect(names).toContain('team.yml');
 		expect(names.filter((n) => n.startsWith('roles/') && n.endsWith('.md'))).toHaveLength(5);
 		expect(await (form.getAll('files').find((f) => (f as File).name === 'team.yml') as File).text()).toMatch(/phases:/);
+	});
+
+	it('draft_changes: a save sends only what changed, and removes the roles that went (never README.md)', () => {
+		const held = { 'team.yml': 'a', 'README.md': '# x', 'roles/dev.md': 'Dev', 'roles/old.md': 'Old' };
+		const now = { 'team.yml': 'b', 'roles/dev.md': 'Dev', 'roles/new.md': 'New' };
+		expect(draft_changes(held, now)).toEqual({ upload: { 'team.yml': 'b', 'roles/new.md': 'New' }, remove: ['roles/old.md'] });
+		expect(draft_changes({}, now)).toEqual({ upload: now, remove: [] });
+		expect(draft_changes(now, now)).toEqual({ upload: {}, remove: [] });
+	});
+
+	it('a draft opened from its files is the team that was saved (team.yml + roles round-trip)', () => {
+		const t = team();
+		const back = builder_team_from_detail(detail_from_files({ ...team_files(t), 'README.md': '# readme' }), { label: t.name });
+		expect(back).not.toBeNull();
+		expect(team_files(back!)).toEqual(team_files(t));
+		expect(back!.phases.map((p) => p.name)).toEqual(t.phases.map((p) => p.name));
+		expect(back!.agents).toEqual(t.agents);
+		// Roles come back in path order.
+		const by_name = (r: { name: string }[]) => [...r].sort((x, y) => x.name.localeCompare(y.name));
+		expect(by_name(back!.roles)).toEqual(by_name(t.roles));
 	});
 });

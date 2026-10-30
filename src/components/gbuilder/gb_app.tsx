@@ -7,7 +7,8 @@
  *   right     — one panel at a time: the selected phase, the team details, or AI.
  *
  * Reads/writes (no new endpoints):
- *   drafts     /v1/teams/create → /v1/teams/update (autosave, debounced)
+ *   drafts     /v1/teams/create (the team + its first draft) → /v1/teams/files/upload · files/remove
+ *              (autosave, debounced: only the files that changed) · /v1/teams/update {save_as: 'discard'}
  *   validate   /v1/teams/build {action: 'validate'} (debounced; local checks are instant)
  *   AI         /v1/teams/build {chat | suggest | improve_role | generate | status}
  *   publish    /v1/team_page/get (installs) · /v1/teams/publish · /v1/realms/add_team
@@ -24,7 +25,7 @@ import { KINDS, kind_of, type Kind_id } from '@/lib/builder/kinds';
 import { add_after, add_root, diff_teams, duplicate_phase, remove_bridged } from '@/lib/builder/graph_ops';
 import { check_team, type Problem } from '@/lib/builder/checks';
 import { team_to_yaml } from '@/lib/builder/yaml_tools';
-import { team_scope, team_slug } from '@/lib/builder/publish';
+import { draft_changes, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Gb_canvas, type Canvas_preview } from '@/components/gbuilder/gb_canvas';
 import { Phase_panel, Team_panel } from '@/components/gbuilder/gb_inspector';
@@ -56,12 +57,16 @@ function ago(ms: number): string {
 	return s < 5 ? 'just now' : s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
 }
 
+/** The team and the draft version the builder saves into. */
+export type Draft_ref = { team_id: string; version_id: string };
+
 /**
- * Autosave into the team's one working copy (`teams/update` with
- * `save_as: 'draft'` — never mints a version). A new team is created first
- * without a manifest, so it has no versions until it is published.
+ * Autosave into the builder's draft (PLAN-team-bundle S1.3c): a draft is a version of the team, and saving
+ * uploads the files that changed since the last save (team.yml, roles/<name>.md) and removes the roles that went.
+ * A new team is created first (with its first draft); a saved team without an open draft gets one on its
+ * first upload. Never publishes.
  */
-function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: string | null, auto_create: boolean) {
+function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id: string | null; version_id: string | null }, opened: Builder_source['copy'], auto_create: boolean) {
 	const auth_fetch = useAuthFetch();
 	const dispatch = useBuilderDispatch();
 	const { user, scopes } = useAuth();
@@ -69,50 +74,79 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 	const [state, set_state] = useState<Save_state>({ kind: 'idle' });
 	const [, tick] = useState(0);
 	const team_ref = useRef(team); team_ref.current = team;
+	const ids_ref = useRef(ids); ids_ref.current = ids;
+	const opened_ref = useRef(opened); opened_ref.current = opened;
 	const busy = useRef(false);
 	const halted = useRef(false);
 	/** Something reached the server this session (Cancel then has to undo it). */
 	const saved_any = useRef(false);
+	/** What the draft holds, as of the last save (or as opened). */
+	const held = useRef<{ version_id: string | null; files: Record<string, string> }>({ version_id: null, files: {} });
 
-	const save = useCallback(async () => {
+	/**
+	 * Save now. `adopt`: a team the caller just created (Publish's first publish). `wait`: wait for a save in
+	 * flight instead of skipping. Returns the draft saved into, or why it couldn't.
+	 */
+	const write = useCallback(async (o: { adopt?: Draft_ref | { team_id: string; version_id: null }; wait?: boolean } = {}): Promise<Draft_ref | string> => {
+		if (o.wait) while (busy.current) await new Promise((r) => window.setTimeout(r, 50));
 		const t = team_ref.current;
-		if (!t || busy.current || halted.current) return;
-		if (!user) { set_state({ kind: 'signed_out' }); return; }
-		if (!draft_id && team_slug(t) === 'untitled-team') { set_state({ kind: 'unnamed' }); return; }
+		if (!t || busy.current || halted.current) return 'Not saved.';
+		if (!user) { set_state({ kind: 'signed_out' }); return 'Sign in to save.'; }
+		if (!o.adopt && !ids_ref.current.team_id && team_slug(t) === 'untitled-team') { set_state({ kind: 'unnamed' }); return 'Name the team first.'; }
 		busy.current = true;
 		set_state({ kind: 'saving' });
-		try {
-			let id = draft_id;
-			if (!id) {
-				const res = await auth_fetch('/v1/teams/create', { method: 'POST', body: JSON.stringify({ name: team_slug(t), scope: team_scope(t, scopes[0]?.slug ?? user.username ?? ''), description: t.description || '' }) });
-				const p = await res.json().catch(() => null);
-				if (!res.ok || !p?.ok || !p.data?.id) { set_state({ kind: 'error', message: api_message(p, 'Couldn’t save the draft.') }); return; }
-				id = String(p.data.id);
-				saved_any.current = true;
-				dispatch({ type: 'SET_DRAFT_ID', draft_id: id });
-				set_search((s) => { const n = new URLSearchParams(s); n.set('draft', id!); n.delete('view'); n.delete('fork'); return n; }, { replace: true });
-			}
-			const res = await auth_fetch('/v1/teams/update', { method: 'POST', body: JSON.stringify({ team_id: id, description: t.description || '', team_json: JSON.stringify(t), save_as: 'draft' }) });
+		const fail = (message: string) => { set_state({ kind: 'error', message }); dispatch({ type: 'SET_DIRTY', dirty: true }); return message; };
+		const post = async (url: string, body: BodyInit) => {
+			const res = await auth_fetch(url, { method: 'POST', body });
 			const p = await res.json().catch(() => null);
-			if (!res.ok || !p?.ok) { set_state({ kind: 'error', message: api_message(p, 'Couldn’t save the draft.') }); dispatch({ type: 'SET_DIRTY', dirty: true }); return; }
+			return { ok: res.ok && Boolean(p?.ok), p };
+		};
+		try {
+			let id = o.adopt?.team_id ?? ids_ref.current.team_id;
+			let vid = o.adopt ? o.adopt.version_id : ids_ref.current.version_id;
+			if (!id) {
+				const c = await post('/v1/teams/create', JSON.stringify({ name: team_slug(t), scope: team_scope(t, scopes[0]?.slug ?? user.username ?? ''), description: t.description || '' }));
+				if (!c.ok || !c.p.data?.id) return fail(api_message(c.p, 'Couldn’t save the draft.'));
+				id = String(c.p.data.id);
+				vid = c.p.data.version_id ? String(c.p.data.version_id) : null;
+				saved_any.current = true;
+				const new_id = id;
+				set_search((s) => { const n = new URLSearchParams(s); n.set('draft', new_id); n.delete('view'); n.delete('fork'); return n; }, { replace: true });
+			}
+			// A draft this hook hasn't saved into yet: what it holds is what the builder opened (or Core's seed).
+			if (held.current.version_id !== vid) held.current = { version_id: vid, files: vid && opened_ref.current?.version_id === vid ? opened_ref.current.files : {} };
+			const now = team_files(t);
+			const { upload, remove } = draft_changes(held.current.files, now);
+			if (!vid || Object.keys(upload).length) {
+				const up = await post('/v1/teams/files/upload', upload_form(vid ? upload : now, { team_id: id, ...(vid ? { version_id: vid } : {}) }));
+				if (!up.ok || !up.p.data?.version_id) return fail(api_message(up.p, 'Couldn’t save the draft.'));
+				vid = String(up.p.data.version_id);
+			}
+			if (remove.length) {
+				const rm = await post('/v1/teams/files/remove', JSON.stringify({ team_id: id, version_id: vid, paths: remove }));
+				if (!rm.ok) return fail(api_message(rm.p, 'Couldn’t save the draft.'));
+			}
+			held.current = { version_id: vid, files: now };
 			saved_any.current = true;
 			const changed_meanwhile = team_ref.current !== t;
-			dispatch({ type: 'SET_DRAFT_ID', draft_id: id });
+			dispatch({ type: 'SET_DRAFT_ID', draft_id: id, version_id: vid });
 			if (changed_meanwhile) dispatch({ type: 'SET_DIRTY', dirty: true });
 			set_state({ kind: 'saved', at: Date.now() });
+			return { team_id: id, version_id: vid as string };
 		} catch {
-			set_state({ kind: 'error', message: 'Network error — not saved.' });
+			return fail('Network error — not saved.');
 		} finally {
 			busy.current = false;
 		}
-	}, [auth_fetch, dispatch, draft_id, scopes, set_search, user]);
+	}, [auth_fetch, dispatch, scopes, set_search, user]);
+	const save = useCallback(() => void write(), [write]);
 
 	useEffect(() => {
 		if (!team || !dirty) return;
-		if (!draft_id && !auto_create) { set_state({ kind: 'manual' }); return; }
-		const h = window.setTimeout(() => void save(), AUTOSAVE_MS);
+		if (!ids.team_id && !auto_create) { set_state({ kind: 'manual' }); return; }
+		const h = window.setTimeout(() => void write(), AUTOSAVE_MS);
 		return () => window.clearTimeout(h);
-	}, [team, dirty, draft_id, auto_create, save]);
+	}, [team, dirty, ids.team_id, auto_create, write]);
 
 	/** Stop autosaving (Cancel) and wait for a save already in flight to land. */
 	const halt = useCallback(async () => {
@@ -123,26 +157,26 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, draft_id: stri
 
 	// keep "saved 12s ago" fresh
 	useEffect(() => { const h = window.setInterval(() => tick((x) => x + 1), 15_000); return () => window.clearInterval(h); }, []);
-	return { state, save, halt, resume, saved_any };
+	return { state, save, write, halt, resume, saved_any };
 }
 
 /**
  * Discard: throw the unpublished changes away and leave.
  *   new team / fork created here          → delete it (`teams/delete` by id)
- *   saved team with a working copy        → drop it (`save_as: 'discard'`) — this session's, and one
- *                                           that was there when it opened (Discard asks first)
- *   nothing saved, no working copy        → no request
+ *   saved team with a draft               → delete the draft (`save_as: 'discard'` + its `version_id`) —
+ *                                           this session's, or one that was open when it opened (Discard asks first)
+ *   nothing saved, no draft               → no request
  * Only teams that began in this session (`is_new`) are ever deleted; versions are never touched.
  */
 export async function discard_session(
 	auth_fetch: (url: string, init?: RequestInit) => Promise<Response>,
-	{ is_new, opened_draft_id, draft_id, saved_any, copy }: { is_new: boolean; opened_draft_id: string | null; draft_id: string | null; saved_any: boolean; copy: Builder_source['copy'] },
+	{ is_new, opened_draft_id, draft_id, version_id, saved_any, copy }: { is_new: boolean; opened_draft_id: string | null; draft_id: string | null; version_id: string | null; saved_any: boolean; copy: Builder_source['copy'] },
 ): Promise<string | null> {
 	let req: { url: string; body: Record<string, unknown> } | null = null;
 	if (is_new && draft_id && draft_id !== opened_draft_id) req = { url: '/v1/teams/delete', body: { team_id: draft_id } };
-	// A saved team: Discard throws away its working copy — what this session saved, and a copy that
-	// was already there when it opened. The published versions are never touched.
-	else if (draft_id && draft_id === opened_draft_id && (saved_any || copy)) req = { url: '/v1/teams/update', body: { team_id: draft_id, save_as: 'discard' } };
+	// A saved team: Discard deletes its draft — the one this session saved into, which may be one that was
+	// already open when it opened. Published versions are never touched.
+	else if (draft_id && draft_id === opened_draft_id && version_id && (saved_any || copy)) req = { url: '/v1/teams/update', body: { team_id: draft_id, save_as: 'discard', version_id } };
 	if (!req) return null;
 	try {
 		const res = await auth_fetch(req.url, { method: 'POST', body: JSON.stringify(req.body) });
@@ -265,7 +299,7 @@ export function Gb_app() {
 		for (const p of problems) if (p.phase && m.get(p.phase) !== 'error') m.set(p.phase, p.level);
 		return m;
 	}, [problems]);
-	const save = use_autosave(team, state.dirty, state.draft_id, auto_create);
+	const save = use_autosave(team, state.dirty, { team_id: state.draft_id, version_id: state.version_id }, state.source?.copy ?? null, auto_create);
 
 	const change = useCallback((next: GeneratedTeam, select?: string | null) => {
 		const acts: SingleAction[] = [{ type: 'UPDATE_TEAM', team: next }];
@@ -364,13 +398,13 @@ export function Gb_app() {
 	async function leave() {
 		set_cancel({ step: 'busy' });
 		await save.halt();
-		const err = await discard_session(auth_fetch, { is_new, opened_draft_id: baseline.draft_id, draft_id: state.draft_id, saved_any: save.saved_any.current, copy: state.source?.copy ?? null });
+		const err = await discard_session(auth_fetch, { is_new, opened_draft_id: baseline.draft_id, draft_id: state.draft_id, version_id: state.version_id, saved_any: save.saved_any.current, copy: state.source?.copy ?? null });
 		if (err) { save.resume(); set_cancel({ step: 'error', message: err }); return; }
 		clear_builder_session_restores();
 		dispatch({ type: 'RESET' });
 		navigate(cancel_target(search.get('from')), { replace: true });
 	}
-	// An older working copy is thrown away too, so Discard always asks when there is one.
+	// A draft that was already open is thrown away too, so Discard always asks when there is one.
 	const had_copy = Boolean(state.source?.copy);
 	const cancel_question = is_new ? 'Discard this new team?' : had_copy ? 'Throw away all unpublished changes, including earlier ones?' : 'Discard your changes?';
 
@@ -489,7 +523,7 @@ export function Gb_app() {
 					</div>
 				</>)}
 				{publishing && team ? (
-					<Gb_publish team={team} baseline={baseline.team} problems={problems} on_close={() => set_publishing(false)} on_published={() => { set_baseline({ set: true, team, draft_id: state.draft_id, is_new: false }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
+					<Gb_publish team={team} baseline={baseline.team} problems={problems} draft_team_id={state.draft_id} save_draft={(adopt) => save.write({ adopt, wait: true })} on_close={() => set_publishing(false)} on_published={(_v, published) => { set_baseline({ set: true, team, draft_id: published.team_id, is_new: false }); dispatch({ type: 'SET_DRAFT_ID', draft_id: published.team_id, version_id: null }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
 				) : null}
 			</div>
 		</Graphite_shell>

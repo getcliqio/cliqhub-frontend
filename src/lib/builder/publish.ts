@@ -39,20 +39,38 @@ export function team_files(team: GeneratedTeam): Record<string, string> {
 	return files;
 }
 
-/** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
 /**
- * The multipart body of `teams/files/upload` (PLAN-team-bundle §2.6): a JSON `payload` part and each of the team's
- * files as an attachment named by its path. Without a `version_id`, CliqHub starts a new draft.
+ * What a save sends to the builder's draft (PLAN-team-bundle S1.3c): the files that differ from what the draft
+ * holds, and the role files the team no longer has. README.md and dependencies.yml aren't edited here, so stay.
  */
-export function upload_form(team: GeneratedTeam, payload: { team_id: string; version_id?: string }): FormData {
+export function draft_changes(held: Record<string, string>, now: Record<string, string>): { upload: Record<string, string>; remove: string[] } {
+	const upload: Record<string, string> = {};
+	for (const [path, text] of Object.entries(now)) if (held[path] !== text) upload[path] = text;
+	const remove = Object.keys(held).filter((p) => p.startsWith('roles/') && !(p in now)).sort();
+	return { upload, remove };
+}
+
+/** A version's files as the team detail `builder_team_from_detail` reads: team.yml text and the role briefs. */
+export function detail_from_files(files: Record<string, string>): { raw_manifest: string; roles: Array<{ name: string; content_md: string }> } {
+	const roles = Object.keys(files).filter((p) => /^roles\/[^/]+\.md$/.test(p)).sort()
+		.map((p) => ({ name: p.slice('roles/'.length, -'.md'.length), content_md: files[p] }));
+	return { raw_manifest: files['team.yml'] ?? '', roles };
+}
+
+/**
+ * The multipart body of `teams/files/upload` (PLAN-team-bundle §2.6): a JSON `payload` part and each file as an
+ * attachment named by its path. Without a `version_id`, CliqHub starts a new draft.
+ */
+export function upload_form(files: Record<string, string>, payload: { team_id: string; version_id?: string }): FormData {
 	const form = new FormData();
 	form.append('payload', new Blob([JSON.stringify(payload)], { type: 'application/json' }));
-	for (const [path, text] of Object.entries(team_files(team))) {
+	for (const [path, text] of Object.entries(files)) {
 		form.append('files', new Blob([text], { type: path.endsWith('.md') ? 'text/markdown' : 'text/yaml' }), path);
 	}
 	return form;
 }
 
+/** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
 /** The `teams/publish` body: publishes the draft `version_id` (its files uploaded with `upload_form`). */
 export function publish_body(team: GeneratedTeam, o: { scope: string; current: string | null; bump: Bump; changelog: string; listed: boolean; version_id: string }): Record<string, unknown> {
 	const agents: Record<string, Record<string, unknown>> = {};
