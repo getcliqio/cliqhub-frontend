@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { useBuilder, useBuilderDispatch, type Builder_source } from '@/lib/builder/store';
 import { detail_from_files } from '@/lib/builder/publish';
@@ -19,6 +19,8 @@ export function StateRestorer() {
 	const { user } = useAuth();
 	const authFetch = useOrgFetch();
 	const [load_error, set_load_error] = useState<string | null>(null);
+	/** The `?draft=` load already started (the effect re-runs on every builder change until the team arrives). */
+	const loading = useRef<string | null>(null);
 
 	useEffect(() => {
 		// Already on canvas with a team — nothing to do (avoids clobbering edits).
@@ -52,7 +54,9 @@ export function StateRestorer() {
 		// ?draft=<team id>: a saved team. Its open draft wins unless ?fresh=1 (start from the latest version;
 		// the first save starts a new draft). The builder saves into the draft it opened (PLAN-team-bundle S1.3c).
 		const draft_id = searchParams.get('draft');
-		if (draft_id && user) {
+		const load_key = `${draft_id}|${searchParams.get('fresh') ?? ''}`;
+		if (draft_id && user && loading.current !== load_key) {
+			loading.current = load_key;
 			const post = (url: string, body: Record<string, unknown>) =>
 				authFetch(url, { method: 'POST', body: JSON.stringify(body) }).then((res) => res.json());
 			(async () => {

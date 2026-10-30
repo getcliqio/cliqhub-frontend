@@ -730,6 +730,9 @@ describe('Graphite builder — open draft', () => {
 		expect(uploads(calls)).toHaveLength(1);
 		expect(uploads(calls)[0].payload).toEqual({ team_id: 'd1', version_id: 'v-open' });
 		expect(Object.keys(uploads(calls)[0].files)).toEqual(['team.yml']);
+		// loaded once, though the restorer's effect re-runs while the load is in flight
+		expect(calls.filter((c) => c.url === '/v1/teams/get_by_id')).toHaveLength(1);
+		expect(calls.filter((c) => c.url === '/v1/teams/files/get')).toHaveLength(1);
 	});
 
 	it('a role taken out of the team is removed from the draft', async () => {
