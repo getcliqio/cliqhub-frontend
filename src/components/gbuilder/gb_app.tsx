@@ -434,7 +434,7 @@ export function Gb_app() {
 	return (
 		<Graphite_shell data={overview.data} title={title}>
 			<div className="theme-graphite g-app flex h-full min-h-0 flex-col" data-testid="builder">
-				{!team ? <Gb_start on_team={start} /> : (<>
+				{!team ? <Gb_start on_team={start} overview={overview} /> : (<>
 					{/* The team, as on its page: breadcrumb, avatar · name · @scope · status, then its actions. */}
 					<header className="shrink-0 border-b border-[var(--g-line)] px-6 pb-3 pt-3.5" data-testid="team-header">
 						<nav aria-label="Breadcrumb" className="text-[12.5px] text-[var(--g-ink-3)]">

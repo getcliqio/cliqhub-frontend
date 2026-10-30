@@ -2,13 +2,15 @@
  * Builder start screen: every way in on one page.
  *   · describe it → Core `teams/build` generate (+ status polling)
  *   · blank canvas · template · fork (Marketplace) · import team.yml / JSON / paste
- *   · continue a draft — one read: `POST /v1/team_list/get {status: 'draft'}`.
+ *   · continue a draft — one read: `POST /v1/team_list/get {status: 'draft'}` for the org in view (like Build › Teams).
  */
 import { useRef, useState } from 'react';
 import yaml from 'js-yaml';
 import { Link } from 'react-router';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { api_message, use_bff_read } from '@/lib/use_bff_read';
+import type { Overview_data } from '@/lib/overview';
+import { use_view_scope } from '@/lib/view_scope';
 import type { GeneratedTeam } from '@/lib/builder/store';
 import { SAMPLE_TEAMS } from '@/lib/builder/sample_teams';
 import { empty_builder_team } from '@/lib/builder/empty_team';
@@ -82,7 +84,11 @@ function Shape({ team }: { team: GeneratedTeam | null }) {
 	);
 }
 
-export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'blank' | 'generated' | 'template' | 'import') => void }) {
+export function Gb_start({ on_team, overview }: {
+	on_team: (team: GeneratedTeam, how: 'blank' | 'generated' | 'template' | 'import') => void;
+	/** The builder's overview read (orgs in view); the draft list waits for it. */
+	overview: { data: Overview_data | null; status: string };
+}) {
 	const auth_fetch = useAuthFetch();
 	const { user } = useAuth();
 	const [intent, set_intent] = useState('');
@@ -94,7 +100,11 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 	const file_ref = useRef<HTMLInputElement>(null);
 	const templates_ref = useRef<HTMLDivElement>(null);
 	const cancelled = useRef(false);
-	const drafts = use_bff_read<Team_list_data>('/v1/team_list/get', user ? { status: 'draft', limit: 5 } : null, { fallback_error: 'Couldn’t load drafts.' });
+	// Drafts belong to an org's scopes: read them for the org in view, as Build › Teams does (the BFF needs org_id).
+	const scope = use_view_scope(overview.data);
+	const org = scope.kind === 'all' ? null : scope.org;
+	const settled = Boolean(overview.data) || overview.status === 'error';
+	const drafts = use_bff_read<Team_list_data>('/v1/team_list/get', user && org ? { status: 'draft', limit: 5, org_id: org.id, scope: org.slug } : null, { fallback_error: 'Couldn’t load drafts.' });
 
 	async function generate() {
 		const text = intent.trim();
@@ -262,6 +272,7 @@ export function Gb_start({ on_team }: { on_team: (team: GeneratedTeam, how: 'bla
 					<div>
 						<p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Continue a draft</p>
 						{!user ? <p className="text-[12.5px] text-[var(--g-ink-3)]">Sign in to keep drafts.</p>
+							: settled && !org ? <p className="text-[12.5px] text-[var(--g-ink-3)]">Pick an org to see its drafts.</p>
 							: drafts.status === 'loading' ? <p className="text-[12.5px] text-[var(--g-ink-3)]">Loading…</p>
 								: drafts.status === 'error' && !drafts.data ? <p className="text-[12.5px] text-[var(--g-ink-3)]">{drafts.error}</p>
 									: !draft_items.length ? <p className="text-[12.5px] text-[var(--g-ink-3)]">No drafts yet — anything you start here autosaves.</p>

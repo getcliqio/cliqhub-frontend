@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { EditorView } from '@codemirror/view';
-import { gs_response, multi_org_overview } from './fixtures_overview';
+import { ORG_A, gs_response, multi_org_overview } from './fixtures_overview';
 import type { GeneratedTeam } from '@/lib/builder/store';
 import { team_files } from '@/lib/builder/publish';
 
@@ -111,7 +111,7 @@ describe('start helpers', () => {
 });
 
 describe('Graphite builder — start screen', () => {
-	it('shows the composer, templates and drafts (one team_list read, status draft)', async () => {
+	it('shows the composer, templates and drafts (one team_list read, status draft, for the org in view)', async () => {
 		const calls = route_fetch();
 		render_at();
 		expect(await screen.findByRole('heading', { name: 'What should your team do?' })).toBeTruthy();
@@ -119,7 +119,8 @@ describe('Graphite builder — start screen', () => {
 		expect(await screen.findByText('loan-review')).toBeTruthy();
 		const reads = calls.filter((c) => c.url === '/v1/team_list/get');
 		expect(reads).toHaveLength(1);
-		expect(reads[0].body).toMatchObject({ status: 'draft' });
+		// the BFF requires the org (422 "org_id: Required" without it)
+		expect(reads[0].body).toMatchObject({ status: 'draft', org_id: ORG_A, scope: 'measureone' });
 		expect(screen.getByTestId('draft-row').getAttribute('href')).toBe('/builder?draft=d1');
 	});
 
