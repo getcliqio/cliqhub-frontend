@@ -65,7 +65,7 @@ export function StateRestorer() {
 					set_load_error(data.error?.message || 'Failed to load draft');
 					return;
 				}
-				const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; status?: string; visibility?: string; draft?: { version_id: string; saved_at: string | null } | null };
+				const d = data.data as Record<string, unknown> & { name?: string; scope?: string | null; latest_version?: string | null; status?: string; visibility?: string; version_id?: string | null; draft?: { version_id: string; saved_at: string | null } | null };
 				let copy: Builder_source['copy'] = null;
 				if (d.draft?.version_id && searchParams.get('fresh') !== '1') {
 					const f = await post('/v1/teams/files/get', { team_id: draft_id, version_id: d.draft.version_id, content: true });
@@ -82,7 +82,7 @@ export function StateRestorer() {
 				if (!team) return;
 				dispatch({ type: 'SET_TEAM', team, validation: null });
 				dispatch({ type: 'SET_DRAFT_ID', draft_id, version_id: copy?.version_id ?? null });
-				dispatch({ type: 'SET_SOURCE', source: { published: d.status === 'published' && d.visibility !== 'draft', copy } });
+				dispatch({ type: 'SET_SOURCE', source: { published: d.status === 'published' && d.visibility !== 'draft', copy, base_version_id: d.version_id ?? null } });
 			})().catch(() => {
 				set_load_error('Network error — could not load draft');
 			});

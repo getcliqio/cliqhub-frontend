@@ -122,6 +122,15 @@ describe('Graphite builder — start screen', () => {
 		// the BFF requires the org (422 "org_id: Required" without it)
 		expect(reads[0].body).toMatchObject({ status: 'draft', org_id: ORG_A, scope: 'measureone' });
 		expect(screen.getByTestId('draft-row').getAttribute('href')).toBe('/builder?draft=d1');
+		expect(screen.getByTestId('draft-row').textContent).toContain('2 phases');
+	});
+
+	it("a team never published (no phases read yet) says 'draft', not '0 phases'", async () => {
+		route_fetch({ '/v1/team_list/get': () => ({ body: { ok: true, data: { items: [{ id: 'd2', name: 'new-team', scope: 'measureone', description: '', status: 'draft', latest_version: null, author: 'sapan', phase_types: [], installs: [] }], total: 1, offset: 0, limit: 5, counts: { all: 1, published: 0, draft: 1 }, realms_checked: 0, realms_total: 0, partial: false } } }) });
+		render_at();
+		const row = await screen.findByTestId('draft-row');
+		expect(row.textContent).toContain('draft');
+		expect(row.textContent).not.toContain('0 phases');
 	});
 
 	it('blank canvas → add phases by clicking palette tiles (after the selected phase)', async () => {
@@ -708,6 +717,55 @@ describe('Graphite builder — cancel', () => {
 		expect(cancel_target('https://evil.example')).toBe('/teams');
 		expect(cancel_target('//evil.example')).toBe('/teams');
 		expect(cancel_target('/builder?draft=1')).toBe('/teams');
+	});
+});
+
+describe('Graphite builder — files the builder does not edit (S1.4c)', () => {
+	const PUB = { 'team.yml': 'name: feature-dev\nphases: []\n', 'README.md': '# feature-dev', 'dependencies.yml': '- name: jq\n', 'roles/design.md': 'old' };
+	const published = () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', team_json: JSON.stringify(TEAM), version_id: 'v-pub', draft: null } } });
+	const files_of = (files: Record<string, string>) => () => ({ body: { ok: true, data: { files: Object.entries(files).map(([path, content]) => ({ path, content })) } } });
+
+	it('a new draft from a published team starts from its version: README.md and dependencies.yml are kept', async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = route_fetch({ '/v1/teams/get_by_id': published, '/v1/teams/files/get': files_of(PUB) });
+		render_at('/builder?draft=d1');
+		await screen.findByTestId('canvas');
+		fireEvent.click(screen.getByTestId('tile-script'));
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(uploads(calls)).toHaveLength(1));
+		expect(calls.find((c) => c.url === '/v1/teams/files/get')!.body).toEqual({ team_id: 'd1', version_id: 'v-pub', content: true });
+		const up = uploads(calls)[0];
+		expect(up.payload).toEqual({ team_id: 'd1' });
+		expect(Object.keys(up.files).sort()).toEqual(['README.md', 'dependencies.yml', 'roles/build.md', 'roles/design.md', 'team.yml']);
+		expect(up.files['README.md']).toBe('# feature-dev');
+		expect(up.files['dependencies.yml']).toBe('- name: jq\n');
+		// the builder's own files win over the version's
+		expect(up.files['roles/design.md']).toBe(TEAM.roles[0].content);
+	});
+
+	it("after a publish, the next draft starts from the version just published", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		const calls = route_fetch({
+			'/v1/teams/get_by_id': published,
+			'/v1/teams/files/get': files_of(PUB),
+			'/v1/team_page/get': () => ({ body: { ok: true, data: { team: { id: 'd1', latest_version: '1.2.0', status: 'published', listed: true, visibility: 'public' }, installs: { items: [], not_installed: [], realms_checked: 0, realms_total: 0 }, counts: {}, view: 'installs', partial: false } } }),
+			'/v1/teams/publish': () => ({ body: { ok: true, data: { version: '1.3.0' } } }),
+		});
+		render_at('/builder?draft=d1');
+		await screen.findByTestId('canvas');
+		fireEvent.click(screen.getByTestId('tile-agent'));
+		fireEvent.click(screen.getByText('Publish…'));
+		const dlg = await screen.findByRole('dialog', { name: 'Publish team' });
+		fireEvent.click(await within(dlg).findByText(/^Publish \d/));
+		await screen.findByTestId('publish-done');
+		fireEvent.click(screen.getByText('Keep editing'));
+		fireEvent.click(screen.getByTestId('tile-script'));
+		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
+		await waitFor(() => expect(uploads(calls)).toHaveLength(2));
+		// the draft published was v-draft: the next one reads its files to start from
+		expect(calls.filter((c) => c.url === '/v1/teams/files/get').at(-1)!.body).toEqual({ team_id: 'd1', version_id: 'v-draft', content: true });
+		expect(uploads(calls)[1].payload).toEqual({ team_id: 'd1' });
+		expect(Object.keys(uploads(calls)[1].files)).toEqual(expect.arrayContaining(['README.md', 'dependencies.yml', 'team.yml']));
 	});
 });
 

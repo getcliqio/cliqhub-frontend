@@ -50,6 +50,14 @@ export function draft_changes(held: Record<string, string>, now: Record<string, 
 	return { upload, remove };
 }
 
+/**
+ * The files of a version the builder doesn't edit (README.md, dependencies.yml, anything but team.yml and roles/):
+ * a new draft starting from that version carries them, so a publish never drops them (PLAN-team-bundle S1.4c).
+ */
+export function kept_files(files: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(Object.entries(files).filter(([p]) => p !== 'team.yml' && !p.startsWith('roles/')));
+}
+
 /** A version's files as the team detail `builder_team_from_detail` reads: team.yml text and the role briefs. */
 export function detail_from_files(files: Record<string, string>): { raw_manifest: string; roles: Array<{ name: string; content_md: string }> } {
 	const roles = Object.keys(files).filter((p) => /^roles\/[^/]+\.md$/.test(p)).sort()

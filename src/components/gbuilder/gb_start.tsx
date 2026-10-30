@@ -281,7 +281,7 @@ export function Gb_start({ on_team, overview }: {
 												{draft_items.filter((d) => d.id).map((d) => (
 													<Link key={d.id} to={`/builder?draft=${encodeURIComponent(d.id!)}`} className="flex items-center gap-3 rounded-xl border border-[var(--g-line)] bg-[var(--g-panel)] px-3 py-2.5 hover:border-[var(--g-acc-line)]" data-testid="draft-row">
 														<Team_avatar name={d.name} size={32} />
-														<span className="min-w-0 flex-1"><b className="block truncate text-[13.5px]">{d.name}</b><span className="text-[12px] text-[var(--g-ink-3)]">{d.phase_types ? `${d.phase_types.length} phases` : 'draft'}{d.scope ? ` · @${d.scope}` : ''}</span></span>
+														<span className="min-w-0 flex-1"><b className="block truncate text-[13.5px]">{d.name}</b><span className="text-[12px] text-[var(--g-ink-3)]">{d.phase_types?.length ? `${d.phase_types.length} phases` : 'draft'}{d.scope ? ` · @${d.scope}` : ''}</span></span>
 														<span aria-hidden className="text-[var(--g-ink-3)]">›</span>
 													</Link>
 												))}

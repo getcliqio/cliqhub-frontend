@@ -8,7 +8,7 @@ import {
 } from '@/lib/builder/graph_ops';
 import { check_team, closest, find_cycle, has_reviewer, phases_using_input } from '@/lib/builder/checks';
 import { error_position, format_yaml, has_comments, parse_yaml, phase_at_line, phase_ranges, problem_line, team_to_yaml } from '@/lib/builder/yaml_tools';
-import { detail_from_files, draft_changes, next_version, publish_body, suggest_bump, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
+import { detail_from_files, draft_changes, kept_files, next_version, publish_body, suggest_bump, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
 import { builder_team_from_detail } from '@/lib/team_builder';
 
 const P = (name: string, over: Partial<GeneratedPhase> = {}): GeneratedPhase => ({ name, type: 'standard', agent: 'claude-code', depends_on: [], ...over });
@@ -314,5 +314,9 @@ describe('publish', () => {
 		// Roles come back in path order.
 		const by_name = (r: { name: string }[]) => [...r].sort((x, y) => x.name.localeCompare(y.name));
 		expect(by_name(back!.roles)).toEqual(by_name(t.roles));
+	});
+
+	it('kept_files: what a new draft carries from its version — everything but team.yml and roles/', () => {
+		expect(kept_files({ 'team.yml': 'x', 'roles/a.md': 'a', 'README.md': '# r', 'dependencies.yml': 'd' })).toEqual({ 'README.md': '# r', 'dependencies.yml': 'd' });
 	});
 });

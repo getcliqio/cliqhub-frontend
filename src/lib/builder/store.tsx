@@ -119,6 +119,8 @@ export interface Builder_source {
 	published: boolean;
 	/** The draft opened, with its files as loaded (what a save compares against). */
 	copy: { version_id: string; saved_at: string | null; files: Record<string, string> } | null;
+	/** The version the team was opened at; a new draft starts from it and keeps the files the builder doesn't edit. */
+	base_version_id?: string | null;
 }
 
 export const INITIAL_STATE: BuilderState = {

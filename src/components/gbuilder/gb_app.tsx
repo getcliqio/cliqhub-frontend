@@ -25,7 +25,7 @@ import { KINDS, kind_of, type Kind_id } from '@/lib/builder/kinds';
 import { add_after, add_root, diff_teams, duplicate_phase, remove_bridged } from '@/lib/builder/graph_ops';
 import { check_team, type Problem } from '@/lib/builder/checks';
 import { team_to_yaml } from '@/lib/builder/yaml_tools';
-import { draft_changes, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
+import { draft_changes, kept_files, team_files, team_scope, team_slug, upload_form } from '@/lib/builder/publish';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Gb_canvas, type Canvas_preview } from '@/components/gbuilder/gb_canvas';
 import { Phase_panel, Team_panel } from '@/components/gbuilder/gb_inspector';
@@ -66,7 +66,7 @@ export type Draft_ref = { team_id: string; version_id: string };
  * A new team is created first (with its first draft); a saved team without an open draft gets one on its
  * first upload. Never publishes.
  */
-function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id: string | null; version_id: string | null }, opened: Builder_source['copy'], auto_create: boolean) {
+function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id: string | null; version_id: string | null }, opened: Builder_source['copy'], base_version_id: string | null, auto_create: boolean) {
 	const auth_fetch = useAuthFetch();
 	const dispatch = useBuilderDispatch();
 	const { user, scopes } = useAuth();
@@ -76,6 +76,7 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id
 	const team_ref = useRef(team); team_ref.current = team;
 	const ids_ref = useRef(ids); ids_ref.current = ids;
 	const opened_ref = useRef(opened); opened_ref.current = opened;
+	const base_ref = useRef(base_version_id); base_ref.current = base_version_id;
 	const busy = useRef(false);
 	const halted = useRef(false);
 	/** Something reached the server this session (Cancel then has to undo it). */
@@ -113,12 +114,21 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id
 				const new_id = id;
 				set_search((s) => { const n = new URLSearchParams(s); n.set('draft', new_id); n.delete('view'); n.delete('fork'); return n; }, { replace: true });
 			}
+			// A new draft starts from a version (the one this session last saved into, else the one the team was
+			// opened at) and keeps its files the builder doesn't edit: README.md, dependencies.yml (S1.4c).
+			let carried: Record<string, string> = {};
+			const from = !vid ? (held.current.version_id ?? base_ref.current) : null;
+			if (from) {
+				const got = await post('/v1/teams/files/get', JSON.stringify({ team_id: id, version_id: from, content: true }));
+				if (!got.ok) return fail(api_message(got.p, 'Couldn’t read the files to start the draft from.'));
+				carried = kept_files(Object.fromEntries((got.p.data?.files as Array<{ path: string; content?: string }> ?? []).map((f) => [f.path, f.content ?? ''])));
+			}
 			// A draft this hook hasn't saved into yet: what it holds is what the builder opened (or Core's seed).
 			if (held.current.version_id !== vid) held.current = { version_id: vid, files: vid && opened_ref.current?.version_id === vid ? opened_ref.current.files : {} };
 			const now = team_files(t);
 			const { upload, remove } = draft_changes(held.current.files, now);
 			if (!vid || Object.keys(upload).length) {
-				const up = await post('/v1/teams/files/upload', upload_form(vid ? upload : now, { team_id: id, ...(vid ? { version_id: vid } : {}) }));
+				const up = await post('/v1/teams/files/upload', upload_form(vid ? upload : { ...carried, ...now }, { team_id: id, ...(vid ? { version_id: vid } : {}) }));
 				if (!up.ok || !up.p.data?.version_id) return fail(api_message(up.p, 'Couldn’t save the draft.'));
 				vid = String(up.p.data.version_id);
 			}
@@ -299,7 +309,7 @@ export function Gb_app() {
 		for (const p of problems) if (p.phase && m.get(p.phase) !== 'error') m.set(p.phase, p.level);
 		return m;
 	}, [problems]);
-	const save = use_autosave(team, state.dirty, { team_id: state.draft_id, version_id: state.version_id }, state.source?.copy ?? null, auto_create);
+	const save = use_autosave(team, state.dirty, { team_id: state.draft_id, version_id: state.version_id }, state.source?.copy ?? null, state.source?.base_version_id ?? null, auto_create);
 
 	const change = useCallback((next: GeneratedTeam, select?: string | null) => {
 		const acts: SingleAction[] = [{ type: 'UPDATE_TEAM', team: next }];
