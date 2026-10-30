@@ -10,7 +10,7 @@
  *   human      type gate + agent hug               review.reviewer, role optional (guidance)
  *   team       type team                           sub-team ref + inputs, role optional (spec)
  *
- * Mirrors Core's validate_team and the builder's agent_schema.
+ * Mirrors Core's validate_team.
  */
 import type { GeneratedPhase, GeneratedTeam } from '@/lib/builder/store';
 

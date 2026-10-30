@@ -1,6 +1,6 @@
-import { Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
-import { BuilderProvider, useBuilder, useBuilderDispatch, type Builder_source } from '@/lib/builder/store';
+import { useBuilder, useBuilderDispatch, type Builder_source } from '@/lib/builder/store';
 import { detail_from_files } from '@/lib/builder/publish';
 import {
 	BUILDER_SESSION_KEYS,
@@ -10,8 +10,6 @@ import { useAuth} from '@/lib/auth_context';
 import { useOrgFetch } from '@/lib/org_context';
 import { builder_team_from_detail } from '@/lib/team_builder';
 import { ApiErrorBanner } from '@/components/ui/api_error';
-import { SparkPage } from './spark_page';
-import { CanvasView } from './canvas_view';
 
 /** Restores team state from sessionStorage or URL params on mount. */
 export function StateRestorer() {
@@ -88,35 +86,4 @@ export function StateRestorer() {
 	}, [dispatch, searchParams, user, authFetch, state.view, state.team]);
 
 	return <ApiErrorBanner error={load_error} onDismiss={() => set_load_error(null)} className="mx-4 mt-4" />;
-}
-
-/**
- * Reads the builder context view and renders the appropriate content.
- * Exported so the builder page can use it directly with BuilderProvider
- * at a stable tree position.
- */
-export function BuilderContent() {
-	const state = useBuilder();
-
-	if (state.view === 'spark') {
-		return <SparkPage />;
-	}
-
-	return <CanvasView />;
-}
-
-/**
- * Self-contained builder shell with its own provider.
- * Use when the parent doesn't need to react to view changes
- * (i.e. when the layout doesn't change based on the builder view).
- */
-export function BuilderShell() {
-	return (
-		<BuilderProvider>
-			<Suspense>
-				<StateRestorer />
-				<BuilderContent />
-			</Suspense>
-		</BuilderProvider>
-	);
 }
