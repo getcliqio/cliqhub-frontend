@@ -32,11 +32,11 @@ export function team_scope(team: Pick<GeneratedTeam, 'name'>, fallback: string):
 	return m ? m[1] : fallback;
 }
 
-function b64_utf8(s: string): string {
-	const bytes = new TextEncoder().encode(s);
-	let bin = '';
-	bytes.forEach((b) => { bin += String.fromCharCode(b); });
-	return btoa(bin);
+/** The builder team as files (team.yml and roles/<name>.md): what a publish sends; Core makes the zip. */
+export function team_files(team: GeneratedTeam): Record<string, string> {
+	const files: Record<string, string> = { 'team.yml': team_to_yaml(team) };
+	for (const r of team.roles) files[`roles/${r.name}.md`] = r.content;
+	return files;
 }
 
 /** `listed`: public (everyone, the marketplace) when true, else private to the scope's members. */
@@ -48,14 +48,13 @@ export function publish_body(team: GeneratedTeam, o: { scope: string; current: s
 		if (a.env?.length) def.env = a.env;
 		agents[a.name] = def;
 	}
-	const pkg = { 'team.yml': team_to_yaml(team), roles: team.roles.map((r) => ({ name: r.name, content: r.content })) };
 	const body: Record<string, unknown> = {
 		name: team_slug(team),
 		scope: o.scope || undefined,
 		description: team.description,
 		tags: team.tags ?? [],
 		visibility: o.listed ? 'public' : 'private',
-		data_base64: b64_utf8(JSON.stringify(pkg)),
+		files: team_files(team),
 		...(o.changelog.trim() ? { changelog: o.changelog.trim() } : {}),
 		...(Object.keys(agents).length ? { agents } : {}),
 	};

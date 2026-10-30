@@ -277,9 +277,11 @@ describe('publish', () => {
 		const b = publish_body(team(), { scope: 'acme', current: '1.0.0', bump: 'minor', changelog: ' notes ', listed: false });
 		expect(b).toMatchObject({ name: 'feature-dev', scope: 'acme', bump: 'minor', changelog: 'notes', visibility: 'private' });
 		expect(b.version).toBeUndefined();
-		const pkg = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(String(b.data_base64)), (ch) => ch.charCodeAt(0))));
-		expect(pkg['team.yml']).toMatch(/phases:/);
-		expect(pkg.roles).toHaveLength(5);
+		// The team's files, not a package (PLAN-team-bundle S1.3a): team.yml and one roles/<name>.md per role.
+		const files = b.files as Record<string, string>;
+		expect(files['team.yml']).toMatch(/phases:/);
+		expect(Object.keys(files).filter((p) => p.startsWith('roles/') && p.endsWith('.md'))).toHaveLength(5);
+		expect(b.data_base64).toBeUndefined();
 		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true })).toMatchObject({ version: '1.0.0', visibility: 'public' });
 	});
 });
