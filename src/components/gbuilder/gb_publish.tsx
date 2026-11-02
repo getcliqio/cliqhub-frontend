@@ -104,7 +104,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 			}
 			const draft = await save_draft(adopt);
 			if (typeof draft === 'string') { set_error(draft); return; }
-			const body = publish_body(team, { scope, current, bump, changelog: notes, listed, version_id: draft.version_id });
+			const body = publish_body(team, { scope, version, changelog: notes, listed, version_id: draft.version_id });
 			const res = await auth_fetch('/v1/teams/publish', { method: 'POST', body: JSON.stringify(body) });
 			const p = await res.json().catch(() => null);
 			if (!res.ok || !p?.ok) {

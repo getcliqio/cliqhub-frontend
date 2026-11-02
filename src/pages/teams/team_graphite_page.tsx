@@ -611,22 +611,22 @@ export function Component() {
 	) : null;
 	const danger = team && (can_unpublish || can_delete_version || team.can_delete) ? (
 		<details className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]" data-testid="danger-zone">
-			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· {[can_unpublish ? 'unpublish' : null, can_delete_version ? 'delete a version' : null, team.can_delete ? 'delete team' : null].filter(Boolean).join(', ')}</span></summary>
+			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· {[can_unpublish ? 'unpublish' : null, can_delete_version ? 'withdraw a version' : null, team.can_delete ? 'delete team' : null].filter(Boolean).join(', ')}</span></summary>
 			<div className="border-t border-[var(--g-line)]">
 			{can_unpublish ? row('Unpublish', 'Removes it from every realm that has it, then makes it a draft. If you can’t remove it from any one of those realms, nothing changes.',
 				confirm === 'unpublish'
 					? <><button type="button" disabled={busy !== null} onClick={() => void unpublish()} className={DANGER_BTN}>{busy === 'unpublish' ? 'Unpublishing…' : 'Uninstall everywhere and unpublish'}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
 					: <button type="button" onClick={() => set_confirm('unpublish')} className={ROW_ACTION_CLS}>Unpublish…</button>,
 				!can_delete_version && !team.can_delete) : null}
-			{can_delete_version ? row('Delete a version', 'Removes one older version from the registry.', (
+			{can_delete_version ? row('Withdraw a version', 'New installs can’t use it and it’s no longer “latest”; teams already using it keep it. Its number can’t be published again.', (
 				<>
-					<select aria-label="Version to delete" value={del_version} onChange={(e) => { set_del_version(e.target.value); set_confirm(null); }} className={`${INPUT} w-[120px]`}>
+					<select aria-label="Version to withdraw" value={del_version} onChange={(e) => { set_del_version(e.target.value); set_confirm(null); }} className={`${INPUT} w-[120px]`}>
 						<option value="">Pick…</option>
-						{team.versions.filter((v) => !v.is_latest).map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
+						{team.versions.map((v) => <option key={v.version} value={v.version}>{v.version}</option>)}
 					</select>
 					{confirm === 'delver'
-						? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Deleted ${del_version}.`)} className={DANGER_BTN}>Delete {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
-						: <button type="button" disabled={!del_version} onClick={() => set_confirm('delver')} className={ROW_ACTION_CLS}>Delete version…</button>}
+						? <><button type="button" disabled={busy !== null} onClick={() => void act('delver', '/v1/teams/delete_version', { name: team.name, scope: team.scope, version: del_version }, `Withdrew ${del_version}.`)} className={DANGER_BTN}>Withdraw {del_version}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+						: <button type="button" disabled={!del_version} onClick={() => set_confirm('delver')} className={ROW_ACTION_CLS}>Withdraw version…</button>}
 				</>
 			), !team.can_delete) : null}
 			{team.can_delete ? row('Delete team', 'Removes it and every version from the registry and from every realm’s team list. Can’t be undone.',

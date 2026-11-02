@@ -566,7 +566,7 @@ describe('Graphite builder — publish', () => {
 		// the builder's team: its edits go into a new draft, and that draft is published
 		expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(false);
 		expect(uploads(calls).at(-1)!.payload).toEqual({ team_id: 'd1' });
-		expect(calls.find((c) => c.url === '/v1/teams/publish')!.body).toMatchObject({ bump: 'minor', visibility: 'private', version_id: 'v-draft' });
+		expect(calls.find((c) => c.url === '/v1/teams/publish')!.body).toMatchObject({ version: '1.1.0', visibility: 'private', version_id: 'v-draft' });
 		const adds = calls.filter((c) => c.url === '/v1/realms/add_team');
 		expect(adds.map((a) => a.body.realm_id)).toEqual(['r1']);
 		expect(adds[0].body).toMatchObject({ scope: 'measureone', slug: 'feature-dev', version: '1.1.0' });
@@ -587,8 +587,9 @@ describe('Graphite builder — publish', () => {
 		await screen.findByTestId('publish-done');
 		const bodies = calls.filter((c) => c.url === '/v1/teams/publish').map((c) => c.body);
 		expect(bodies[0]).toMatchObject({ version: '1.0.0' });
-		expect(bodies[1]).toMatchObject({ bump: 'patch' });
-		expect(bodies[1].version).toBeUndefined();
+		// every publish names its version (PLAN-team-bundle S2)
+		expect(bodies[1]).toMatchObject({ version: '1.0.1' });
+		expect(bodies[1]).not.toHaveProperty('bump');
 	});
 
 	it('version_clash reads both Core messages', () => {

@@ -276,15 +276,16 @@ describe('publish', () => {
 		expect(team_scope({ name: '@acme/x' }, 'me')).toBe('acme');
 		expect(team_scope({ name: 'x' }, 'me')).toBe('me');
 		const DRAFT = '0d0d0d0d-1111-4222-8333-555555555555';
-		const b = publish_body(team(), { scope: 'acme', current: '1.0.0', bump: 'minor', changelog: ' notes ', listed: false, version_id: DRAFT });
-		expect(b).toMatchObject({ name: 'feature-dev', scope: 'acme', bump: 'minor', changelog: 'notes', visibility: 'private', version_id: DRAFT });
-		expect(b.version).toBeUndefined();
+		const b = publish_body(team(), { scope: 'acme', version: '1.1.0', changelog: ' notes ', listed: false, version_id: DRAFT });
+		// every publish names its version (PLAN-team-bundle S2): no bump
+		expect(b).toMatchObject({ name: 'feature-dev', scope: 'acme', version: '1.1.0', changelog: 'notes', visibility: 'private', version_id: DRAFT });
+		expect(b).not.toHaveProperty('bump');
 		// Publish names the draft; the files go up first with upload_form (PLAN-team-bundle S1.3b).
 		expect(b.files).toBeUndefined();
 		// agents travel in team.yml, not beside it (PLAN-team-bundle S1.4b)
-		expect(publish_body(team({ agents: [{ name: 'claude-code', entry: 'x' }] as never }), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true, version_id: DRAFT })).not.toHaveProperty('agents');
+		expect(publish_body(team({ agents: [{ name: 'claude-code', entry: 'x' }] as never }), { scope: 'acme', version: '1.0.0', changelog: '', listed: true, version_id: DRAFT })).not.toHaveProperty('agents');
 		expect(b.data_base64).toBeUndefined();
-		expect(publish_body(team(), { scope: 'acme', current: null, bump: 'minor', changelog: '', listed: true, version_id: DRAFT })).toMatchObject({ version: '1.0.0', visibility: 'public' });
+		expect(publish_body(team(), { scope: 'acme', version: '1.0.0', changelog: '', listed: true, version_id: DRAFT })).toMatchObject({ version: '1.0.0', visibility: 'public' });
 	});
 
 	it('upload_form: a JSON payload part and each file of the team as an attachment named by its path', async () => {

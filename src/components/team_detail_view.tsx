@@ -6,7 +6,6 @@ import { CopyButton } from '@/components/copy_button';
 import { TeamActions } from '@/components/team_actions';
 import { AgentSection } from '@/components/agent_section';
 import { VersionSelector } from '@/components/version_selector';
-import { RenameTeamButton } from '@/components/rename_team_button';
 import { DangerZone } from '@/components/danger_zone';
 import { build_team_yml } from '@/lib/team_export';
 
@@ -137,7 +136,7 @@ export function TeamDetailView({ data, base_path, display_version, hide_actions,
             <div className="mb-8">
                 <div className={`mb-2 flex items-center ${hide_actions ? '' : 'justify-between'}`}>
                     <div className="flex flex-wrap items-baseline gap-3">
-                        <RenameTeamButton scope={scope ?? ''} name={name} author_id={author_id ?? undefined} />
+                        <h1 className="flex items-baseline gap-2 text-3xl font-extrabold"><span>{scope ? `@${scope}/` : ''}{name}</span></h1>
                         {effective_display_version && versions.length > 0 && (
                             <VersionSelector
                                 versions={versions}
