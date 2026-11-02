@@ -53,7 +53,7 @@ import { Run_failure_card } from '@/components/graphite/g_run_failure';
 import { Step_details, Sub_team_tree, all_sub_runs, initially_open, type Tree_step } from '@/components/graphite/g_sub_team_tree';
 import { G_run_artifacts } from '@/components/graphite/g_run_artifacts';
 import { G_phase_output } from '@/components/graphite/g_phase_output';
-import { Phase_clock, Usage, run_scale } from '@/components/graphite/g_telemetry';
+import { Phase_clock, Usage, people_label, run_scale } from '@/components/graphite/g_telemetry';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
 import type { Team_phase } from '@/lib/team_page';
 import { KIND_COLOR, fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_phase } from '@/lib/run_telemetry';
@@ -378,7 +378,7 @@ function Phase_list({ phases, run_state, telemetry, on_open, selected = null, ou
 				<li className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2 text-[11.5px] text-[var(--g-ink-3)]" aria-hidden data-testid="clock-legend">
 					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.llm }} />AI agent</span>
 					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.connector }} />script / tool</span>
-					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.human }} />waiting on people</span>
+					<span className="inline-flex items-center gap-1.5"><i className="h-1.5 w-2.5 rounded-sm" style={{ background: KIND_COLOR.human }} />{people_label(run_state)}</span>
 					{scale?.gaps.length ? <span className="inline-flex items-center gap-1.5"><i className="h-2 w-[3px] border-x border-dashed border-[var(--g-ink-3)]" />long wait folded</span> : null}
 				</li>
 			) : null}

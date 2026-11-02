@@ -6,8 +6,9 @@
  *   workflow  — the team (`@scope/name vX`) and its run as a graph, each phase coloured by how it
  *               went and this Hug's phase highlighted; clicking a phase shows its output
  *   context   — what the requester attached (files, notes, checks, a conversation)
- *   response  — the requested inputs, Required then Optional, and Submit response at the bottom;
- *               once the Hug has ended, how it ended and the responses instead
+ *   response  — the Hug's template: `form` (the inputs, or Can't answer) or `approval` (Approve with
+ *               the inputs, or Reject with a reason); once the Hug has ended, how it ended and the
+ *               responses instead
  *
  * Read: `POST /v1/hug_page/get` (the Hug and its run's workflow; Core lets in anyone with runs.view
  * on the Hug's realm). A phase's output: `POST /v1/run_detail/get`, read only when a phase is opened.
@@ -19,7 +20,7 @@ import { useAuth } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago } from '@/lib/admin';
-import { choice_label, is_answerable, my_response, status_label, type Hug, type Hug_page_data, type Hug_response, type Hug_run } from '@/lib/hug';
+import { answer_summary, choice_label, hug_context, hug_inputs, hug_prompt, is_answerable, my_response, status_label, TEMPLATE_KEYS, type Hug, type Hug_page_data, type Hug_response, type Hug_run } from '@/lib/hug';
 import type { Run_detail_data } from '@/lib/realm_inbox';
 import type { Team_phase } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -145,7 +146,9 @@ function Others_line({ hug, me }: { hug: Hug; me: string | null | undefined }) {
 	const others = hug.responses.filter((r) => r.responder.user_id !== me);
 	if (!others.length) return null;
 	const first_value = (r: Hug_response): string | null => {
-		const input = hug.requested_inputs.find((i) => i.name !== 'comment' && r.values[i.name] !== undefined && i.type !== 'file');
+		const summary = answer_summary(hug, r.values);
+		if (summary) return summary;
+		const input = hug_inputs(hug).find((i) => !(TEMPLATE_KEYS as readonly string[]).includes(i.name) && r.values[i.name] !== undefined && i.type !== 'file');
 		return input ? choice_label(input, r.values[input.name]) : null;
 	};
 	const shown = others.slice(0, 2).map((r) => {
@@ -204,12 +207,12 @@ export function Component() {
 				<section className={`${PANEL} flex flex-col gap-2.5 px-5 py-4`} aria-label="Review">
 					<Meta_line hug={h} open={open} />
 					<h1 className="text-[20px] font-semibold tracking-tight">{h.title}</h1>
-					<Md class_name="text-[15px] leading-relaxed">{h.prompt}</Md>
+					<Md class_name="text-[15px] leading-relaxed">{hug_prompt(h)}</Md>
 				</section>
 
 				{run ? <Workflow hug={h} run={run} run_href={run_href} /> : null}
 
-				<Hug_context blocks={h.context} />
+				<Hug_context blocks={hug_context(h)} />
 
 				{open ? (
 					<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-acc-line)] bg-[var(--g-panel)] px-5 py-4" aria-label="Your response" data-testid="answer">

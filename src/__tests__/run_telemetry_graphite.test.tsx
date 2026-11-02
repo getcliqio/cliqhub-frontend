@@ -116,6 +116,25 @@ describe('Timeline history', () => {
 	});
 });
 
+describe('Timeline: people\'s time', () => {
+	const review = { id: 'h1', phase: 'review', agent: 'hug', kind: 'human' as const, model: null, provider: null, start_ms: t0 + 6 * M, end_ms: t0 + 8 * M, status: 'ok' as const, outcome: 'success', exit_code: 0, attempts: 1, unit_kind: null, units_in: null, units_out: null, cached_in: null, calls: null, cost_usd: null, cost_estimated: false, run_index: 1 };
+	const with_review = (state: string) => telemetry({
+		run: { run_id: 'run-77', state, started_at: t0, completed_at: state === 'completed' ? t0 + 10 * M : null, origin: 'hub' },
+		phases: [...telemetry().phases, { name: 'review', kind: 'human', type: 'HUG', status: state === 'completed' ? 'completed' : 'running', start_ms: t0 + 6 * M, end_ms: t0 + 8 * M, duration_ms: 2 * M, cost_usd: null, tokens_in: null, tokens_out: null, runs: 1, gate_outcome: null, depends_on: ['match'] }],
+		bars: [...telemetry().bars, review],
+	});
+	it('a finished run says the people\'s time is past', () => {
+		render(<Timeline t={with_review('completed')} selected={null} on_select={() => {}} now={t0 + 20 * M} />);
+		expect(screen.getByText('waited on people')).toBeTruthy();
+		expect(screen.queryByText('waiting on people')).toBeNull();
+		expect(screen.getByTestId('bar-h1').getAttribute('title')).toBe('review · waited 2m 0s for an answer');
+	});
+	it('a live run is still waiting on people', () => {
+		render(<Timeline t={with_review('awaiting_input')} selected={null} on_select={() => {}} now={t0 + 20 * M} />);
+		expect(screen.getByText('waiting on people')).toBeTruthy();
+	});
+});
+
 describe('Run page telemetry', () => {
 	it('the run line carries cost and tokens; each phase its cost; views are Phases, Usage, Logs, Details', async () => {
 		const calls = route_fetch();
