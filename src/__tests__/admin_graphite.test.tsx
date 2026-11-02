@@ -101,7 +101,7 @@ describe('Admin › Home', () => {
 
 describe('Admin › Accounts', () => {
 	const ana = { id: 'u-ana', username: 'ana', display_name: 'Ana Ruiz', email: 'ana@acme.com', role: 'user' as const, status: 'active' as const, suspended_at: null, deleted_at: null, created_at: '2026-03-01T00:00:00Z' };
-	const detail = (over: Partial<Admin_user_detail> = {}): Admin_user_detail => ({ ...ana, suspended_reason: '', orgs: [{ id: 'o1', slug: 'acme', display_name: 'Acme Labs', role: 'admin' }], team_count: 1, scope_count: 0, token_count: 3, draft_count: 0, ...over });
+	const detail = (over: Partial<Admin_user_detail> = {}): Admin_user_detail => ({ ...ana, suspended_reason: '', orgs: [{ id: 'o1', slug: 'acme', display_name: 'Acme Labs', role: 'admin' }], team_count: 1, scope_count: 0, token_count: 3, ...over });
 
 	it('hides filters Core can’t apply; a row opens the side panel', async () => {
 		const calls = route_fetch({ '/v1/admin_list/get': () => list('accounts', [ana], { counts: { all: 1, admins: null, suspended: null }, unsupported: ['admins', 'suspended'] }), '/v1/users/get_by_id': () => detail() });
@@ -588,7 +588,7 @@ describe('Admin › Organization — status, banner and Invite', () => {
 describe('Admin › Accounts — set-password and reset emails', () => {
 	const kim = { id: 'u-kim', username: 'kim', display_name: 'Kim', email: 'kim@acme.com', role: 'user' as const, status: 'invited' as const, suspended_at: null, deleted_at: null, created_at: '2026-10-01T00:00:00Z' };
 	const ana = { ...kim, id: 'u-ana', username: 'ana', email: 'ana@acme.com', status: 'active' as const };
-	const detail = (over: Partial<Admin_user_detail> = {}): Admin_user_detail => ({ ...ana, suspended_reason: '', orgs: [], team_count: 0, scope_count: 0, token_count: 0, draft_count: 0, ...over });
+	const detail = (over: Partial<Admin_user_detail> = {}): Admin_user_detail => ({ ...ana, suspended_reason: '', orgs: [], team_count: 0, scope_count: 0, token_count: 0, ...over });
 
 	it('rows show Invited / Active / Suspended / Deleted', async () => {
 		route_fetch({ '/v1/admin_list/get': () => list('accounts', [kim, ana, { ...ana, id: 'u-s', username: 'sus', status: 'suspended' as const, suspended_at: '2026-09-01T00:00:00Z' }, { ...ana, id: 'u-d', username: 'gone', status: 'deleted' as const, deleted_at: '2026-09-01T00:00:00Z' }, { ...kim, id: 'u-new', username: null, display_name: '', email: 'new@acme.com' }], { counts: { all: 5, admins: 0, suspended: 1 } }) });

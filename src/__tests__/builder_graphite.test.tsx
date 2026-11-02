@@ -22,6 +22,9 @@ import { BUILDER_SESSION_KEYS } from '@/lib/builder/session_restore';
 type Call = { url: string; body: Record<string, unknown> };
 type Handler = (body: Record<string, unknown>, calls: Call[]) => { status?: number; body: unknown } | undefined;
 
+/** get_by_id's view of a team: its team.yml and role briefs (PLAN-team-bundle S1.5: no canvas JSON). */
+const detail_of = (t: GeneratedTeam) => ({ raw_manifest: team_files(t)['team.yml'], roles: t.roles.map((r) => ({ name: r.name, content_md: r.content })) });
+
 const TEAM: GeneratedTeam = {
 	name: 'feature-dev', description: 'Ticket to PR', version: '1.0.0',
 	phases: [
@@ -58,7 +61,7 @@ function route_fetch(handlers: Record<string, Handler> = {}) {
 		if (u === '/v1/teams/create') return new Response(JSON.stringify({ ok: true, data: { id: 'draft-9', version_id: 'v-seed' } }));
 		if (u === '/v1/teams/files/upload') return new Response(JSON.stringify({ ok: true, data: { version_id: (body.payload as { version_id?: string }).version_id ?? 'v-draft', files: [] } }), { status: 201 });
 		if (u === '/v1/teams/update') return new Response(JSON.stringify({ ok: true, data: { id: body.team_id } }));
-		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { team_json: JSON.stringify(TEAM) } }));
+		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { name: 'feature-dev', ...detail_of(TEAM) } }));
 		if (u === '/v1/team_page/get') return new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
 		return new Response(JSON.stringify({ ok: true, data: {} }));
 	});
@@ -722,7 +725,7 @@ describe('Graphite builder — cancel', () => {
 
 describe('Graphite builder — files the builder does not edit (S1.4c)', () => {
 	const PUB = { 'team.yml': 'name: feature-dev\nphases: []\n', 'README.md': '# feature-dev', 'dependencies.yml': '- name: jq\n', 'roles/design.md': 'old' };
-	const published = () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', team_json: JSON.stringify(TEAM), version_id: 'v-pub', draft: null } } });
+	const published = () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', ...detail_of(TEAM), version_id: 'v-pub', draft: null } } });
 	const files_of = (files: Record<string, string>) => () => ({ body: { ok: true, data: { files: Object.entries(files).map(([path, content]) => ({ path, content })) } } });
 
 	it('a new draft from a published team starts from its version: README.md and dependencies.yml are kept', async () => {
@@ -771,7 +774,7 @@ describe('Graphite builder — files the builder does not edit (S1.4c)', () => {
 
 describe('Graphite builder — open draft', () => {
 	const COPY = { ...TEAM, phases: [...TEAM.phases, { name: 'ship', type: 'standard' as const, agent: 'claude-code', depends_on: ['check'] }] };
-	const detail = (extra: Record<string, unknown>) => () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', team_json: JSON.stringify(TEAM), ...extra } } });
+	const detail = (extra: Record<string, unknown>) => () => ({ body: { ok: true, data: { id: 'd1', name: 'feature-dev', scope: 'measureone', status: 'published', visibility: 'public', latest_version: '1.2.0', ...detail_of(TEAM), ...extra } } });
 	const DRAFT = { version_id: 'v-open', saved_at: '2026-10-05T09:00:00.000Z' };
 	// The open draft's files, as files/get returns them with content.
 	const draft_files = () => ({ body: { ok: true, data: { files: Object.entries({ ...team_files(COPY), 'README.md': '# feature-dev' }).map(([path, content]) => ({ path, content })) } } });
@@ -836,9 +839,9 @@ describe('Graphite builder — open draft', () => {
 		expect(uploads(calls)).toEqual([]);
 	});
 
-	it('a published team whose manifest is YAML opens from its version detail (roles kept)', async () => {
+	it('a team without a team.yml yet opens from its phase list (roles kept)', async () => {
 		route_fetch({ '/v1/teams/get_by_id': detail({
-			team_json: 'name: feature-dev\nphases: []', draft: null,
+			raw_manifest: null, draft: null,
 			workflow: { phases: TEAM.phases },
 			roles: [{ name: 'design', content_md: '# design\nWrite the design.' }],
 			agents: {},

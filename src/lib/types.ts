@@ -161,21 +161,6 @@ export interface TeamDetail extends TeamListItem {
   not_for?: string[];
 }
 
-export interface Draft {
-  id: number;
-  user_id: string;
-  title: string;
-  team_json: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface DraftListItem {
-  id: number;
-  title: string;
-  updated_at: string;
-}
-
 export interface AuditLogEntry {
   id: number;
   admin_id: number;

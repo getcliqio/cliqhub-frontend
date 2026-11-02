@@ -151,7 +151,7 @@ function Account_panel({ id, on_close, on_changed }: { id: string; on_close: () 
 					</div>
 					<div className="border-b border-[var(--g-line)] px-4 py-3 text-[12.5px] text-[var(--g-ink-2)]">
 						<div className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Owns</div>
-						{[[u.team_count, 'team'], [u.scope_count, 'scope'], [u.token_count, 'access token'], [u.draft_count, 'draft']].map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`).join(' · ')}
+						{[[u.team_count, 'team'], [u.scope_count, 'scope'], [u.token_count, 'access token']].map(([n, w]) => `${n} ${w}${n === 1 ? '' : 's'}`).join(' · ')}
 					</div>
 					{deleted ? null : <div className="flex flex-wrap gap-2 px-4 py-3">
 						{!is_me ? <button type="button" disabled={busy || u.status === 'suspended'} onClick={() => void take_over()} className={G_BTN}>Act as {who}</button> : null}

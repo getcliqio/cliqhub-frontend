@@ -138,7 +138,7 @@ export function run_href(run_id: string, r: Admin_realm_ref | null): string | nu
 export interface Admin_user_detail {
 	id: string; username: string | null; display_name: string; email: string; role: string;
 	status: User_status; deleted_at: string | null; suspended_at: string | null; suspended_reason: string; created_at: string;
-	scope_count: number; team_count: number; token_count: number; draft_count: number;
+	scope_count: number; team_count: number; token_count: number;
 	orgs: Array<{ id: string; slug: string; display_name: string; role: string }>;
 }
 

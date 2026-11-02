@@ -11,14 +11,7 @@ type Rec = Record<string, unknown>;
 export function builder_team_from_detail(raw: Rec, opts: { label: string; version?: string | null; fork?: boolean }): ReturnType<typeof normalize_builder_team> {
 	const roles = (Array.isArray(raw.roles) ? raw.roles as Rec[] : []).map((r) => ({ name: String(r.name ?? ''), content: String(r.content_md ?? '') }));
 	// The team's own team.yml first: everything in it is kept (args, timeout, when, hug, an agent's inputs…).
-	const text = typeof raw.raw_manifest === 'string' ? raw.raw_manifest : typeof raw.team_json === 'string' ? raw.team_json : '';
-	// A draft the builder saved is its own JSON, not team.yml.
-	if (text.trim().startsWith('{')) {
-		try {
-			const team = normalize_builder_team(JSON.parse(text));
-			if (team) return opts.fork ? { ...team, name: `${opts.label}-fork`, version: undefined } : team;
-		} catch { /* not JSON: read as team.yml */ }
-	}
+	const text = typeof raw.raw_manifest === 'string' ? raw.raw_manifest : '';
 	if (text.trim()) {
 		const base = { name: opts.label, description: String(raw.description ?? ''), phases: [], roles, agents: [] };
 		const parsed = parse_team_yml_text(text, base);
