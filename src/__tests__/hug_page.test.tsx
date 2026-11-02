@@ -1,9 +1,11 @@
 /**
  * Hug page (/hugs/:hug_id), top to bottom: the review card (one metadata line, title, prompt), the
- * run's workflow graph (team and version; a phase opens its output), the context, and the response
- * (Required then Optional, Submit response at the bottom; checked before sending, Core's problems
- * per input), changing a response, others' responses, files (streamed upload with progress and
- * retry), and a Hug that has ended. Display hints don't change how inputs look.
+ * run's workflow graph (team and version; a phase opens its output), the context, and the response,
+ * rendered by the Hug's template (PLAN-hug-templates §3): `approval` — Approve (Required then
+ * Optional, a comment) or Reject (a reason and a choice, no inputs required); `form` — the inputs, or
+ * Can't answer with a reason. Checked before sending, Core's problems per key; changing a response,
+ * others' responses, files (streamed upload with progress and retry), a Hug that has ended, and a
+ * template the page doesn't know.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
@@ -23,22 +25,24 @@ import { Component as HugPage } from '@/pages/hugs/hug_page';
 
 const soon = () => new Date(Date.now() + 3_600_000).toISOString();
 
-function hug(over: Partial<Hug> = {}): Hug {
+const PARAMS = {
+	prompt: 'Please review the **plan**.',
+	context: [
+		{ type: 'markdown', text: 'The plan, ready for review.' },
+		{ type: 'checks', results: [{ name: 'npm test', ok: true, summary: '412 passed' }, { name: 'lint', ok: false }] },
+		{ type: 'artifact', artifact_id: 'a-1', label: 'design.md' },
+	],
+	inputs: [{ name: 'risk', type: 'number', min: 1, max: 5 }],
+	reject_choices: [{ value: 'draft', label: 'Send back to draft' }],
+};
+
+/** An `approval` Hug (the gate's), `params` merged over the defaults. */
+function hug(over: Partial<Hug> = {}, params: Record<string, unknown> = {}): Hug {
 	return {
 		id: 'h-1', hug_url: 'https://hub/hugs/h-1', run_id: 'run-1841', run_name: 'quiet-amber-heron', team: '@cliq/feature-dev-js', phase: 'approve', iteration: 0,
 		realm_id: 'r-prod', realm_name: 'Prod US', realm_slug: 'prod-us', org_slug: 'measureone',
-		title: 'Review: approve', prompt: 'Please review the **plan**.',
-		context: [
-			{ type: 'markdown', text: 'The plan, ready for review.' },
-			{ type: 'checks', results: [{ name: 'npm test', ok: true, summary: '412 passed' }, { name: 'lint', ok: false }] },
-			{ type: 'artifact', artifact_id: 'a-1', label: 'design.md' },
-		],
-		requested_inputs: [
-			{ name: 'decision', type: 'enum', label: 'Decision', required: true, ui: { display: 'buttons' }, choices: [{ value: 'approve', label: 'Approve' }, { value: 'route:draft', label: 'Send back to draft' }, { value: 'reject', label: 'Reject' }] },
-			{ name: 'risk', type: 'number', min: 1, max: 5 },
-			{ name: 'comment', type: 'text', label: 'Comment', multiline: true, required: false },
-		],
-		channels: ['legal', 'ops'], ui: { kind: 'gate' }, status: 'open', outcome: null,
+		title: 'Review: approve', template: 'approval', template_version: 1, params: { ...PARAMS, ...params },
+		channels: ['legal', 'ops'], status: 'open', outcome: null,
 		expires_at: soon(), created_at: new Date(Date.now() - 600_000).toISOString(), closed_at: null, last_reminded_at: null,
 		not_sent_to: [], responses: [],
 		...over,
@@ -100,7 +104,7 @@ describe('Hug page', () => {
 	});
 
 	it('several files: one compact list; Preview opens a dialog — ‹ › step through, Esc closes; a file is fetched only when shown', async () => {
-		const calls = route_fetch(hug({ context: [
+		const calls = route_fetch(hug({}, { context: [
 			{ type: 'artifact', artifact_id: 'a-1', label: 'design.md' },
 			{ type: 'markdown', text: 'Not attached: missing.pdf (no matching file)' },
 			{ type: 'artifact', artifact_id: 'a-2', label: 'notes.md' },
@@ -129,7 +133,7 @@ describe('Hug page', () => {
 	it('a PDF is shown from an in-memory copy (Core sends files as attachments, which a frame would download)', async () => {
 		const create = vi.fn(() => 'blob:hub/pdf-1');
 		vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: create, revokeObjectURL: vi.fn() }));
-		route_fetch(hug({ context: [{ type: 'artifact', artifact_id: 'a-1', label: 'MSA.pdf' }] }), {
+		route_fetch(hug({}, { context: [{ type: 'artifact', artifact_id: 'a-1', label: 'MSA.pdf' }] }), {
 			'/v1/artifacts/get_by_id': () => ({ body: { ok: true, data: { name: 'MSA.pdf', mime_type: 'application/pdf', size_bytes: 4 } } }),
 			'/v1/artifacts/download?artifact_id=a-1': () => ({ body: '%PDF' }),
 		});
@@ -148,7 +152,7 @@ describe('Hug page', () => {
 		const metas: Record<string, { name: string; mime_type: string }> = {
 			'a-1': { name: 'review.txt', mime_type: 'text/plain' }, 'a-2': { name: 'logo.svg', mime_type: 'image/svg+xml' }, 'a-3': { name: 'page.html', mime_type: 'text/html' },
 		};
-		route_fetch(hug({ context: Object.keys(metas).map((id) => ({ type: 'artifact' as const, artifact_id: id })) }), {
+		route_fetch(hug({}, { context: Object.keys(metas).map((id) => ({ type: 'artifact' as const, artifact_id: id })) }), {
 			'/v1/artifacts/get_by_id': (b) => ({ body: { ok: true, data: { ...metas[String(b.artifact_id)], size_bytes: 10 } } }),
 			'/v1/artifacts/download?artifact_id=a-1': () => ({ body: 'Hi Ada' }),
 		});
@@ -203,34 +207,57 @@ describe('Hug page', () => {
 		expect(calls.find((c) => c.url === '/v1/run_detail/get')?.body).toEqual({ run_id: 'run-1841' });
 	});
 
-	it('inputs are grouped Required then Optional; display hints change nothing (radio buttons, not big buttons)', async () => {
+	it('approval: Approve or Reject first; Approve shows the inputs Required then Optional, with a comment', async () => {
 		route_fetch(hug());
 		render_page();
 		const form = await screen.findByRole('form', { name: 'Your response' });
+		const decision = within(form).getByRole('radiogroup', { name: 'Decision' });
+		expect(within(decision).getByRole('radio', { name: 'Approve' })).toBeChecked();
+		expect(within(decision).getByRole('radio', { name: 'Reject' })).not.toBeChecked();
 		const required = within(form).getByRole('group', { name: 'Required' });
 		const optional = within(form).getByRole('group', { name: 'Optional' });
-		expect(within(required).getByRole('radiogroup', { name: 'Decision' })).toBeInTheDocument();
 		expect(within(required).getByRole('spinbutton')).toBeInTheDocument();
 		expect(within(optional).getByRole('textbox', { name: /Comment/ })).toBeInTheDocument();
-		expect(within(form).getByRole('radio', { name: 'Approve' })).toHaveAttribute('type', 'radio');
-		expect(within(form).queryByRole('button', { name: 'Approve' })).toBeNull();
-		expect(within(form).getByTestId('response-hint')).toHaveTextContent('2 required left');
-		fireEvent.click(within(form).getByRole('radio', { name: 'Approve' }));
 		expect(within(form).getByTestId('response-hint')).toHaveTextContent('1 required left');
 	});
 
-	it('checks before sending, then sends the answer (the comment is an input, so no extra comment box)', async () => {
+	it("approval's options: its own labels, and no comment box with show_comment: false", async () => {
+		route_fetch(hug({}, { approve_label: 'Ship it', reject_label: 'Hold', show_comment: false }));
+		render_page();
+		const form = await screen.findByRole('form', { name: 'Your response' });
+		expect(within(form).getByRole('radio', { name: 'Ship it' })).toBeInTheDocument();
+		expect(within(form).getByRole('radio', { name: 'Hold' })).toBeInTheDocument();
+		expect(within(form).queryByRole('textbox', { name: /Comment/ })).toBeNull();
+	});
+
+	it('Reject asks no inputs: a reason (required) and a choice, and sends only those', async () => {
+		const calls = route_fetch(hug(), { '/v1/hugs/respond': () => ({ body: { ok: true, data: { response_id: 'r1', seq: 1 } } }) });
+		render_page();
+		const form = await screen.findByRole('form', { name: 'Your response' });
+		fireEvent.click(within(form).getByRole('radio', { name: 'Reject' }));
+		expect(within(form).queryByRole('spinbutton')).toBeNull();
+		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
+		expect(await within(form).findByText('required')).toBeInTheDocument();
+		expect(calls.some((c) => c.url === '/v1/hugs/respond')).toBe(false);
+		fireEvent.click(within(form).getByRole('radio', { name: 'Send back to draft' }));
+		fireEvent.change(within(form).getByRole('textbox', { name: 'Reason' }), { target: { value: 'p99 regression' } });
+		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/hugs/respond')?.body).toEqual({
+			hug_id: 'h-1', values: { decision: 'reject', reason: 'p99 regression', choice: 'draft' },
+		}));
+	});
+
+	it('checks before sending, then sends the approval with its inputs and comment', async () => {
 		const calls = route_fetch(hug(), { '/v1/hugs/respond': () => ({ body: { ok: true, data: { response_id: 'r1', seq: 1 } } }) });
 		const stale = vi.fn();
 		window.addEventListener(OVERVIEW_STALE_EVENT, stale);
 		render_page();
 		const form = await screen.findByRole('form', { name: 'Your response' });
-		expect(within(form).getAllByRole('textbox')).toHaveLength(1); // the Comment input only
+		expect(within(form).getAllByRole('textbox')).toHaveLength(1); // the comment box only
 		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
-		expect(await within(form).findAllByText('required')).toHaveLength(2); // decision and risk
+		expect(await within(form).findAllByText('required')).toHaveLength(1); // risk
 		expect(calls.some((c) => c.url === '/v1/hugs/respond')).toBe(false);
 
-		fireEvent.click(within(form).getByRole('radio', { name: 'Send back to draft' }));
 		fireEvent.change(within(form).getByRole('spinbutton'), { target: { value: '9' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
 		expect(await within(form).findByText('must be at most 5')).toBeInTheDocument();
@@ -239,7 +266,7 @@ describe('Hug page', () => {
 		fireEvent.change(within(form).getByRole('textbox'), { target: { value: 'needs more tests' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
 		await waitFor(() => expect(calls.find((c) => c.url === '/v1/hugs/respond')?.body).toEqual({
-			hug_id: 'h-1', values: { decision: 'route:draft', risk: 2, comment: 'needs more tests' },
+			hug_id: 'h-1', values: { decision: 'approve', risk: 2, comment: 'needs more tests' },
 		}));
 		// Sent: the nav's HUG count reloads (only after Core accepted it).
 		await waitFor(() => expect(stale).toHaveBeenCalledTimes(1));
@@ -252,31 +279,58 @@ describe('Hug page', () => {
 	});
 
 	it("shows Core's refusal next to the input it is about", async () => {
-		route_fetch(hug(), { '/v1/hugs/respond': () => ({ status: 422, body: { ok: false, error: { code: 'invalid_values', message: 'decision: \'maybe\' is not one of the choices' } } }) });
+		route_fetch(hug(), { '/v1/hugs/respond': () => ({ status: 422, body: { ok: false, error: { code: 'invalid_values', message: 'risk: must be even' } } }) });
 		render_page();
 		const form = await screen.findByRole('form', { name: 'Your response' });
-		fireEvent.click(within(form).getByRole('radio', { name: 'Approve' }));
 		fireEvent.change(within(form).getByRole('spinbutton'), { target: { value: '1' } });
 		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
-		expect(await within(form).findByText("'maybe' is not one of the choices")).toBeInTheDocument();
+		expect(await within(form).findByText('must be even')).toBeInTheDocument();
 	});
 
 	it('my earlier response fills the form and can be changed; others who responded show in one line', async () => {
-		const mine = { response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], values: { decision: 'approve', risk: 3, comment: 'LGTM' }, comment: null, responded_at: new Date().toISOString() };
+		const mine = { response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], values: { decision: 'approve', risk: 3, comment: 'LGTM' }, responded_at: new Date().toISOString() };
 		route_fetch(hug({ responses: [mine] }));
 		render_page();
 		const form = await screen.findByRole('form', { name: 'Your response' });
 		expect(within(form).getByRole('radio', { name: 'Approve' })).toBeChecked();
 		expect(within(form).getByRole('spinbutton')).toHaveValue(3);
+		expect(within(form).getByRole('textbox', { name: /Comment/ })).toHaveValue('LGTM');
 		expect(within(form).getByRole('button', { name: 'Update response' })).toBeInTheDocument();
 		expect(screen.queryByTestId('others-responded')).toBeNull(); // only my own so far
 	});
 
 	it('others who already responded: one quiet line above the form', async () => {
-		const bo = { response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' }, via: ['ops'], values: { decision: 'route:draft', risk: 4 }, comment: null, responded_at: new Date(Date.now() - 300_000).toISOString() };
+		const bo = { response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' }, via: ['ops'], values: { decision: 'reject', reason: 'Not yet', choice: 'draft' }, responded_at: new Date(Date.now() - 300_000).toISOString() };
 		route_fetch(hug({ responses: [bo] }));
 		render_page();
-		expect(await screen.findByTestId('others-responded')).toHaveTextContent('Bo responded: Send back to draft, 5m ago');
+		expect(await screen.findByTestId('others-responded')).toHaveTextContent('Bo responded: Rejected — Send back to draft, 5m ago');
+	});
+
+	it("a form Hug: no decision; Can't answer sends only a reason", async () => {
+		const calls = route_fetch(hug({ template: 'form' }, { reject_choices: undefined }), { '/v1/hugs/respond': () => ({ body: { ok: true, data: {} } }) });
+		render_page();
+		const form = await screen.findByRole('form', { name: 'Your response' });
+		expect(within(form).queryByRole('radiogroup', { name: 'Decision' })).toBeNull();
+		fireEvent.click(within(form).getByRole('button', { name: 'Can’t answer' }));
+		fireEvent.change(within(form).getByRole('textbox', { name: 'Reason' }), { target: { value: 'Not my area' } });
+		fireEvent.click(within(form).getByRole('button', { name: 'Submit response' }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/hugs/respond')?.body).toEqual({ hug_id: 'h-1', values: { declined: 'Not my area' } }));
+	});
+
+	it('a template the page does not know is shown as such; nothing can be sent', async () => {
+		route_fetch(hug({ template: 'survey', template_version: 3 }));
+		render_page();
+		expect(await screen.findByRole('alert')).toHaveTextContent('This Hug uses a template this page can’t show (survey@3).');
+		expect(screen.queryByRole('button', { name: 'Submit response' })).toBeNull();
+	});
+
+	it('an ended Hug shows each response with its decision and words', async () => {
+		const bo = { response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' }, via: ['ops'], values: { decision: 'reject', reason: 'p99 regression', choice: 'draft' }, responded_at: new Date().toISOString() };
+		route_fetch(hug({ status: 'closed', outcome: 'Rejected', closed_at: new Date().toISOString(), responses: [bo] }));
+		render_page();
+		const r = await screen.findByTestId('hug-response');
+		expect(within(r).getByTestId('hug-decision')).toHaveTextContent('Rejected — Send back to draft');
+		expect(r).toHaveTextContent('p99 regression');
 	});
 
 	it('an ended Hug shows how it ended and takes no answers; people it was not sent to are named', async () => {
@@ -314,7 +368,7 @@ describe('Hug page — files', () => {
 
 	it('a picked file streams up with progress; a refused upload says why and can be retried; the answer carries the file', async () => {
 		vi.stubGlobal('XMLHttpRequest', Fake_xhr);
-		const calls = route_fetch(hug({ requested_inputs: [{ name: 'contract', type: 'file', label: 'Signed contract', accept: ['application/pdf'] }] }), {
+		const calls = route_fetch(hug({ template: 'form' }, { reject_choices: undefined, inputs: [{ name: 'contract', type: 'file', label: 'Signed contract', accept: ['application/pdf'] }] }), {
 			'/v1/hugs/respond': () => ({ body: { ok: true, data: {} } }),
 		});
 		render_page();
