@@ -16,7 +16,7 @@ const INPUTS: Requested_input[] = [
 ];
 
 const mine: Hug_response = {
-	response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], comment: 'ok', responded_at: '2026-10-26T10:00:00Z',
+	response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], responded_at: '2026-10-26T10:00:00Z',
 	values: { decision: 'approve', risk: 3, tags: ['b'], contract: { artifact_id: 'a1', name: 'c.pdf', size: 10, content_type: 'application/pdf' } },
 };
 

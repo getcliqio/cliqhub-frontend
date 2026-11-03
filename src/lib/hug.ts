@@ -1,11 +1,12 @@
 /**
- * Hugs — a person is asked for input (PLAN-hug-requests). Types for `POST /v1/hug_page/get`, the
- * form's values, checks for messages, answering (`POST /v1/hugs/respond`) and file uploads
- * (`POST /v1/artifacts/upload?hug_id&requested_input&name`, the file as the raw body).
+ * Hugs — a person is asked for input (PLAN-hug-requests, PLAN-hug-templates). Types for
+ * `POST /v1/hug_page/get`, the form's values, checks for messages, answering (`POST /v1/hugs/respond`)
+ * and file uploads (`POST /v1/artifacts/upload?hug_id&requested_input&name`, the file as the raw body).
  *
- * Core validates every answer with the SDK (`validate_values`) and is the authority; the checks here
- * mirror it only to show messages before sending (src/__tests__/hug_contract.test.ts keeps them in
- * step with the SDK). Core's 422 problems are shown the same way, per input.
+ * A Hug names a template (`form`, `approval`) and carries its params; the page renders by template.
+ * Core has the template check every answer and is the authority; the checks here mirror the SDK's
+ * input rules only to show messages before sending (src/__tests__/hug_contract.test.ts keeps them in
+ * step). Core's 422 problems are shown the same way, per key.
  */
 
 import { mark_overview_stale } from '@/lib/overview';
@@ -39,8 +40,8 @@ export interface Hug_response {
 	responder: { user_id: string; name: string };
 	/** The Hug's channels that reached this person. */
 	via: string[];
+	/** The answer, as the template's keys (a comment, a decision, a reason… among them). */
 	values: Record<string, unknown>;
-	comment: string | null;
 	responded_at: string;
 }
 
@@ -59,12 +60,12 @@ export interface Hug {
 	realm_slug: string | null;
 	org_slug: string | null;
 	title: string;
-	prompt: string;
-	context: Context_block[];
-	requested_inputs: Requested_input[];
+	/** The template's name, and the version the Hug resolved to. */
+	template: string;
+	template_version: number;
+	/** The template's params (`prompt`, `context`, `inputs`, and its own options). */
+	params: Record<string, unknown>;
 	channels: string[];
-	/** Presentation hints from the requester (e.g. `{ kind: 'gate' }`). */
-	ui: Record<string, unknown> | null;
 	status: Hug_status;
 	outcome: string | null;
 	expires_at: string;
@@ -99,6 +100,48 @@ export interface Hug_page_data {
 	hug: Hug;
 	/** Absent from an older BFF. */
 	run?: Hug_run | null;
+}
+
+/** The templates this page renders; anything else is shown as unsupported. */
+export type Template_name = 'form' | 'approval';
+
+/** The Hug's template, when this page renders it. */
+export function hug_template(h: Pick<Hug, 'template'>): Template_name | null {
+	return h.template === 'form' || h.template === 'approval' ? h.template : null;
+}
+
+/** The requested inputs (`params.inputs`). */
+export function hug_inputs(h: Pick<Hug, 'params'>): Requested_input[] {
+	return Array.isArray(h.params?.inputs) ? h.params.inputs as Requested_input[] : [];
+}
+
+/** The prompt (`params.prompt`). */
+export function hug_prompt(h: Pick<Hug, 'params'>): string {
+	return typeof h.params?.prompt === 'string' ? h.params.prompt : '';
+}
+
+/** What the requester attached (`params.context`). */
+export function hug_context(h: Pick<Hug, 'params'>): Context_block[] {
+	return Array.isArray(h.params?.context) ? h.params.context as Context_block[] : [];
+}
+
+/** `approval`'s choices when rejecting (`params.reject_choices`). */
+export function reject_choices(h: Pick<Hug, 'params'>): Array<{ value: string; label?: string }> {
+	return Array.isArray(h.params?.reject_choices) ? h.params.reject_choices as Array<{ value: string; label?: string }> : [];
+}
+
+/** Answer keys the templates add themselves (not inputs). */
+export const TEMPLATE_KEYS = ['comment', 'declined', 'decision', 'reason', 'choice'] as const;
+
+/** What an answer says beyond its inputs: approved / rejected (and where to), or couldn't answer. */
+export function answer_summary(h: Pick<Hug, 'params'>, values: Record<string, unknown>): string | null {
+	if (typeof values.declined === 'string') return "Couldn't answer";
+	if (values.decision === 'approve') return 'Approved';
+	if (values.decision === 'reject') {
+		const choice = reject_choices(h).find((c) => c.value === values.choice);
+		return choice ? `Rejected — ${choice.label ?? choice.value}` : 'Rejected';
+	}
+	return null;
 }
 
 /** Inputs a response must have, and the rest (a boolean always has a value, so it is never missing). */
@@ -260,7 +303,7 @@ function problem(i: Requested_input, v: unknown): string | null {
  * one input) under `''`.
  */
 export function problems_from_message(message: string, inputs: readonly Requested_input[]): Record<string, string> {
-	const names = new Set(inputs.map((i) => i.name));
+	const names = new Set<string>([...inputs.map((i) => i.name), ...TEMPLATE_KEYS]);
 	const out: Record<string, string> = {};
 	for (const part of message.split('; ')) {
 		const at = part.indexOf(': ');
@@ -290,9 +333,8 @@ export function choice_label(i: Requested_input, value: unknown): string {
 type Auth_fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Submit (or replace) the caller's answer. Resolves with Core's error message when it refuses. */
-export async function respond(auth_fetch: Auth_fetch, hug_id: string, values: Record<string, unknown>, comment: string): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
+export async function respond(auth_fetch: Auth_fetch, hug_id: string, values: Record<string, unknown>): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
 	const body: Record<string, unknown> = { hug_id, values };
-	if (comment.trim()) body.comment = comment.trim();
 	const res = await auth_fetch('/v1/hugs/respond', { method: 'POST', body: JSON.stringify(body) });
 	const d = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } | string } | null;
 	if (res.ok && d?.ok) {

@@ -9,7 +9,7 @@ import { X } from 'lucide-react';
 import { Link } from 'react-router';
 import { useAuthFetch } from '@/lib/auth_context';
 import { relative_time } from '@/lib/overview';
-import type { Run_attempt } from '@/lib/realm_inbox';
+import { is_live_state, type Run_attempt } from '@/lib/realm_inbox';
 import { Sort_th, sort_rows, use_table_sort } from '@/components/graphite/g_sort';
 import {
 	KIND_COLOR,
@@ -44,6 +44,9 @@ const MODEL_TONES = ['#8b7cf6', '#c4b5fd', '#5b9dff', '#2dd4bf', '#f5a524', '#ff
 /** Human review steps run as the `hug` agent. */
 export const agent_label = (b: { agent: string; kind: Agent_kind }) => (b.kind === 'human' && b.agent === 'hug' ? 'review' : b.agent);
 
+/** People's time, by run state: "waiting on people" while the run is live, "waited on people" after. */
+export const people_label = (run_state: string | null | undefined) => (is_live_state(run_state) ? 'waiting on people' : 'waited on people');
+
 export function has_telemetry(t: Run_telemetry_data | null): boolean {
 	return Boolean(t && (t.bars.length || t.totals.cost_usd != null || t.totals.tokens_in != null));
 }
@@ -62,7 +65,7 @@ export function Summary_strip({ t }: { t: Run_telemetry_data | null }) {
 	const total = totals.duration_ms ?? 0;
 	const seg = [
 		{ ms: tm.working_ms + tm.gates_ms + tm.other_ms, color: 'var(--g-run)', label: 'agents working' },
-		{ ms: tm.people_ms, color: KIND_COLOR.human, label: 'waiting on people', hatch: true },
+		{ ms: tm.people_ms, color: KIND_COLOR.human, label: people_label(t.run.state), hatch: true },
 		{ ms: tm.queued_ms, color: QUEUE_COLOR, label: 'queued / handoffs' },
 	].filter((s) => s.ms > 0);
 	const seg_total = seg.reduce((a, s) => a + s.ms, 0) || 1;
@@ -78,7 +81,7 @@ export function Summary_strip({ t }: { t: Run_telemetry_data | null }) {
 						<span className="flex h-1.5 w-[140px] shrink-0 overflow-hidden rounded-full bg-[var(--g-soft)]" role="img" aria-label={seg.map((s) => `${s.label} ${fmt_ms(s.ms)}`).join(', ')}>
 							{seg.map((s) => <i key={s.label} style={{ width: `${(s.ms / seg_total) * 100}%`, background: s.color }} />)}
 						</span>
-						{tm.people_ms > 0 ? <span className="truncate" title={`${fmt_ms(tm.people_ms)} waiting on people`}>{Math.round(tm.people_ms / 60000)}m waiting</span> : null}
+						{tm.people_ms > 0 ? <span className="truncate" title={`${fmt_ms(tm.people_ms)} ${people_label(t.run.state)}`}>{Math.round(tm.people_ms / 60000)}m {is_live_state(t.run.state) ? 'waiting' : 'waited'}</span> : null}
 					</div>
 				) : <div className="mt-1 text-[11.5px] text-[var(--g-ink-3)]">{total ? 'no agent timing reported' : ''}</div>}
 			</div>
@@ -202,7 +205,7 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, run_hr
 				data-testid={`bar-${x.id}`}
 				aria-pressed={sel}
 				aria-label={`${agent_label(x)} in ${x.phase}: ${fmt_ms(e - x.start_ms)}${x.status === 'error' ? ', failed' : ''}`}
-				title={`${agent_label(x)}${x.model ? ` · ${x.model}` : ''} · ${fmt_ms(e - x.start_ms)}`}
+				title={waiting && x.status !== 'running' ? `${agent_label(x)} · waited ${fmt_ms(e - x.start_ms)} for an answer` : `${agent_label(x)}${x.model ? ` · ${x.model}` : ''} · ${fmt_ms(e - x.start_ms)}`}
 				onMouseDown={(ev) => ev.stopPropagation()}
 				onClick={() => on_select(sel ? null : x)}
 				className={`absolute rounded-[3px] ${waiting ? 'top-[11px] h-[4px]' : 'top-[6px] h-[14px]'} ${x.status === 'running' ? 'animate-pulse' : ''}`}
@@ -337,7 +340,7 @@ export function Timeline({ t, selected, on_select, focus_phase, attempts, run_hr
 					{all_bars.some((x) => x.kind === 'llm' || x.kind === 'builder' || x.kind === 'custom') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.llm} />AI agent</span> : null}
 					{all_bars.some((x) => x.kind === 'shell' || x.kind === 'connector') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.shell} />script / tool</span> : null}
 					{all_bars.some((x) => x.kind === 'gate') ? <span className="flex items-center gap-1.5"><Swatch color={KIND_COLOR.gate} />check</span> : null}
-					{all_bars.some((x) => x.kind === 'human') ? <span className="flex items-center gap-1.5"><i aria-hidden className="inline-block h-[3px] w-3 rounded" style={{ background: KIND_COLOR.human }} />waiting on people</span> : null}
+					{all_bars.some((x) => x.kind === 'human') ? <span className="flex items-center gap-1.5"><i aria-hidden className="inline-block h-[3px] w-3 rounded" style={{ background: KIND_COLOR.human }} />{people_label(t.run.state)}</span> : null}
 					{scale.gaps.length ? <span>⫽ folded wait (real length shown)</span> : null}
 					<span className="ml-auto">Click a bar for details · drag to zoom</span>
 				</div>
