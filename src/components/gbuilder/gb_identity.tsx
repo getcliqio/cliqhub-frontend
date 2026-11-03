@@ -27,8 +27,10 @@ export function slug_of(text: string): string {
 
 type Name_check = 'idle' | 'checking' | 'free' | 'taken' | 'unknown';
 
-export function Gb_identity({ title, initial, busy, error, on_confirm, on_cancel }: {
+export function Gb_identity({ title, initial, busy, error, ask_version = true, on_confirm, on_cancel }: {
 	title: string;
+	/** Ask for the first version (a fork's first version is set when it is first published). */
+	ask_version?: boolean;
 	/** Prefill (from an imported team.yml, a template or the team being forked). */
 	initial: Partial<Team_identity>;
 	busy: boolean;
@@ -89,10 +91,10 @@ export function Gb_identity({ title, initial, busy, error, on_confirm, on_cancel
 						<label className="flex items-center gap-2"><input type="radio" name="visibility" checked={visibility === 'private'} onChange={() => set_visibility('private')} className="accent-[var(--g-acc)]" />Private <span className="text-[11.5px] text-[var(--g-ink-3)]">only the scope’s members see and install it</span></label>
 						<label className="flex items-center gap-2"><input type="radio" name="visibility" checked={visibility === 'public'} onChange={() => set_visibility('public')} className="accent-[var(--g-acc)]" />Public <span className="text-[11.5px] text-[var(--g-ink-3)]">everyone, on the marketplace</span></label>
 					</fieldset>
-					<label className="grid gap-1 text-[12.5px]">First version
+					{ask_version ? <label className="grid gap-1 text-[12.5px]">First version
 						<input aria-label="First version" value={version} onChange={(e) => set_version(e.target.value.trim())} className="g-mono w-[140px] rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 py-1.5 text-[13px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]" />
 						{version_problem ? <span className="text-[11.5px] text-[var(--g-bad)]">{version_problem}</span> : <span className="text-[11.5px] text-[var(--g-ink-3)]">Published when you first publish; every later version is higher.</span>}
-					</label>
+					</label> : null}
 					{error ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{error}</p> : null}
 				</div>
 				<div className="flex justify-end gap-2 border-t border-[var(--g-line)] px-5 py-3">

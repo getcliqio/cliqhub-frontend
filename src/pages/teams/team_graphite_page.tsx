@@ -34,6 +34,7 @@ import { Team_workflow } from '@/components/graphite/g_team_workflow';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
+import { Gb_identity, type Team_identity } from '@/components/gbuilder/gb_identity';
 
 const PRIMARY = 'inline-flex items-center gap-1.5 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)] disabled:opacity-50';
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
@@ -47,8 +48,6 @@ export const WORKFLOW_MODE_KEY = 'cliqhub.team_workflow_mode';
 /** A team name: lowercase letters, numbers and hyphens, starting with a letter. */
 /** Versions shown per page in the Versions card. */
 export const VERSIONS_PAGE_SIZE = 5;
-/** Names tried for a fork, in order. */
-const FORK_SUFFIXES = ['-fork', '-fork-2', '-fork-3', '-fork-4', '-fork-5'];
 
 /** `?phase=` value for the Run inputs (the graph's start node / the table's first row). */
 export const INPUTS_SEL = '@inputs';
@@ -252,6 +251,8 @@ export function Component() {
 	const [install_open, set_install_open] = useState(false);
 	const [run_open, set_run_open] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
+	/** The fork identity step, open (PLAN-team-bundle S3). */
+	const [forking, set_forking] = useState<{ busy: boolean; error: string | null } | null>(null);
 	const [edit_choice, set_edit_choice] = useState(false);
 	const [msg, set_msg] = useState<{ tone: 'ok' | 'bad'; text: string } | null>(null);
 	const [confirm, set_confirm] = useState<string | null>(null);
@@ -315,24 +316,19 @@ export function Component() {
 		navigate(edit_href(true));
 	}
 
-	/** Fork: a copy of this version in your scope (`<name>-fork`, or the next free name), then open it. */
-	async function fork() {
-		if (!team) return;
-		const scope = scopes?.[0]?.slug ?? user?.username ?? '';
-		if (!scope) { set_msg({ tone: 'bad', text: 'You need a scope to fork into.' }); return; }
-		set_busy('fork'); set_msg(null);
-		try {
-			for (const suffix of FORK_SUFFIXES) {
-				const fork_name = `${team.name}${suffix}`.slice(0, 64);
-				const res = await post('/v1/teams/create', { name: fork_name, scope, forked_from: { team_id: team.id, ...(team.version ? { version: team.version } : {}) } });
-				if (res.ok) { navigate(team_href(scope, fork_name)); return; }
-				if (res.status !== 409) { set_msg({ tone: 'bad', text: res.error }); return; }
-			}
-			set_msg({ tone: 'bad', text: `@${scope}/${team.name}-fork and the next few names are taken. Rename one of them, then fork again.` });
-		} finally {
-			set_busy(null);
-		}
+	/**
+	 * Fork (PLAN-team-bundle S3): the identity step — any scope you can publish to (none preselected), a free name,
+	 * Private preselected — then `teams/create` with `forked_from` (a private team's fork can be public only for
+	 * someone who can publish in its scope; Core says so), then open the fork.
+	 */
+	async function fork(id: Team_identity) {
+		if (!team || !forking) return;
+		set_forking({ busy: true, error: null });
+		const res = await post('/v1/teams/create', { name: id.name, scope: id.scope, visibility: id.visibility, forked_from: { team_id: team.id, ...(team.version ? { version: team.version } : {}) } });
+		if (res.ok) { set_forking(null); navigate(team_href(id.scope, id.name)); return; }
+		set_forking({ busy: false, error: res.error });
 	}
+
 
 	/**
 	 * Download the version being viewed: its package (team.yml and role briefs) from the registry;
@@ -415,7 +411,8 @@ export function Component() {
 				<button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_run_open(true)} className={PRIMARY}><Play aria-hidden className="h-3.5 w-3.5" />Run…</button>
 			) : null}
 			{in_realm ? null : <div className="relative flex shrink-0 items-center gap-1.5">
-				{team ? <button type="button" disabled={busy !== null} onClick={() => void fork()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title="Copy this version into your scope and open the copy"><GitFork aria-hidden className="h-3.5 w-3.5" />{busy === 'fork' ? 'Forking…' : 'Fork'}</button> : null}
+				{team ? <button type="button" disabled={busy !== null || forking !== null} onClick={() => set_forking({ busy: false, error: null })} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title="Copy this version into a scope of yours and open the copy"><GitFork aria-hidden className="h-3.5 w-3.5" />Fork</button> : null}
+				{team && forking ? <Gb_identity title={`Fork @${team.scope}/${team.name}`} initial={{ name: `${team.name}-fork`, visibility: 'private' }} ask_version={false} busy={forking.busy} error={forking.error} on_confirm={(id) => void fork(id)} on_cancel={() => set_forking(null)} /> : null}
 				{team && team.versions.length ? <button type="button" disabled={busy !== null} onClick={() => void download()} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`} title={`Download v${team.version} (team.yml and role briefs)`}><FileDown aria-hidden className="h-3.5 w-3.5" />{busy === 'download' ? 'Downloading…' : 'Download'}</button> : null}
 				{team?.can_edit && is_latest ? <button type="button" disabled={busy !== null} onClick={edit} className={`${ROW_ACTION_CLS} inline-flex items-center gap-1.5`}><Pencil aria-hidden className="h-3.5 w-3.5" />Edit</button> : null}
 				{team?.status === 'published' && team.scope ? <button type="button" aria-expanded={install_open} onClick={() => set_install_open((v) => !v)} className={PRIMARY}><Download aria-hidden className="h-3.5 w-3.5" />Install ▾</button> : null}

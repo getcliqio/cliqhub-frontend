@@ -359,27 +359,38 @@ describe('Team page', () => {
 		localStorage.removeItem('cliqhub.team_workflow_mode');
 	});
 
-	it('Fork copies this version into your scope (next free name) and opens the copy', async () => {
+	it('Fork asks for the identity (scope, a free name, Private preselected), then copies this version and opens the copy', async () => {
 		const calls = route_fetch();
-		let tries = 0;
 		const real = globalThis.fetch as unknown as { getMockImplementation: () => (u: unknown, i?: RequestInit) => Promise<Response> };
 		const base = real.getMockImplementation();
 		vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
-			if (String(url) === '/v1/teams/create') {
-				calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
-				tries += 1;
-				return tries === 1
-					? new Response(JSON.stringify({ ok: false, error: { code: 'conflict', message: 'exists' } }), { status: 409 })
-					: new Response(JSON.stringify({ ok: true, data: { id: 'new', name: 'feature-dev-js-fork-2', scope: 'sapan' } }));
+			const u = String(url);
+			if (u === '/v1/teams/get_versions') {
+				const b = JSON.parse(String(init?.body));
+				return b.name === 'feature-dev-js-fork'
+					? new Response(JSON.stringify({ ok: true, data: { version: '1.0.0' } }))
+					: new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
+			}
+			if (u === '/v1/teams/create') {
+				calls.push({ url: u, body: JSON.parse(String(init?.body)) });
+				return new Response(JSON.stringify({ ok: true, data: { id: 'new', name: 'my-copy', scope: 'sapan' } }));
 			}
 			return base(url, init);
 		});
 		render_at('/teams/measureone/feature-dev-js');
 		fireEvent.click(await screen.findByRole('button', { name: /Fork/ }));
-		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/sapan/feature-dev-js-fork-2'));
+		const dlg = await screen.findByRole('dialog', { name: 'Fork @measureone/feature-dev-js' });
+		// no scope is chosen for you, and a fork's first version is set when it's published
+		expect((within(dlg).getByLabelText('Scope') as HTMLSelectElement).value).toBe('');
+		expect(within(dlg).queryByLabelText('First version')).toBeNull();
+		fireEvent.change(within(dlg).getByLabelText('Scope'), { target: { value: 'sapan' } });
+		expect(await within(dlg).findByText('@sapan/feature-dev-js-fork is taken.')).toBeInTheDocument();
+		fireEvent.change(within(dlg).getByLabelText('Name'), { target: { value: 'my-copy' } });
+		await within(dlg).findByText('@sapan/my-copy is free.');
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Make @sapan/my-copy' }));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/teams/sapan/my-copy'));
 		expect(calls.filter((c) => c.url === '/v1/teams/create').map((c) => c.body)).toEqual([
-			{ name: 'feature-dev-js-fork', scope: 'sapan', forked_from: { team_id: 'tid', version: '1.4.2' } },
-			{ name: 'feature-dev-js-fork-2', scope: 'sapan', forked_from: { team_id: 'tid', version: '1.4.2' } },
+			{ name: 'my-copy', scope: 'sapan', visibility: 'private', forked_from: { team_id: 'tid', version: '1.4.2' } },
 		]);
 	});
 
