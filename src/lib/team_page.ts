@@ -43,6 +43,8 @@ export interface Team_list_row {
 	scope: string | null;
 	description: string;
 	status: 'draft' | 'published';
+	/** public (everyone), private (the scope's members), draft (never published) — PLAN-team-bundle S3. */
+	visibility?: 'public' | 'private' | 'draft';
 	latest_version: string | null;
 	author: string | null;
 	phase_types: string[] | null;

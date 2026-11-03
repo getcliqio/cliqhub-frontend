@@ -275,7 +275,7 @@ export function Component() {
 														</div>
 													</td>
 													<td className="px-4 py-2.5"><Phase_squares types={t.phase_kinds ?? t.phase_types} names={t.phase_names} /></td>
-													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}</td>
+													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}{t.visibility === 'private' || t.visibility === 'public' ? <span className="ml-1.5 rounded bg-[var(--g-soft)] px-1.5 py-px font-sans text-[11px] text-[var(--g-ink-3)]" data-testid="list-visibility">{t.visibility === 'public' ? 'Public' : 'Private'}</span> : null}</td>
 													<td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
 														<span className="relative inline-flex items-center gap-1.5">
 															{t.status === 'published' && t.scope ? (
