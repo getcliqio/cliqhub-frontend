@@ -174,7 +174,9 @@ function Version_drawer({ realm_id, row, on_close, on_done }: { realm_id: string
 	async function save() {
 		// The realm's own version is on the row; another one is picked from the list (each with its id).
 		const version_id = chosen === row.version ? row.version_id : list.find((v) => v.version === chosen)?.id;
-		if (!chosen || !row.team_id || !version_id) return;
+		if (!chosen) return;
+		// Without the ids there is nothing to send: say so rather than do nothing.
+		if (!row.team_id || !version_id) { set_error('This version can’t be picked right now. Reload the page and try again.'); return; }
 		set_busy(true);
 		set_error(null);
 		const res = await post('/v1/realms/add_team', { realm_id, team_id: row.team_id, version_id });
