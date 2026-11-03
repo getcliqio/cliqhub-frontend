@@ -220,6 +220,8 @@ export function Run_in_realm_dialog({
 	const [extra_inputs_text, set_extra_inputs_text] = useState('');
 	const [submitting, set_submitting] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
+	/** The catalog team (from its detail): runs start, and realms are matched, by this id (PLAN-team-bundle S4.3). */
+	const [team_id, set_team_id] = useState<string | null>(null);
 
 	const team_label = `@${scope}/${slug}`;
 
@@ -230,6 +232,7 @@ export function Run_in_realm_dialog({
 			set_loading_realms(false);
 			return;
 		}
+		if (!team_id) return;
 		set_loading_realms(true);
 		set_error(null);
 		try {
@@ -254,12 +257,12 @@ export function Run_in_realm_dialog({
 						});
 						const tl = await tl_res.json() as {
 							ok?: boolean;
-							teams?: Array<{ scope?: string; slug?: string }>;
-							team_list?: Array<{ scope?: string; slug?: string }>;
-							rows?: Array<{ scope?: string; slug?: string }>;
+							teams?: Array<{ team_id?: string }>;
+							team_list?: Array<{ team_id?: string }>;
+							rows?: Array<{ team_id?: string }>;
 							data?: {
-								teams?: Array<{ scope?: string; slug?: string }>;
-								rows?: Array<{ scope?: string; slug?: string }>;
+								teams?: Array<{ team_id?: string }>;
+								rows?: Array<{ team_id?: string }>;
 							};
 						};
 						if (!tl.ok) return null;
@@ -269,9 +272,7 @@ export function Run_in_realm_dialog({
 							?? tl.rows
 							?? tl.team_list
 							?? [];
-						const hit = roster.some(
-							(t) => t.scope === scope && t.slug === slug,
-						);
+						const hit = roster.some((t) => t.team_id === team_id);
 						return hit ? r : null;
 					} catch {
 						return null;
@@ -286,7 +287,7 @@ export function Run_in_realm_dialog({
 		} finally {
 			set_loading_realms(false);
 		}
-	}, [auth_fetch, current_id, fixed_realm, scope, slug]);
+	}, [auth_fetch, current_id, fixed_realm, team_id]);
 
 	const load_inputs = useCallback(async () => {
 		set_loading_inputs(true);
@@ -295,10 +296,11 @@ export function Run_in_realm_dialog({
 				method: 'POST',
 				body: JSON.stringify({ scope, name: slug }),
 			});
-			const data = await res.json() as { ok?: boolean; data?: { inputs?: unknown } & Team_purpose_data; inputs?: unknown };
+			const data = await res.json() as { ok?: boolean; data?: { id?: string; inputs?: unknown } & Team_purpose_data; inputs?: unknown };
 			/** The Hub wraps the detail DTO under `data` (BFF) or at the top level. */
 			const raw_inputs = data.data?.inputs ?? data.inputs;
 			if (data.ok && data.data) set_purpose({ use_when: data.data.use_when ?? [], not_for: data.data.not_for ?? [] });
+			set_team_id(data.ok ? data.data?.id ?? null : null);
 			const spec = data.ok ? normalize_inputs(raw_inputs) : [];
 			set_inputs_spec(spec);
 			// Seed the field values. When a prefill is present, apply
@@ -321,10 +323,9 @@ export function Run_in_realm_dialog({
 		}
 	}, [auth_fetch, scope, slug, prefill_from]);
 
-	useEffect(() => {
-		void load_realms();
-		void load_inputs();
-	}, [load_realms, load_inputs]);
+	// Apart: the realms wait for the team's id, and must not load the inputs again when it arrives.
+	useEffect(() => { void load_inputs(); }, [load_inputs]);
+	useEffect(() => { void load_realms(); }, [load_realms]);
 
 	const filtered = filter.trim()
 		? realms.filter((r) => {
@@ -374,10 +375,12 @@ export function Run_in_realm_dialog({
 			}
 			const extras = parse_run_inputs_text(extra_inputs_text);
 			const inputs = { ...declared, ...extras };
-			const payload: Record<string, unknown> = {
-				team_id: `${scope}/${slug}`,
-				inputs,
-			};
+			if (!team_id) {
+				set_error(`Couldn't load ${team_label} from CliqHub; reopen the dialog to try again.`);
+				set_submitting(false);
+				return;
+			}
+			const payload: Record<string, unknown> = { team_id, inputs };
 			if (run_name.trim()) payload.run_name = run_name.trim();
 			if (workspace_path.trim()) payload.workspace_path = workspace_path.trim();
 

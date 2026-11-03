@@ -31,10 +31,12 @@ function stub_team_inputs(spec: Array<{ name: string; required?: boolean; descri
     // `data.data.inputs` first, falling back to `data.inputs`.
     return {
         ok: true,
-        data: { inputs: spec },
+        data: { id: TEAM_ID, inputs: spec },
     };
 }
 
+/** The catalog team: the dialog starts runs by this id (PLAN-team-bundle S4.3). */
+const TEAM_ID = '3f6c2a8e-6b1d-4c1e-9a57-0d2f4b8e91c4';
 const FIXED_REALM = { id: 'realm-1', slug: 'acme-prod', name: 'Acme Prod' };
 
 function render_dialog(props: Partial<React.ComponentProps<typeof Run_in_realm_dialog>> = {}) {
@@ -221,7 +223,7 @@ describe('Run_in_realm_dialog — typed team inputs', () => {
         auth_fetch.mockImplementation(async (url: string) => ({
             json: async () => (url === '/v1/runs/enqueue'
                 ? { ok: true, data: { run_id: 'r1' } }
-                : { ok: true, data: { inputs: [
+                : { ok: true, data: { id: TEAM_ID, inputs: [
                     { name: 'index', type: 'boolean', default: false },
                     { name: 'strict', type: 'boolean', default: true, required: true },
                     { name: 'limit', type: 'number' },
@@ -239,6 +241,7 @@ describe('Run_in_realm_dialog — typed team inputs', () => {
         await waitFor(() => expect(auth_fetch.mock.calls.some((c) => c[0] === '/v1/runs/enqueue')).toBe(true));
         const body = JSON.parse(auth_fetch.mock.calls.find((c) => c[0] === '/v1/runs/enqueue')![1].body);
         expect(body.payload.inputs).toEqual({ index: true, strict: true, limit: 3, mode: 'ensure' });
+        expect(body.payload.team_id).toBe(TEAM_ID);
     });
 });
 
