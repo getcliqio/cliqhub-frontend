@@ -22,7 +22,7 @@ import { team_href } from '@/lib/team_page';
 
 /** Core's publish errors name the version that's taken or the current latest. */
 export function version_clash(message: string): string | null {
-	const m = /Version (\d+\.\d+\.\d+\S*) already exists/i.exec(message) ?? /current latest \((\d+\.\d+\.\d+[^)]*)\)/i.exec(message);
+	const m = /Version (\d+\.\d+\.\d+\S*) already exists/i.exec(message) ?? /older than (\d+\.\d+\.\d+[^,\s]*), the highest version/i.exec(message);
 	return m ? m[1] : null;
 }
 
@@ -32,8 +32,21 @@ const BUMPS: Array<{ id: Bump; label: string; hint: string }> = [
 	{ id: 'major', label: 'Major', hint: 'breaking inputs' },
 ];
 
-export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft, on_close, on_published }: {
+/** `a` is higher than `b` (x.y.z; a pre-release sorts below its release). */
+export function version_higher(a: string, b: string): boolean {
+	const parse = (v: string) => { const [core, pre] = v.split('-', 2); return { n: core.split('.').map(Number), pre: pre ?? null }; };
+	const x = parse(a); const y = parse(b);
+	for (let i = 0; i < 3; i++) if ((x.n[i] ?? 0) !== (y.n[i] ?? 0)) return (x.n[i] ?? 0) > (y.n[i] ?? 0);
+	if (x.pre === y.pre) return false;
+	return x.pre === null ? true : y.pre === null ? false : x.pre > y.pre;
+}
+
+const SEMVER = /^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/;
+
+export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft, intent, on_close, on_published }: {
 	team: GeneratedTeam;
+	/** What the identity step chose for a new team: its visibility and first version (PLAN-team-bundle S3). */
+	intent?: { visibility: 'private' | 'public'; version: string } | null;
 	/** What the team looked like when opened (for the change set). */
 	baseline: GeneratedTeam | null;
 	problems: Problem[];
@@ -47,7 +60,8 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 	const auth_fetch = useAuthFetch();
 	const { scopes, user } = useAuth();
 	const fallback = scopes[0]?.slug ?? user?.username ?? '';
-	const [scope, set_scope] = useState(team_scope(team, fallback));
+	// The scope is the team's, fixed at create (PLAN-team-bundle S2/S3): shown, never chosen here.
+	const scope = team_scope(team, fallback);
 	const slug = team_slug(team);
 	const changes = useMemo(() => diff_teams(baseline, team), [baseline, team]);
 	const [loading, set_loading] = useState(true);
@@ -55,6 +69,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 	const [team_id, set_team_id] = useState<string | null>(null);
 	const [installs, set_installs] = useState<Team_install[]>([]);
 	const [bump, set_bump] = useState<Bump>(suggest_bump(changes));
+	const [version_text, set_version_text] = useState('');
 	const [notes, set_notes] = useState(release_notes(changes));
 	// Public (on the marketplace) or private to the scope's members; a new team starts private (PLAN-team-visibility §3.3).
 	const [listed, set_listed] = useState(false);
@@ -71,9 +86,12 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 				const p = await res.json().catch(() => null);
 				if (!live) return;
 				const d = res.ok && p?.ok ? (p.data as Team_page_data) : null;
-				set_current(d?.team.latest_version ?? null);
+				const latest = d?.team.latest_version && d.team.latest_version !== '0.0.0' ? d.team.latest_version : null;
+				set_current(latest);
 				set_team_id(d?.team.id ?? null);
-				if (d) set_listed(d.team.visibility === 'public');
+				// A published team keeps its visibility until changed; a new one starts as the identity step chose.
+				set_listed(d && d.team.visibility !== 'draft' ? d.team.visibility === 'public' : intent?.visibility === 'public');
+				set_version_text(latest ? next_version(latest, suggest_bump(changes)) : intent?.version ?? '0.1.0');
 				const items = d?.installs?.items ?? [];
 				set_installs(items);
 				set_upgrade(new Set(items.map((i) => i.realm_id)));
@@ -85,7 +103,10 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 
 	const errors = problems.filter((p) => p.level === 'error');
 	const warnings = problems.filter((p) => p.level === 'warning');
-	const version = next_version(current, bump);
+	// Every publish names its version (PLAN-team-bundle S2/S3): typed, or filled by patch / minor / major.
+	const version = version_text.trim();
+	const version_problem = !SEMVER.test(version) ? 'A version like 1.2.0.' : current && !version_higher(version, current) ? `Higher than ${current}.` : null;
+	function pick_bump(b: Bump) { set_bump(b); if (current) set_version_text(next_version(current, b)); }
 
 	async function publish() {
 		set_busy(true); set_error(null);
@@ -111,7 +132,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 				const msg = api_message(p, 'Publish failed.');
 				// Version clash: Core says which version is taken / latest — re-base the bump on it.
 				const taken = version_clash(msg);
-				if (taken) { set_current(taken); set_bump('patch'); set_error(`${msg} Pick the next version below and publish again.`); return; }
+				if (taken) { set_current(taken); set_bump('patch'); set_version_text(next_version(taken, 'patch')); set_error(`${msg} Pick the next version below and publish again.`); return; }
 				set_error(msg);
 				return;
 			}
@@ -154,25 +175,24 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 				) : (
 					<>
 						<div className="grid max-h-[70vh] gap-5 overflow-y-auto px-5 py-4">
-							{scopes.length > 1 && !/^@/.test(team.name) ? (
-								<label className="flex items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]">Publish to
-									<select aria-label="Scope" value={scope} onChange={(e) => set_scope(e.target.value)} className="w-[220px] rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 py-1 text-[12.5px] text-[var(--g-ink)]">
-										{scopes.map((s) => <option key={s.slug} value={s.slug}>@{s.slug}</option>)}
-									</select>
-								</label>
-							) : null}
 							<div>
 								<p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Version <span className="normal-case tracking-normal">{loading ? '· checking…' : current ? `· now ${current}` : '· first release'}</span></p>
-								{loading ? null : current ? (
-									<div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Version bump">
-										{BUMPS.map((b) => (
-											<button key={b.id} type="button" role="radio" aria-checked={bump === b.id} onClick={() => set_bump(b.id)} className={`rounded-xl border px-3 py-2.5 text-left ${bump === b.id ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)]'}`}>
-												<b className="text-[13.5px]">{b.label} <span className="g-mono font-normal text-[var(--g-acc)]">{next_version(current, b.id)}</span></b>
-												<span className="block text-[11.5px] text-[var(--g-ink-3)]">{b.hint}{suggest_bump(changes) === b.id ? ' · suggested' : ''}</span>
-											</button>
-										))}
-									</div>
-								) : <p className="g-mono text-[14px] text-[var(--g-acc)]">1.0.0</p>}
+								{loading ? null : (
+									<>
+										<input aria-label="Version" value={version_text} onChange={(e) => set_version_text(e.target.value)} className="g-mono w-[160px] rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2 py-1.5 text-[14px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]" />
+										{version_problem ? <span role="status" className="ml-2 text-[12px] text-[var(--g-bad)]">{version_problem}</span> : null}
+										{current ? (
+											<div className="mt-2 grid grid-cols-3 gap-2" role="radiogroup" aria-label="Version bump">
+												{BUMPS.map((b) => (
+													<button key={b.id} type="button" role="radio" aria-checked={bump === b.id && version === next_version(current, b.id)} onClick={() => pick_bump(b.id)} className={`rounded-xl border px-3 py-2.5 text-left ${bump === b.id && version === next_version(current, b.id) ? 'border-[var(--g-acc)] bg-[var(--g-acc-soft)]' : 'border-[var(--g-line)]'}`}>
+														<b className="text-[13.5px]">{b.label} <span className="g-mono font-normal text-[var(--g-acc)]">{next_version(current, b.id)}</span></b>
+														<span className="block text-[11.5px] text-[var(--g-ink-3)]">{b.hint}{suggest_bump(changes) === b.id ? ' · suggested' : ''}</span>
+													</button>
+												))}
+											</div>
+										) : null}
+									</>
+								)}
 							</div>
 							<div>
 								<div className="mb-2 flex items-center"><p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Release notes</p>
@@ -210,7 +230,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 						<div className="flex items-center gap-2 border-t border-[var(--g-line)] px-5 py-3.5">
 							<p className="text-[12px] text-[var(--g-ink-3)]">{errors.length ? 'Fix the errors above to publish.' : `Publishing makes ${version} installable.`}</p>
 							<button type="button" onClick={on_close} disabled={busy} className="ml-auto rounded-md border border-[var(--g-line)] px-3 py-1.5 text-[13px]">Cancel</button>
-							<button type="button" onClick={() => void publish()} disabled={busy || loading || errors.length > 0} className="rounded-md bg-[var(--g-acc)] px-4 py-1.5 text-[13px] font-semibold text-[var(--g-on-acc)] disabled:opacity-40">{busy ? 'Publishing…' : `Publish ${version}`}</button>
+							<button type="button" onClick={() => void publish()} disabled={busy || loading || errors.length > 0 || Boolean(version_problem)} className="rounded-md bg-[var(--g-acc)] px-4 py-1.5 text-[13px] font-semibold text-[var(--g-on-acc)] disabled:opacity-40">{busy ? 'Publishing…' : `Publish ${version}`}</button>
 						</div>
 					</>
 				)}

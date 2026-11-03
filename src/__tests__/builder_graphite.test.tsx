@@ -63,6 +63,7 @@ function route_fetch(handlers: Record<string, Handler> = {}) {
 		if (u === '/v1/teams/update') return new Response(JSON.stringify({ ok: true, data: { id: body.team_id } }));
 		if (u === '/v1/teams/get_by_id') return new Response(JSON.stringify({ ok: true, data: { name: 'feature-dev', ...detail_of(TEAM) } }));
 		if (u === '/v1/team_page/get') return new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
+		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: false, error: { message: 'Team not found' } }), { status: 404 });
 		return new Response(JSON.stringify({ ok: true, data: {} }));
 	});
 	return calls;
@@ -90,6 +91,16 @@ async function open_draft() {
 	return calls;
 }
 
+/** The identity step (PLAN-team-bundle S3): pick the scope, set the name when given, wait for the name check, make the team. */
+async function confirm_identity(name?: string) {
+	const dlg = await screen.findByRole('dialog', { name: 'Make the team' });
+	fireEvent.change(within(dlg).getByLabelText('Scope'), { target: { value: 'measureone' } });
+	if (name !== undefined) fireEvent.change(within(dlg).getByLabelText('Name'), { target: { value: name } });
+	await within(dlg).findByText(/is free\./);
+	fireEvent.click(within(dlg).getByRole('button', { name: /^Make @/ }));
+	await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Make the team' })).toBeNull());
+}
+
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('start helpers', () => {
@@ -104,7 +115,8 @@ describe('start helpers', () => {
 	});
 	it('import_text reads YAML (with line errors) and builder JSON', () => {
 		const ok = import_text('name: "@acme/my-team"\nphases:\n  - name: a\n    type: standard\n');
-		expect('team' in ok && ok.team.name).toBe('my-team');
+		// the scope is kept: the identity step offers it (PLAN-team-bundle S3)
+		expect('team' in ok && ok.team.name).toBe('@acme/my-team');
 		const bad = import_text('name: x\nphases:\n  - name: a\n   type: standard\n');
 		expect('error' in bad && bad.error).toMatch(/^Line \d+/);
 		const json = import_text(JSON.stringify(TEAM));
@@ -140,6 +152,7 @@ describe('Graphite builder — start screen', () => {
 		route_fetch();
 		render_at();
 		fireEvent.click(await screen.findByText('Blank canvas'));
+		await confirm_identity('blank-team');
 		expect(await screen.findByText('+ Add the first phase')).toBeTruthy();
 		fireEvent.click(screen.getByTestId('tile-agent'));
 		expect(outline()).toEqual(['agent']);
@@ -149,15 +162,24 @@ describe('Graphite builder — start screen', () => {
 		expect(within(screen.getByRole('region', { name: 'Runs after' })).getByText('agent')).toBeTruthy();
 	});
 
-	it('unnamed blank teams do not autosave until named', async () => {
-		vi.useFakeTimers({ shouldAdvanceTime: true });
-		const calls = route_fetch();
+	it('a new team needs a scope and a free name before it is made (no silent default scope)', async () => {
+		const calls = route_fetch({ '/v1/teams/get_versions': (b) => (b.name === 'taken' ? { body: { ok: true, data: { version: '1.0.0' } } } : null) });
 		render_at();
 		fireEvent.click(await screen.findByText('Blank canvas'));
-		fireEvent.click(screen.getByTestId('tile-agent'));
-		await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
-		expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(false);
-		expect(screen.getByText('name it to save')).toBeTruthy();
+		const dlg = await screen.findByRole('dialog', { name: 'Make the team' });
+		const make = () => within(dlg).getByRole('button', { name: /^Make @/ }) as HTMLButtonElement;
+		expect((within(dlg).getByLabelText('Scope') as HTMLSelectElement).value).toBe('');
+		fireEvent.change(within(dlg).getByLabelText('Name'), { target: { value: 'taken' } });
+		expect(make().disabled).toBe(true);
+		fireEvent.change(within(dlg).getByLabelText('Scope'), { target: { value: 'measureone' } });
+		expect(await within(dlg).findByText('@measureone/taken is taken.')).toBeTruthy();
+		expect(make().disabled).toBe(true);
+		fireEvent.change(within(dlg).getByLabelText('Name'), { target: { value: 'fresh' } });
+		await within(dlg).findByText('@measureone/fresh is free.');
+		expect((within(dlg).getByLabelText('First version') as HTMLInputElement).value).toBe('0.1.0');
+		fireEvent.click(make());
+		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));
+		expect(calls.find((c) => c.url === '/v1/teams/create')!.body).toMatchObject({ name: 'fresh', scope: 'measureone', visibility: 'private' });
 	});
 
 	it('template → canvas; autosave creates the team (with its draft), then uploads only what changed', async () => {
@@ -165,6 +187,7 @@ describe('Graphite builder — start screen', () => {
 		const calls = route_fetch();
 		render_at();
 		fireEvent.click((await screen.findAllByTestId('template'))[2]);
+		await confirm_identity();
 		await screen.findByTestId('canvas');
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));
@@ -198,6 +221,7 @@ describe('Graphite builder — start screen', () => {
 		expect(screen.getByRole('alert').textContent).toMatch(/Line \d+/);
 		fireEvent.change(box, { target: { value: 'name: imported\nphases:\n  - name: one\n    type: standard\n  - name: two\n    type: standard\n    depends_on: [one]\n' } });
 		fireEvent.click(screen.getByText('Open in builder'));
+		await confirm_identity();
 		await screen.findByTestId('canvas');
 		expect(outline()).toEqual(['one', 'two']);
 	});
@@ -215,6 +239,7 @@ describe('Graphite builder — start screen', () => {
 		expect(await screen.findByTestId('generating')).toBeTruthy();
 		expect(screen.getByText('Designing phases')).toBeTruthy();
 		await act(async () => { await vi.advanceTimersByTimeAsync(3200); });
+		await confirm_identity();
 		await screen.findByTestId('canvas');
 		expect(outline()).toEqual(['design', 'build', 'check']);
 		expect(calls.find((c) => c.body.action === 'generate')!.body.intent).toBe('Ticket to PR');
@@ -515,16 +540,16 @@ describe('Graphite builder — layout', () => {
 });
 
 describe('Graphite builder — publish', () => {
-	it('first publish: creates the team (with its draft), uploads the files into that draft, publishes it as 1.0.0', async () => {
-		const calls = route_fetch({ '/v1/teams/publish': () => ({ body: { ok: true, data: { version: '1.0.0' } } }) });
+	it('first publish: creates the team (with its draft), uploads the files into that draft, publishes it as 0.1.0', async () => {
+		const calls = route_fetch({ '/v1/teams/publish': () => ({ body: { ok: true, data: { version: '0.1.0' } } }) });
 		render_at('/builder?draft=d1');
 		await screen.findByTestId('canvas');
 		fireEvent.click(screen.getByText('Publish…'));
 		const dlg = await screen.findByRole('dialog', { name: 'Publish team' });
-		expect(await within(dlg).findByText('Publish 1.0.0')).toBeTruthy();
+		expect(await within(dlg).findByText('Publish 0.1.0')).toBeTruthy();
 		expect(calls.filter((c) => c.url === '/v1/team_page/get')).toHaveLength(1);
 		expect(calls.find((c) => c.url === '/v1/team_page/get')!.body).toMatchObject({ scope: 'measureone', name: 'feature-dev', view: 'installs' });
-		fireEvent.click(within(dlg).getByText('Publish 1.0.0'));
+		fireEvent.click(within(dlg).getByText('Publish 0.1.0'));
 		expect(await screen.findByTestId('publish-done')).toBeTruthy();
 		const steps = ['/v1/teams/create', '/v1/teams/files/upload', '/v1/teams/publish'];
 		expect(calls.map((c) => c.url).filter((u) => steps.includes(u))).toEqual(steps);
@@ -534,7 +559,7 @@ describe('Graphite builder — publish', () => {
 		expect(up.files['team.yml']).toContain('name: feature-dev');
 		const body = calls.find((c) => c.url === '/v1/teams/publish')!.body;
 		// A new team starts private (PLAN-team-visibility §3.3); publish names the draft Core created with the team.
-		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '1.0.0', visibility: 'private', version_id: 'v-seed' });
+		expect(body).toMatchObject({ name: 'feature-dev', scope: 'measureone', version: '0.1.0', visibility: 'private', version_id: 'v-seed' });
 		expect(body.files).toBeUndefined();
 	});
 
@@ -580,21 +605,39 @@ describe('Graphite builder — publish', () => {
 		await screen.findByTestId('canvas');
 		fireEvent.click(screen.getByText('Publish…'));
 		const dlg = await screen.findByRole('dialog', { name: 'Publish team' });
-		fireEvent.click(await within(dlg).findByText('Publish 1.0.0'));
+		fireEvent.click(await within(dlg).findByText('Publish 0.1.0'));
 		expect((await within(dlg).findByRole('alert')).textContent).toMatch(/Version 1\.0\.0 already exists.*next version/);
 		expect(within(dlg).getByRole('radio', { name: /Patch/ })).toHaveAttribute('aria-checked', 'true');
 		fireEvent.click(within(dlg).getByText('Publish 1.0.1'));
 		await screen.findByTestId('publish-done');
 		const bodies = calls.filter((c) => c.url === '/v1/teams/publish').map((c) => c.body);
-		expect(bodies[0]).toMatchObject({ version: '1.0.0' });
+		expect(bodies[0]).toMatchObject({ version: '0.1.0' });
 		// every publish names its version (PLAN-team-bundle S2)
 		expect(bodies[1]).toMatchObject({ version: '1.0.1' });
 		expect(bodies[1]).not.toHaveProperty('bump');
 	});
 
+	it('the version is a field: typed or filled by patch / minor / major, and it must be higher (PLAN-team-bundle S3)', async () => {
+		route_fetch({ '/v1/team_page/get': () => ({ body: { ok: true, data: { team: { id: 'd1', latest_version: '1.2.0', status: 'published', listed: true, visibility: 'private' }, installs: { items: [], not_installed: [], realms_checked: 0, realms_total: 0 }, counts: {}, view: 'installs', partial: false } } }) });
+		render_at('/builder?draft=d1');
+		await screen.findByTestId('canvas');
+		fireEvent.click(screen.getByText('Publish…'));
+		const dlg = await screen.findByRole('dialog', { name: 'Publish team' });
+		const field = await within(dlg).findByLabelText('Version') as HTMLInputElement;
+		fireEvent.click(within(dlg).getByRole('radio', { name: /Major/ }));
+		expect(field.value).toBe('2.0.0');
+		fireEvent.change(field, { target: { value: '1.2.0' } });
+		expect(within(dlg).getByText('Higher than 1.2.0.')).toBeTruthy();
+		expect((within(dlg).getByText('Publish 1.2.0') as HTMLButtonElement).disabled).toBe(true);
+		fireEvent.change(field, { target: { value: '1.5.0' } });
+		expect((within(dlg).getByText('Publish 1.5.0') as HTMLButtonElement).disabled).toBe(false);
+		// no scope picker: the team's scope is fixed
+		expect(within(dlg).queryByLabelText('Scope')).toBeNull();
+	});
+
 	it('version_clash reads both Core messages', () => {
 		expect(version_clash('Version 1.4.2 already exists')).toBe('1.4.2');
-		expect(version_clash('Version 1.0.0 is older than the current latest (2.1.0). Publish a version >= 2.1.0.')).toBe('2.1.0');
+		expect(version_clash('Version 1.0.0 is older than 2.1.0, the highest version so far (withdrawn ones count): publish a higher version (cliq team publish <dir> --version x.y.z)')).toBe('2.1.0');
 		expect(version_clash('Package too large')).toBeNull();
 	});
 
@@ -606,7 +649,7 @@ describe('Graphite builder — publish', () => {
 		fireEvent.click(screen.getByLabelText('Remove command 1'));
 		fireEvent.click(screen.getByText('Publish…'));
 		const dlg = await screen.findByRole('dialog', { name: 'Publish team' });
-		const btn = await within(dlg).findByText('Publish 1.0.0');
+		const btn = await within(dlg).findByText('Publish 0.1.0');
 		expect((btn as HTMLButtonElement).disabled).toBe(true);
 		expect(within(dlg).getByText('Fix the errors above to publish.')).toBeTruthy();
 	});
@@ -644,6 +687,7 @@ describe('Graphite builder — cancel', () => {
 		const calls = route_fetch();
 		render_at();
 		fireEvent.click((await screen.findAllByTestId('template'))[2]);
+		await confirm_identity();
 		await screen.findByTestId('canvas');
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('draft=draft-9'));
@@ -705,6 +749,7 @@ describe('Graphite builder — cancel', () => {
 		const calls = route_fetch({ '/v1/teams/delete': () => ({ status: 500, body: { ok: false, error: { message: 'Core is down' } } }) });
 		render_at();
 		fireEvent.click((await screen.findAllByTestId('template'))[2]);
+		await confirm_identity();
 		await screen.findByTestId('canvas');
 		await act(async () => { await vi.advanceTimersByTimeAsync(1700); });
 		await waitFor(() => expect(calls.some((c) => c.url === '/v1/teams/create')).toBe(true));

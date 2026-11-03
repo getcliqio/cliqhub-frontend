@@ -33,6 +33,7 @@ import { Gb_ai_panel } from '@/components/gbuilder/gb_ai_panel';
 import { Gb_yaml } from '@/components/gbuilder/gb_yaml';
 import { Gb_start } from '@/components/gbuilder/gb_start';
 import { Gb_publish } from '@/components/gbuilder/gb_publish';
+import { Gb_identity, type Team_identity } from '@/components/gbuilder/gb_identity';
 import { Problems_list } from '@/components/gbuilder/gb_problems';
 import { Shape_palette } from '@/components/gbuilder/gb_palette';
 import { Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
@@ -266,12 +267,18 @@ function download(name: string, text: string) {
 	window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** The identity step's prefill from a team (an imported team.yml names its scope and version). */
+function identity_from(t: GeneratedTeam): Partial<Team_identity> {
+	const m = /^@([^/]+)\/(.+)$/.exec(t.name.trim());
+	return { scope: m?.[1], name: m ? m[2] : t.name, version: t.version || undefined };
+}
+
 export function Gb_app() {
 	const state = useBuilder();
 	const dispatch = useBuilderDispatch();
 	const overview = use_overview();
 	const navigate = useNavigate();
-	const [search] = useSearchParams();
+	const [search, set_search_params] = useSearchParams();
 	const team = state.team;
 	const selected = state.selected_phase;
 	const [center, set_center] = useState<Center>('canvas');
@@ -293,6 +300,10 @@ export function Gb_app() {
 	const auth_fetch = useAuthFetch();
 	const { user, scopes } = useAuth();
 	const [cancel, set_cancel] = useState<{ step: 'confirm' | 'busy' } | { step: 'error'; message: string } | null>(null);
+	/** A new team waiting for its identity (PLAN-team-bundle S3): scope, name, visibility, first version. */
+	const [pending, set_pending] = useState<{ team: GeneratedTeam; busy: boolean; error: string | null } | null>(null);
+	/** What the identity step chose; the first publish uses its visibility and version. */
+	const [intent, set_intent] = useState<{ visibility: 'private' | 'public'; version: string } | null>(null);
 
 	// First team to appear (draft / edit / fork restore) is the baseline for Changes and for Cancel.
 	useEffect(() => { if (team && !baseline.set) set_baseline({ set: true, team, draft_id: state.draft_id, is_new: search.get('fork') === '1' }); }, [team, baseline.set, state.draft_id, search]);
@@ -389,11 +400,30 @@ export function Gb_app() {
 		return () => window.removeEventListener('keydown', on);
 	}, [change, close_panel, dispatch, open_ai, publishing]);
 
+	// A new team asks for its identity first; making it reserves the name (PLAN-team-bundle S3, §2.9).
 	function start(t: GeneratedTeam) {
-		set_baseline({ set: true, team: null, draft_id: null, is_new: true });
-		set_auto_create(true);
-		dispatch({ type: 'SET_TEAM', team: t, validation: null });
-		dispatch({ type: 'SET_DIRTY', dirty: true });
+		set_pending({ team: t, busy: false, error: null });
+	}
+	async function make_team(id: Team_identity) {
+		if (!pending) return;
+		set_pending({ ...pending, busy: true, error: null });
+		try {
+			const res = await auth_fetch('/v1/teams/create', { method: 'POST', body: JSON.stringify({ name: id.name, scope: id.scope, description: pending.team.description || '', visibility: id.visibility }) });
+			const p = await res.json().catch(() => null);
+			if (!res.ok || !p?.ok || !p.data?.id) { set_pending({ ...pending, busy: false, error: api_message(p, 'Couldn’t make the team.') }); return; }
+			const t = { ...pending.team, name: `@${id.scope}/${id.name}`, version: id.version };
+			set_pending(null);
+			set_intent({ visibility: id.visibility, version: id.version });
+			set_baseline({ set: true, team: null, draft_id: null, is_new: true });
+			set_auto_create(true);
+			dispatch({ type: 'SET_TEAM', team: t, validation: null });
+			dispatch({ type: 'SET_DRAFT_ID', draft_id: String(p.data.id), version_id: p.data.version_id ? String(p.data.version_id) : null });
+			dispatch({ type: 'SET_DIRTY', dirty: true });
+			const new_id = String(p.data.id);
+			set_search_params((s) => { const n = new URLSearchParams(s); n.set('draft', new_id); return n; }, { replace: true });
+		} catch {
+			set_pending({ ...pending, busy: false, error: 'Network error — the team wasn’t made.' });
+		}
 	}
 
 	// By content: a draft can be restored twice, giving an equal team in a new object.
@@ -444,6 +474,16 @@ export function Gb_app() {
 	return (
 		<Graphite_shell data={overview.data} title={title}>
 			<div className="theme-graphite g-app flex h-full min-h-0 flex-col" data-testid="builder">
+				{pending ? (
+					<Gb_identity
+						title="Make the team"
+						initial={identity_from(pending.team)}
+						busy={pending.busy}
+						error={pending.error}
+						on_confirm={(id) => void make_team(id)}
+						on_cancel={() => set_pending(null)}
+					/>
+				) : null}
 				{!team ? <Gb_start on_team={start} overview={overview} /> : (<>
 					{/* The team, as on its page: breadcrumb, avatar · name · @scope · status, then its actions. */}
 					<header className="shrink-0 border-b border-[var(--g-line)] px-6 pb-3 pt-3.5" data-testid="team-header">
@@ -533,7 +573,7 @@ export function Gb_app() {
 					</div>
 				</>)}
 				{publishing && team ? (
-					<Gb_publish team={team} baseline={baseline.team} problems={problems} draft_team_id={state.draft_id} save_draft={(adopt) => save.write({ adopt, wait: true })} on_close={() => set_publishing(false)} on_published={(_v, published) => { set_baseline({ set: true, team, draft_id: published.team_id, is_new: false }); dispatch({ type: 'SET_DRAFT_ID', draft_id: published.team_id, version_id: null }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
+					<Gb_publish team={team} baseline={baseline.team} problems={problems} draft_team_id={state.draft_id} intent={intent} save_draft={(adopt) => save.write({ adopt, wait: true })} on_close={() => set_publishing(false)} on_published={(_v, published) => { set_baseline({ set: true, team, draft_id: published.team_id, is_new: false }); dispatch({ type: 'SET_DRAFT_ID', draft_id: published.team_id, version_id: null }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
 				) : null}
 			</div>
 		</Graphite_shell>

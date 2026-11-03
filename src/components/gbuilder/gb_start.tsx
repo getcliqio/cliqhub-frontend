@@ -42,11 +42,11 @@ export function with_starter_roles(team: GeneratedTeam): GeneratedTeam {
 	return add.length ? { ...team, roles: [...team.roles, ...add] } : team;
 }
 
-/** parse_yaml keeps the base identity; for a new team take name/version from the text (scope dropped — you publish to yours). */
+/** parse_yaml keeps the base identity; for a new team take name/version from the text (`@scope/name` kept: the identity step offers that scope). */
 function with_identity(text: string, team: GeneratedTeam): GeneratedTeam {
 	try {
 		const doc = yaml.load(text) as { name?: unknown; version?: unknown } | null;
-		const name = typeof doc?.name === 'string' && doc.name.trim() ? doc.name.trim().replace(/^@[^/]+\//, '') : team.name;
+		const name = typeof doc?.name === 'string' && doc.name.trim() ? doc.name.trim() : team.name;
 		const version = typeof doc?.version === 'string' ? doc.version : team.version;
 		return { ...team, name, version };
 	} catch { return team; }
@@ -56,7 +56,9 @@ export function template_team(i: number): GeneratedTeam | null {
 	const t = SAMPLE_TEAMS[i];
 	const r = parse_yaml(t.yaml, empty_builder_team());
 	if (!r.ok) return null;
-	return with_starter_roles(with_identity(t.yaml, { ...r.team, description: r.team.description || t.description }));
+	// A template's own scope (@cliq) isn't yours: only its name is kept.
+	const team = with_identity(t.yaml, { ...r.team, description: r.team.description || t.description });
+	return with_starter_roles({ ...team, name: team.name.replace(/^@[^/]+\//, '') });
 }
 
 /** team.yml text or builder JSON → a team, or an error to show. */
