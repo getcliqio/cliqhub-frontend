@@ -586,7 +586,7 @@ export function Gb_app() {
 					</div>
 				</>)}
 				{publishing && team ? (
-					<Gb_publish team={team} baseline={baseline.team} problems={problems} draft_team_id={state.draft_id} intent={intent} save_draft={(adopt) => save.write({ adopt, wait: true })} on_close={() => set_publishing(false)} on_published={(_v, published) => { set_baseline({ set: true, team, draft_id: published.team_id, is_new: false }); dispatch({ type: 'SET_DRAFT_ID', draft_id: published.team_id, version_id: null }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null } }); }} />
+					<Gb_publish team={team} baseline={baseline.team} problems={problems} draft_team_id={state.draft_id} intent={intent} save_draft={(adopt) => save.write({ adopt, wait: true })} on_close={() => set_publishing(false)} on_published={(v, published, visibility) => { set_baseline({ set: true, team, draft_id: published.team_id, is_new: false }); dispatch({ type: 'SET_DRAFT_ID', draft_id: published.team_id, version_id: null }); dispatch({ type: 'SET_SOURCE', source: { published: true, copy: null, based_on: v, visibility } }); }} />
 				) : null}
 			</div>
 		</Graphite_shell>

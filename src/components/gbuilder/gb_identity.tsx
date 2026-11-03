@@ -43,7 +43,8 @@ export function Gb_identity({ title, initial, busy, error, ask_version = true, o
 	const { scopes } = useAuth();
 	// Only a scope the person can use is preselected, never a silent default.
 	const [scope, set_scope] = useState(initial.scope && scopes.some((s) => s.slug === initial.scope) ? initial.scope : '');
-	const [name, set_name] = useState(slug_of(initial.name ?? ''));
+	// A blank team has no name yet: start empty rather than suggest one.
+	const [name, set_name] = useState(slug_of(initial.name ?? '') === 'untitled-team' ? '' : slug_of(initial.name ?? ''));
 	const [visibility, set_visibility] = useState<'private' | 'public'>(initial.visibility ?? 'private');
 	const [version, set_version] = useState(initial.version && SEMVER.test(initial.version) ? initial.version : '0.1.0');
 	const [check, set_check] = useState<Name_check>('idle');
@@ -69,7 +70,7 @@ export function Gb_identity({ title, initial, busy, error, ask_version = true, o
 			<form
 				role="dialog" aria-modal="true" aria-label={title}
 				onSubmit={(e) => { e.preventDefault(); if (ready) on_confirm({ scope, name, visibility, version }); }}
-				className="w-full max-w-[520px] rounded-2xl border border-[var(--g-line)] bg-[var(--g-panel)] shadow-[var(--g-pop-shadow)]"
+				className="max-h-[calc(100vh-2rem)] w-full max-w-[520px] overflow-y-auto rounded-2xl border border-[var(--g-line)] bg-[var(--g-panel)] shadow-[var(--g-pop-shadow)]"
 			>
 				<div className="border-b border-[var(--g-line)] px-5 py-3.5"><b className="text-[16px]">{title}</b>
 					<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">The scope and name are fixed once the team is made.</p></div>

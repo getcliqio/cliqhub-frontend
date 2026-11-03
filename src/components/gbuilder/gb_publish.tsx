@@ -55,7 +55,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 	/** Save the builder's draft now (into `adopt`, a team this dialog found or created). */
 	save_draft: (adopt?: Draft_ref | { team_id: string; version_id: null }) => Promise<Draft_ref | string>;
 	on_close: () => void;
-	on_published: (version: string, draft: Draft_ref) => void;
+	on_published: (version: string, draft: Draft_ref, visibility: 'public' | 'private') => void;
 }) {
 	const auth_fetch = useAuthFetch();
 	const { scopes, user } = useAuth();
@@ -144,7 +144,7 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 				(r?.ok && rp?.ok ? upgraded : failed).push(i.realm_slug);
 			}
 			set_done({ version: v, upgraded, failed });
-			on_published(v, draft);
+			on_published(v, draft, listed ? 'public' : 'private');
 		} catch {
 			set_error('Network error — try again.');
 		} finally {

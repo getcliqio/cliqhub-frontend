@@ -432,7 +432,7 @@ export function Component() {
 								<button type="button" onClick={() => set_confirm('drop')} className="rounded-md px-2.5 py-1 text-[12px] text-[var(--g-bad)] hover:bg-[var(--g-bad-soft)]">Throw away my changes…</button>
 							)}
 						</div>
-						<p className="mt-2 text-[11px] text-[var(--g-ink-3)]">Starting again replaces the unpublished changes once you edit; Discard in the Builder puts them back. Throwing them away can’t be undone.</p>
+						<p className="mt-2 text-[11px] text-[var(--g-ink-3)]">Starting again throws your draft away first (a team has one draft). Neither can be undone.</p>
 					</div>
 				) : null}
 				{install_open && team?.scope ? (
