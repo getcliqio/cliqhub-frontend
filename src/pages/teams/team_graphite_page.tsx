@@ -303,6 +303,17 @@ export function Component() {
 		if (team.draft_saved_at) set_edit_choice((v) => !v);
 		else navigate(edit_href(false));
 	}
+	/** One draft per team (PLAN-team-bundle §2.9): starting again throws the open draft away first. */
+	async function start_again() {
+		if (!team) return;
+		if (team.draft_version_id) {
+			set_busy('again'); set_msg(null);
+			const res = await post('/v1/teams/update', { team_id: team.id, save_as: 'discard', version_id: team.draft_version_id });
+			set_busy(null);
+			if (!res.ok) { set_msg({ tone: 'bad', text: res.error }); return; }
+		}
+		navigate(edit_href(true));
+	}
 
 	/** Fork: a copy of this version in your scope (`<name>-fork`, or the next free name), then open it. */
 	async function fork() {
@@ -411,13 +422,13 @@ export function Component() {
 				{edit_choice && team?.draft_saved_at ? (
 					<div role="dialog" aria-label="Edit" className="absolute right-0 top-full z-40 mt-1.5 w-[300px] rounded-[10px] border border-[var(--g-line-strong)] bg-[var(--g-pop)] p-3.5 text-left shadow-[var(--g-pop-shadow)]">
 						<p className="text-[13px] font-semibold">You have unpublished changes</p>
-						<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Saved {relative_time(Date.parse(team.draft_saved_at))}. Pick up where you left off, or start again from {team.latest_version ? `v${team.latest_version}` : 'the published team'}.</p>
+						<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">Your draft{team.draft_based_on ? ` is based on v${team.draft_based_on} and was` : ' was'} saved {relative_time(Date.parse(team.draft_saved_at))}. Pick up where you left off, or start again from {team.latest_version ? `v${team.latest_version}` : 'the published team'} (your draft is thrown away).</p>
 						<div className="mt-3 flex flex-col gap-1.5">
 							<button type="button" onClick={() => navigate(edit_href(false))} className={`${PRIMARY} justify-center`}>Resume my changes</button>
-							<button type="button" onClick={() => navigate(edit_href(true))} className={`${ROW_ACTION_CLS} justify-center`}>Start from {team.latest_version ? `v${team.latest_version}` : 'published'}</button>
+							<button type="button" disabled={busy !== null} onClick={() => void start_again()} className={`${ROW_ACTION_CLS} justify-center`}>{busy === 'again' ? 'Throwing away…' : `Start again from ${team.latest_version ? `v${team.latest_version}` : 'published'}`}</button>
 							{confirm === 'drop' ? (
 								<span className="flex gap-1.5">
-									<button type="button" disabled={busy !== null} onClick={() => void act('drop', '/v1/teams/update', { team_id: team.id, save_as: 'discard' }, 'Unpublished changes thrown away.', () => { set_edit_choice(false); void read.reload(); })} className={`${DANGER_BTN} flex-1`}>{busy === 'drop' ? 'Throwing away…' : 'Throw them away'}</button>
+									<button type="button" disabled={busy !== null} onClick={() => void act('drop', '/v1/teams/update', { team_id: team.id, save_as: 'discard', version_id: team.draft_version_id }, 'Unpublished changes thrown away.', () => { set_edit_choice(false); void read.reload(); })} className={`${DANGER_BTN} flex-1`}>{busy === 'drop' ? 'Throwing away…' : 'Throw them away'}</button>
 									<button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Keep</button>
 								</span>
 							) : (

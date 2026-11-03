@@ -121,6 +121,10 @@ export interface Builder_source {
 	copy: { version_id: string; saved_at: string | null; files: Record<string, string> } | null;
 	/** The version the team was opened at; a new draft starts from it and keeps the files the builder doesn't edit. */
 	base_version_id?: string | null;
+	/** The published version the draft is based on ("Draft · based on 1.2.0", PLAN-team-bundle S3). */
+	based_on?: string | null;
+	/** The team's visibility as published (`draft` until its first publish). */
+	visibility?: string | null;
 }
 
 export const INITIAL_STATE: BuilderState = {

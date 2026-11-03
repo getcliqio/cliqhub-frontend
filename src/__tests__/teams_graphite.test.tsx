@@ -389,23 +389,27 @@ describe('Team page', () => {
 		fireEvent.click(await screen.findByRole('button', { name: /^Edit$/ }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/builder?draft=tid&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
 		first.unmount();
-		route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString() } }));
+		const calls = route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString(), draft_based_on: '1.3.0', draft_version_id: 'v-open' } }));
 		render_at('/teams/measureone/feature-dev-js');
 		expect(await screen.findByTestId('unpublished-pill')).toBeInTheDocument();
 		fireEvent.click(screen.getByRole('button', { name: /^Edit$/ }));
 		const dlg = screen.getByRole('dialog', { name: 'Edit' });
-		fireEvent.click(within(dlg).getByRole('button', { name: 'Start from v1.4.2' }));
+		expect(within(dlg).getByText(/based on v1\.3\.0/)).toBeInTheDocument();
+		// one draft per team (PLAN-team-bundle S3): starting again throws the open one away first
+		fireEvent.click(within(dlg).getByRole('button', { name: 'Start again from v1.4.2' }));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/builder?draft=tid&fresh=1&from=%2Fteams%2Fmeasureone%2Ffeature-dev-js'));
+		expect(calls.find((c) => c.url === '/v1/teams/update')?.body).toEqual({ team_id: 'tid', save_as: 'discard', version_id: 'v-open' });
 	});
 
 	it('unpublished changes can be thrown away from the Edit menu (confirmed first)', async () => {
-		const calls = route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString() } }));
+		const calls = route_fetch(() => ({ team: { ...HEADER, draft_saved_at: new Date(Date.now() - 60_000).toISOString(), draft_version_id: 'v-open' } }));
 		render_at('/teams/measureone/feature-dev-js');
 		fireEvent.click(await screen.findByRole('button', { name: /^Edit$/ }));
 		const dlg = screen.getByRole('dialog', { name: 'Edit' });
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Throw away my changes…' }));
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Throw them away' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/update')?.body).toEqual({ team_id: 'tid', save_as: 'discard' }));
+		// Core needs the draft's id to discard it (since S1.3c)
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/teams/update')?.body).toEqual({ team_id: 'tid', save_as: 'discard', version_id: 'v-open' }));
 		expect(await screen.findByText('Unpublished changes thrown away.')).toBeInTheDocument();
 	});
 

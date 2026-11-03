@@ -90,6 +90,10 @@ export interface Team_header {
 	can_toggle_listing: boolean;
 	/** When this editor's team has an unpublished working copy (ISO); null when there is none. */
 	draft_saved_at?: string | null;
+	/** The published version the open draft was started from (PLAN-team-bundle S3). */
+	draft_based_on?: string | null;
+	/** The open draft's id: what Discard and "start again" throw away. */
+	draft_version_id?: string | null;
 }
 
 export interface Team_run_row {

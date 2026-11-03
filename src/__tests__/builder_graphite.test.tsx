@@ -163,7 +163,7 @@ describe('Graphite builder — start screen', () => {
 	});
 
 	it('a new team needs a scope and a free name before it is made (no silent default scope)', async () => {
-		const calls = route_fetch({ '/v1/teams/get_versions': (b) => (b.name === 'taken' ? { body: { ok: true, data: { version: '1.0.0' } } } : null) });
+		const calls = route_fetch({ '/v1/teams/get_versions': (b) => (b.name === 'taken' ? { body: { ok: true, data: { version: '1.0.0' } } } : undefined) });
 		render_at();
 		fireEvent.click(await screen.findByText('Blank canvas'));
 		const dlg = await screen.findByRole('dialog', { name: 'Make the team' });
@@ -784,7 +784,7 @@ describe('Graphite builder — files the builder does not edit (S1.4c)', () => {
 		await waitFor(() => expect(uploads(calls)).toHaveLength(1));
 		expect(calls.find((c) => c.url === '/v1/teams/files/get')!.body).toEqual({ team_id: 'd1', version_id: 'v-pub', content: true });
 		const up = uploads(calls)[0];
-		expect(up.payload).toEqual({ team_id: 'd1' });
+		expect(up.payload).toEqual({ team_id: 'd1', based_on_version_id: 'v-pub' });
 		expect(Object.keys(up.files).sort()).toEqual(['README.md', 'dependencies.yml', 'roles/build.md', 'roles/design.md', 'team.yml']);
 		expect(up.files['README.md']).toBe('# feature-dev');
 		expect(up.files['dependencies.yml']).toBe('- name: jq\n');
@@ -813,7 +813,7 @@ describe('Graphite builder — files the builder does not edit (S1.4c)', () => {
 		await waitFor(() => expect(uploads(calls)).toHaveLength(2));
 		// the draft published was v-draft: the next one reads its files to start from
 		expect(calls.filter((c) => c.url === '/v1/teams/files/get').at(-1)!.body).toEqual({ team_id: 'd1', version_id: 'v-draft', content: true });
-		expect(uploads(calls)[1].payload).toEqual({ team_id: 'd1' });
+		expect(uploads(calls)[1].payload).toEqual({ team_id: 'd1', based_on_version_id: 'v-draft' });
 		expect(Object.keys(uploads(calls)[1].files)).toEqual(expect.arrayContaining(['README.md', 'dependencies.yml', 'team.yml']));
 	});
 });

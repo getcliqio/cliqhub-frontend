@@ -129,7 +129,8 @@ function use_autosave(team: GeneratedTeam | null, dirty: boolean, ids: { team_id
 			const now = team_files(t);
 			const { upload, remove } = draft_changes(held.current.files, now);
 			if (!vid || Object.keys(upload).length) {
-				const up = await post('/v1/teams/files/upload', upload_form(vid ? upload : { ...carried, ...now }, { team_id: id, ...(vid ? { version_id: vid } : {}) }));
+				// A new draft records the version it starts from (PLAN-team-bundle S3: "Draft · based on 1.2.0").
+				const up = await post('/v1/teams/files/upload', upload_form(vid ? upload : { ...carried, ...now }, { team_id: id, ...(vid ? { version_id: vid } : from ? { based_on_version_id: from } : {}) }));
 				if (!up.ok || !up.p.data?.version_id) return fail(api_message(up.p, 'Couldn’t save the draft.'));
 				vid = String(up.p.data.version_id);
 			}
@@ -247,6 +248,17 @@ function Changes_view({ baseline, team, on_revert }: { baseline: GeneratedTeam |
 				)}
 			</div>
 		</div>
+	);
+}
+
+/** The header's identity (PLAN-team-bundle S3): the visibility, and what the draft is based on. */
+function Identity_chips({ visibility, based_on, published }: { visibility: string | null; based_on: string | null; published: boolean }) {
+	const chip = 'g-mono whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] bg-[var(--g-soft)] text-[var(--g-ink-3)]';
+	return (
+		<span className="inline-flex gap-1.5" data-testid="identity-chips">
+			{visibility ? <span className={chip}>{visibility === 'public' ? 'Public' : 'Private'}</span> : null}
+			<span className={chip}>{based_on ? `Draft · based on ${based_on}` : published ? 'Draft' : 'Draft · not published yet'}</span>
+		</span>
 	);
 }
 
@@ -499,6 +511,7 @@ export function Gb_app() {
 									<h1 className="truncate text-[20px] font-semibold tracking-tight">{title}</h1>
 									<span className="g-mono rounded border border-[var(--g-line-2)] bg-[var(--g-soft)] px-1.5 py-px text-[11px] text-[var(--g-ink-2)]">{label}</span>
 									<Status_badge status={state.source?.published ? 'published' : 'draft'} />
+									<Identity_chips visibility={state.source?.visibility && state.source.visibility !== 'draft' ? state.source.visibility : intent?.visibility ?? null} based_on={state.source?.based_on ?? null} published={Boolean(state.source?.published)} />
 								</div>
 								{team.description ? <p className="mt-0.5 truncate text-[12.5px] text-[var(--g-ink-3)]">{team.description}</p> : null}
 							</div>
