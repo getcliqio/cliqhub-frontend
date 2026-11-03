@@ -72,11 +72,11 @@ interface Install_failure { realm_id: string; realm_slug: string | null; error: 
  * failing realm marked, so the selection can be fixed and tried again.
  */
 export function Install_popover({
-	label, scope, name, realms, installed, on_close, on_done,
+	label, team_id, realms, installed, on_close, on_done,
 }: {
 	label: string;
-	scope: string;
-	name: string;
+	/** The catalog team (installs name it by id, PLAN-team-bundle S4.1). */
+	team_id: string;
 	realms: Array<{ id: string; slug: string; name: string; org_slug: string }>;
 	installed: Set<string>;
 	on_close: () => void;
@@ -110,7 +110,7 @@ export function Install_popover({
 		if (!realm_ids.length) return;
 		set_busy(true); set_err(null); set_failed(new Map());
 		try {
-			const res = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ scope, slug: name, realm_ids }) });
+			const res = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ team_id, realm_ids }) });
 			const payload = await res.json().catch(() => null);
 			if (!res.ok || !payload?.ok) {
 				const details = payload?.error?.details as { failed?: Install_failure[]; installed?: Array<{ realm_id: string }> } | undefined;
@@ -278,17 +278,16 @@ export function Component() {
 													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}{t.visibility === 'private' || t.visibility === 'public' ? <span className="ml-1.5 rounded bg-[var(--g-soft)] px-1.5 py-px font-sans text-[11px] text-[var(--g-ink-3)]" data-testid="list-visibility">{t.visibility === 'public' ? 'Public' : 'Private'}</span> : null}</td>
 													<td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
 														<span className="relative inline-flex items-center gap-1.5">
-															{t.status === 'published' && t.scope ? (
+															{t.status === 'published' && t.id ? (
 																<button type="button" aria-expanded={open_install === key} onClick={() => set_open_install(open_install === key ? null : key)} className={ROW_ACTION_CLS}>Install ▾</button>
 															) : null}
 															{t.list_kind === 'added' ? (
 																<button type="button" disabled={removing === `@${t.scope}/${t.name}`} onClick={() => void remove_from_list(t)} className={ROW_ACTION_CLS}>Remove</button>
 															) : null}
-															{open_install === key && t.scope ? (
+															{open_install === key && t.id ? (
 																<Install_popover
 																	label={`@${t.scope}/${t.name}`}
-																	scope={t.scope}
-																	name={t.name}
+																	team_id={t.id}
 																	realms={realms}
 																	installed={new Set(t.installs.map((i) => i.realm_id))}
 																	on_close={() => set_open_install(null)}

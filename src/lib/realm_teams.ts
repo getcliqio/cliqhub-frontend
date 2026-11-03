@@ -1,5 +1,9 @@
 /** Realm › Teams — types for `POST /v1/realm_teams/get`. */
 export interface Realm_team_row {
+	/** Catalog team id (published teams; null for local installs): what realms/add_team and remove_team take. */
+	team_id: string | null;
+	/** The id of the version this realm runs (null when not on its list). */
+	version_id: string | null;
 	scope: string | null;
 	slug: string;
 	label: string;

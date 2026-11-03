@@ -252,7 +252,7 @@ describe('Build › Teams list', () => {
 		expect(within(dlg).queryByRole('checkbox', { name: /prod-us/ })).toBeNull();
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: /sandbox/ }));
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
-		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-sand'] }));
+		await waitFor(() => expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ team_id: 't1', realm_ids: ['r-sand'] }));
 		expect(await screen.findByText(/added to sandbox/)).toBeInTheDocument();
 	});
 
@@ -601,7 +601,7 @@ describe('Team page', () => {
 		expect(dz).toHaveTextContent('Uninstall from prod-us');
 		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall…' }));
 		fireEvent.click(within(dz).getByRole('button', { name: 'Uninstall feature-dev-js' }));
-		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/remove_team').map((c) => c.body)).toEqual([{ realm_id: 'r-prod', scope: 'measureone', slug: 'feature-dev-js' }]));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/remove_team').map((c) => c.body)).toEqual([{ realm_id: 'r-prod', team_id: 'tid' }]));
 		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe('/o/measureone/realms/prod-us/teams'));
 	});
 
@@ -675,7 +675,7 @@ describe('Team page', () => {
 		const busy = await within(dlg).findByRole('button', { name: 'Installing…' });
 		expect(busy).toBeDisabled();
 		expect(within(dlg).getByRole('checkbox', { name: /staging/ })).toBeDisabled();
-		expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-stage', 'r-prod'] });
+		expect(calls.find((c) => c.url === '/v1/realms/add_team')?.body).toEqual({ team_id: 'tid', realm_ids: ['r-stage', 'r-prod'] });
 		release(new Response(JSON.stringify({ ok: true, data: { installed: [{ realm_id: 'r-stage', realm_slug: 'staging' }, { realm_id: 'r-prod', realm_slug: 'prod-us' }] } })));
 		expect(await screen.findByText(/added to staging, prod-us/)).toBeInTheDocument();
 		expect(screen.queryByRole('dialog', { name: /Install/ })).toBeNull();
@@ -706,7 +706,7 @@ describe('Team page', () => {
 		fireEvent.click(within(dlg).getByRole('checkbox', { name: /prod-us/ }));
 		expect(within(screen.getByTestId('install-realm-prod-us')).queryByText(/only view/)).toBeNull();
 		fireEvent.click(within(dlg).getByRole('button', { name: 'Install' }));
-		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/add_team').at(-1)?.body).toEqual({ scope: 'measureone', slug: 'feature-dev-js', realm_ids: ['r-stage'] }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/add_team').at(-1)?.body).toEqual({ team_id: 'tid', realm_ids: ['r-stage'] }));
 		expect(await screen.findByText(/added to staging/)).toBeInTheDocument();
 	});
 

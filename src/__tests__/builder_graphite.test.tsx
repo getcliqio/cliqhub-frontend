@@ -570,7 +570,7 @@ describe('Graphite builder — publish', () => {
 		];
 		const calls = route_fetch({
 			'/v1/team_page/get': () => ({ body: { ok: true, data: { team: { id: 'd1', latest_version: '1.0.0', status: 'published', listed: true, visibility: 'public' }, installs: { items: installs, not_installed: [], realms_checked: 2, realms_total: 2 }, counts: {}, view: 'installs', partial: false } } }),
-			'/v1/teams/publish': () => ({ body: { ok: true, data: { version: '1.1.0' } } }),
+			'/v1/teams/publish': () => ({ body: { ok: true, data: { id: 'd1', version: '1.1.0', version_id: 'v-110' } } }),
 			'/v1/realms/add_team': () => ({ body: { ok: true, data: {} } }),
 		});
 		render_at('/builder?draft=d1');
@@ -593,8 +593,8 @@ describe('Graphite builder — publish', () => {
 		expect(uploads(calls).at(-1)!.payload).toEqual({ team_id: 'd1' });
 		expect(calls.find((c) => c.url === '/v1/teams/publish')!.body).toMatchObject({ version: '1.1.0', visibility: 'private', version_id: 'v-draft' });
 		const adds = calls.filter((c) => c.url === '/v1/realms/add_team');
-		expect(adds.map((a) => a.body.realm_id)).toEqual(['r1']);
-		expect(adds[0].body).toMatchObject({ scope: 'measureone', slug: 'feature-dev', version: '1.1.0' });
+		// The realm moves to the version just published, by id (PLAN-team-bundle S4.1).
+		expect(adds.map((a) => a.body)).toEqual([{ realm_id: 'r1', team_id: 'd1', version_id: 'v-110' }]);
 		expect(screen.getByText('Upgraded prod-us.')).toBeTruthy();
 	});
 

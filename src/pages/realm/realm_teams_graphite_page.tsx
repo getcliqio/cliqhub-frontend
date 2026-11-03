@@ -2,8 +2,9 @@
  * Realm › Teams (Graphite). Read: one `POST /v1/realm_teams/get` per page
  * (BFF: realm gate, Core's realm team list, latest versions).
  * The realm owns each team's version: a row shows it, "↑ newer" when a later one is published, and whether the
- * daemons online now are on it. Writes are single Core routes: `/v1/realms/add_team` (add; with `version` to move
- * the realm to it — the same version again re-installs it on the online daemons) and `/v1/realms/remove_team`.
+ * daemons online now are on it. Writes are single Core routes, naming the team and version by id (PLAN-team-bundle
+ * S4.1): `/v1/realms/add_team` (add; with `version_id` to move the realm to it — the same version again re-installs
+ * it on the online daemons) and `/v1/realms/remove_team`.
  * The version picker reads `/v1/teams/get_versions`.
  * "Install a team" searches the realm's org's Teams list (`/v1/team_list/get`, All): a realm installs
  * only from it (PLAN-team-visibility §3.4).
@@ -69,7 +70,7 @@ function Row_menu({ row, base, on_remove, on_add, manage }: { row: Realm_team_ro
 					<Link role="menuitem" to={`${base}/runs?team=${encodeURIComponent(row.scope ? `${row.scope}/${row.slug}` : row.slug)}`} className={item}>Runs of this team</Link>
 					{row.in_team_list
 						? <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_remove(); }} className={`${item} ${GATED} text-[var(--g-bad)]`}>Remove from realm…</button>
-						: <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_add(); }} className={`${item} ${GATED}`}>Add to realm’s team list</button>}
+						: row.team_id ? <button type="button" role="menuitem" disabled={!manage.ok} title={manage.reason ?? undefined} onClick={() => { set_open(false); on_add(); }} className={`${item} ${GATED}`}>Add to realm’s team list</button> : null}
 				</div>
 			) : null}
 		</div>
@@ -81,7 +82,7 @@ function Install_drawer({ realm_id, org_id, org_slug, installed, on_close, on_in
 	const auth_fetch = useAuthFetch();
 	const post = use_post();
 	const [q, set_q] = useState('');
-	const [rows, set_rows] = useState<Array<{ name: string; scope: string | null; description: string; latest_version: string }>>([]);
+	const [rows, set_rows] = useState<Array<{ id: string | null; name: string; scope: string | null; description: string; latest_version: string }>>([]);
 	const [total, set_total] = useState(0);
 	const [loading, set_loading] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
@@ -108,11 +109,11 @@ function Install_drawer({ realm_id, org_id, org_slug, installed, on_close, on_in
 	}
 	useEffect(() => { const t = setTimeout(() => void load(q.trim(), 0), q ? 250 : 0); return () => clearTimeout(t); }, [q, org_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-	async function install(scope: string, name: string) {
+	async function install(team_id: string, scope: string, name: string) {
 		const key = `${scope}/${name}`;
 		set_busy(key);
 		set_msg(null);
-		const res = await post('/v1/realms/add_team', { realm_id, scope, slug: name });
+		const res = await post('/v1/realms/add_team', { realm_id, team_id });
 		set_busy(null);
 		if (!res.ok) { set_msg({ tone: 'bad', text: res.error }); return; }
 		set_msg({ tone: 'ok', text: `@${key} added at its latest version. Online daemons install it now; others when they connect.` });
@@ -144,7 +145,7 @@ function Install_drawer({ realm_id, org_id, org_slug, installed, on_close, on_in
 								</div>
 								{have
 									? <span className="shrink-0 text-[12px] text-[var(--g-ink-3)]">In this realm</span>
-									: <button type="button" disabled={!t.scope || busy === key} onClick={() => t.scope && void install(t.scope, t.name)} className={ROW_ACTION_CLS}>{busy === key ? 'Adding…' : 'Add to realm'}</button>}
+									: <button type="button" disabled={!t.id || !t.scope || busy === key} onClick={() => t.id && t.scope && void install(t.id, t.scope, t.name)} className={ROW_ACTION_CLS}>{busy === key ? 'Adding…' : 'Add to realm'}</button>}
 							</li>
 						);
 					})}
@@ -160,7 +161,7 @@ function Install_drawer({ realm_id, org_id, org_slug, installed, on_close, on_in
 
 /** Update / Change version: the versions of a team with their notes; the realm moves to the one picked. */
 function Version_drawer({ realm_id, row, on_close, on_done }: { realm_id: string; row: Realm_team_row; on_close: () => void; on_done: (text: string) => Promise<void> }) {
-	const versions = use_bff_read<{ versions?: Array<{ version: string; changelog: string | null; published_at: number | null }> }>(
+	const versions = use_bff_read<{ versions?: Array<{ id: string; version: string; changelog: string | null; published_at: number | null }> }>(
 		'/v1/teams/get_versions', { name: row.slug, scope: row.scope }, { fallback_error: 'Could not load versions.' },
 	);
 	const list = versions.data?.versions ?? [];
@@ -171,10 +172,12 @@ function Version_drawer({ realm_id, row, on_close, on_done }: { realm_id: string
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
 	async function save() {
-		if (!chosen || !row.scope) return;
+		// The realm's own version is on the row; another one is picked from the list (each with its id).
+		const version_id = chosen === row.version ? row.version_id : list.find((v) => v.version === chosen)?.id;
+		if (!chosen || !row.team_id || !version_id) return;
 		set_busy(true);
 		set_error(null);
-		const res = await post('/v1/realms/add_team', { realm_id, scope: row.scope, slug: row.slug, version: chosen });
+		const res = await post('/v1/realms/add_team', { realm_id, team_id: row.team_id, version_id });
 		set_busy(false);
 		if (!res.ok) { set_error(res.error); return; }
 		await on_done(chosen === row.version ? `${row.label} ${chosen} re-installed on the online daemons.` : `${row.label}: this realm now runs ${chosen}. Online daemons install it now; others when they connect.`);
@@ -273,11 +276,11 @@ export function Component() {
 	const to = data ? Math.min(data.offset + data.limit, data.total) : 0;
 
 	async function act(row: Realm_team_row, kind: 'add' | 'sync' | 'remove') {
-		if (!realm_id || !row.scope) return;
+		if (!realm_id || !row.team_id) return;
 		set_busy(`${kind}:${row.label}`);
 		set_msg(null);
 		// `sync` = the realm's version again: Core re-installs it on the online daemons ("Update them").
-		const body = { realm_id, scope: row.scope, slug: row.slug, ...(kind === 'sync' && row.version ? { version: row.version } : {}) };
+		const body = { realm_id, team_id: row.team_id, ...(kind === 'sync' && row.version_id ? { version_id: row.version_id } : {}) };
 		const res = await post(kind === 'remove' ? '/v1/realms/remove_team' : '/v1/realms/add_team', body);
 		set_busy(null);
 		set_confirm_remove(null);
@@ -354,7 +357,7 @@ export function Component() {
 																{r.scope ? <Row_open to={`${base}/teams/${encodeURIComponent(r.scope)}/${encodeURIComponent(r.slug)}${r.version ? `?v=${encodeURIComponent(r.version)}` : ''}`} label={`Open ${r.label}`} /> : null}
 																{r.scope && r.in_team_list ? <button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={() => set_running(r)} className={`${ROW_ACTION_CLS} ${GATED} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
 																{r.in_team_list && r.scope && r.version ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => set_versioning(r)} className={`${ROW_ACTION_CLS} ${GATED}`}>{r.update_available ? 'Update…' : 'Change version…'}</button> : null}
-																{!r.in_team_list && r.scope ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'add')} className={`${ROW_ACTION_CLS} ${GATED}`}>Add to realm</button> : null}
+																{!r.in_team_list && r.team_id ? <button type="button" disabled={busy !== null || !manage.ok} title={manage.reason ?? undefined} onClick={() => void act(r, 'add')} className={`${ROW_ACTION_CLS} ${GATED}`}>Add to realm</button> : null}
 																<Row_menu row={r} base={base} on_remove={() => set_confirm_remove(r.label)} on_add={() => void act(r, 'add')} manage={manage} />
 															</span>
 														)}

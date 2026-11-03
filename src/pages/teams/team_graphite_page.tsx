@@ -436,7 +436,7 @@ export function Component() {
 					</div>
 				) : null}
 				{install_open && team?.scope ? (
-					<Install_popover label={label} scope={team.scope} name={team.name} realms={realms} installed={new Set((o?.installs ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(false)} on_done={(m) => { set_install_open(false); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
+					<Install_popover label={label} team_id={team.id} realms={realms} installed={new Set((o?.installs ?? []).map((i) => i.realm_id))} on_close={() => set_install_open(false)} on_done={(m) => { set_install_open(false); set_msg({ tone: 'ok', text: m }); void read.reload(); }} />
 				) : null}
 			</div>}
 		</div>
@@ -611,7 +611,7 @@ export function Component() {
 			<div className="border-t border-[var(--g-line)]">
 				{row(`Uninstall from ${sidebar_realm.name || realm_slug}`, 'Takes the team off this realm’s team list; its daemons uninstall it. Runs already finished stay. Other realms keep it.',
 					confirm === 'uninstall'
-						? <><button type="button" disabled={busy !== null} onClick={() => void act('uninstall', '/v1/realms/remove_team', { realm_id: sidebar_realm.id, scope: team.scope, slug: team.name }, `${label} uninstalled from ${sidebar_realm.name || realm_slug}.`, () => navigate(`/o/${realm_org}/realms/${realm_slug}/teams`, { replace: true }))} className={DANGER_BTN}>{busy === 'uninstall' ? 'Uninstalling…' : `Uninstall ${team.name}`}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
+						? <><button type="button" disabled={busy !== null} onClick={() => void act('uninstall', '/v1/realms/remove_team', { realm_id: sidebar_realm.id, team_id: team.id }, `${label} uninstalled from ${sidebar_realm.name || realm_slug}.`, () => navigate(`/o/${realm_org}/realms/${realm_slug}/teams`, { replace: true }))} className={DANGER_BTN}>{busy === 'uninstall' ? 'Uninstalling…' : `Uninstall ${team.name}`}</button><button type="button" onClick={() => set_confirm(null)} className={ROW_ACTION_CLS}>Cancel</button></>
 						: <button type="button" disabled={!realm_manage.ok} title={realm_manage.reason ?? undefined} onClick={() => set_confirm('uninstall')} className="rounded-md border border-[var(--g-bad-line)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-bad)] disabled:opacity-45">Uninstall…</button>,
 					true)}
 			</div>

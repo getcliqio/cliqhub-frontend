@@ -6,7 +6,7 @@
  * Read: one `POST /v1/team_page/get {view: 'installs'}` (current version +
  * where it's installed; 404 = first publish).
  * Writes: the builder's draft is saved (`teams/create` on a first publish, then its changed files), then
- * `/v1/teams/publish` publishes that draft, then `/v1/realms/add_team` per ticked realm.
+ * `/v1/teams/publish` publishes that draft, then `/v1/realms/add_team` (the team and new version by id) per ticked realm.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
@@ -137,9 +137,13 @@ export function Gb_publish({ team, baseline, problems, draft_team_id, save_draft
 				return;
 			}
 			const v = String(p.data?.version ?? version);
+			// The realms move to the version just published, by id (PLAN-team-bundle S4.1).
+			const published = { team_id: String(p.data?.id ?? ''), version_id: String(p.data?.version_id ?? '') };
 			const upgraded: string[] = []; const failed: string[] = [];
 			for (const i of installs.filter((x) => upgrade.has(x.realm_id))) {
-				const r = await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ realm_id: i.realm_id, scope, slug, version: v }) }).catch(() => null);
+				const r = published.team_id && published.version_id
+					? await auth_fetch('/v1/realms/add_team', { method: 'POST', body: JSON.stringify({ realm_id: i.realm_id, ...published }) }).catch(() => null)
+					: null;
 				const rp = r ? await r.json().catch(() => null) : null;
 				(r?.ok && rp?.ok ? upgraded : failed).push(i.realm_slug);
 			}

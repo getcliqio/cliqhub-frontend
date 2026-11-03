@@ -18,9 +18,10 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 	return {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
-			{ scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [], description: 'Builds JS features', use_when: ['You have a Jira ticket for a JS change', 'A failing JS test to fix'], not_for: ['Python services'], required_inputs: [{ name: 'ticket', description: 'The Jira key' }] },
-			{ scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'], description: 'Matches ledgers', use_when: [], not_for: [], required_inputs: [] },
-			{ scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [], description: null, use_when: [], not_for: [], required_inputs: [] },
+			{ team_id: 't-fdj', version_id: 'v-fdj-241', scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [], description: 'Builds JS features', use_when: ['You have a Jira ticket for a JS change', 'A failing JS test to fix'], not_for: ['Python services'], required_inputs: [{ name: 'ticket', description: 'The Jira key' }] },
+			{ team_id: 't-recon', version_id: 'v-recon-083', scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'], description: 'Matches ledgers', use_when: [], not_for: [], required_inputs: [] },
+			// Published, but only on a daemon (installed with the CLI): not on the realm's list yet.
+			{ team_id: 't-scratch', version_id: null, scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [], description: null, use_when: [], not_for: [], required_inputs: [] },
 		],
 		total: 3, offset: 0, limit: 25,
 		...over,
@@ -37,8 +38,8 @@ function route_fetch() {
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
 		if (u === '/v1/realm_teams/get') return new Response(JSON.stringify({ ok: true, data: teams() }));
-		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: true, data: { name: body.name, scope: body.scope, version: '2.5.0', versions: [{ version: '2.5.0', changelog: 'Faster PRs', published_at: Date.now() }, { version: '2.4.1', changelog: null, published_at: null }] } }));
-		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: { items: [{ name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
+		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: true, data: { name: body.name, scope: body.scope, version: '2.5.0', versions: [{ id: 'v-fdj-250', version: '2.5.0', changelog: 'Faster PRs', published_at: Date.now() }, { id: 'v-fdj-241', version: '2.4.1', changelog: null, published_at: null }] } }));
+		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: { items: [{ id: 't-hello', name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { id: 't-fdj', name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
 		return new Response(JSON.stringify({ ok: true, team_list: [] }));
 	});
 	return calls;
@@ -122,7 +123,7 @@ describe('Realm teams page', () => {
 		expect(within(drawer).getByRole('radio', { name: /2\.5\.0/ })).toBeChecked();
 		expect(within(drawer).getByText('Faster PRs')).toBeInTheDocument();
 		fireEvent.click(within(drawer).getByRole('button', { name: 'Update realm to 2.5.0' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'cliq', slug: 'feature-dev-js', version: '2.5.0' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', team_id: 't-fdj', version_id: 'v-fdj-250' } }));
 		// The newer badge opens the same picker.
 		fireEvent.click(await within(screen.getByTestId('team-@cliq/feature-dev-js')).findByTestId('update-badge'));
 		expect(await screen.findByRole('dialog', { name: 'Version of @cliq/feature-dev-js' })).toBeInTheDocument();
@@ -131,7 +132,7 @@ describe('Realm teams page', () => {
 		const recon = screen.getByTestId('team-@measureone/recon');
 		expect(within(recon).getByRole('button', { name: 'Change version…' })).toBeInTheDocument();
 		fireEvent.click(within(recon).getByRole('button', { name: 'Update them' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'measureone', slug: 'recon', version: '0.8.3' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', team_id: 't-recon', version_id: 'v-recon-083' } }));
 	});
 
 	it('remove (confirmed) and add are single Core writes', async () => {
@@ -141,9 +142,9 @@ describe('Realm teams page', () => {
 		fireEvent.click(within(screen.getByTestId('team-@measureone/recon')).getByRole('button', { name: 'More for @measureone/recon' }));
 		fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from realm…' }));
 		fireEvent.click(within(screen.getByTestId('team-@measureone/recon')).getByRole('button', { name: 'Remove' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/remove_team', body: { realm_id: 'r-prod', scope: 'measureone', slug: 'recon' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/remove_team', body: { realm_id: 'r-prod', team_id: 't-recon' } }));
 		fireEvent.click(within(screen.getByTestId('team-@sapan/scratch')).getByRole('button', { name: 'Add to realm' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'sapan', slug: 'scratch' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', team_id: 't-scratch' } }));
 		// No second "install" call from the browser — Core's add_team installs.
 		expect(calls.some((c) => c.url === '/v1/teams/install' || c.url === '/v1/teams/uninstall')).toBe(false);
 	});
@@ -171,7 +172,7 @@ describe('Realm teams page', () => {
 		// Already in the realm → no add button.
 		expect(within(within(dlg).getByText(/@cliq\/feature-dev-js/).closest('li')!).getByText('In this realm')).toBeInTheDocument();
 		fireEvent.click(within(within(dlg).getByText(/@cliq\/hello-world/).closest('li')!).getByRole('button', { name: 'Add to realm' }));
-		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', scope: 'cliq', slug: 'hello-world' } }));
+		await waitFor(() => expect(calls).toContainEqual({ url: '/v1/realms/add_team', body: { realm_id: 'r-prod', team_id: 't-hello' } }));
 		expect(await within(dlg).findByRole('status')).toHaveTextContent('@cliq/hello-world added');
 	});
 
