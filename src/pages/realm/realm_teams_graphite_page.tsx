@@ -245,8 +245,8 @@ export function Component() {
 	const [search, set_search] = useSearchParams();
 	const q = search.get('q') ?? '';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
-	/** Tree (the default, S9: the installed tree) or flat; a search shows the matching rows, flat. */
-	const view: 'tree' | 'flat' = search.get('view') === 'flat' ? 'flat' : 'tree';
+	/** Flat (the default) or the installed tree (S9, `?view=tree`); a search shows the matching rows, flat. */
+	const view: 'tree' | 'flat' = search.get('view') === 'tree' ? 'tree' : 'flat';
 	const [draft, set_draft] = useState(q);
 	const [running, set_running] = useState<Realm_team_row | null>(null);
 	const [versioning, set_versioning] = useState<Realm_team_row | null>(null);
@@ -316,7 +316,7 @@ export function Component() {
 					<>
 						<div className="flex flex-wrap items-center gap-2">
 							<input aria-label="Search teams" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search by name or what you want to do…" className={`${INPUT} w-[300px]`} />
-							{!q ? <View_switch view={view} on_change={(v) => set_param('view', v === 'tree' ? null : v, true)} /> : null}
+							{!q ? <View_switch view={view} on_change={(v) => set_param('view', v === 'flat' ? null : v, true)} /> : null}
 							<button type="button" disabled={!realm_id || !manage.ok} title={manage.reason ?? undefined} onClick={() => set_installing(true)} className={`${PRIMARY} ${GATED} ml-auto`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</button>
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}

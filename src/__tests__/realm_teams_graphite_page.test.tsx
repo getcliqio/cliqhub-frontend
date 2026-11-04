@@ -1,6 +1,6 @@
 /** Graphite realm Teams — one BFF read per page; add/update/remove are single Core writes. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, cleanup } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { overview_for_realm } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
@@ -109,7 +109,7 @@ describe('Realm teams page', () => {
 		expect(await screen.findByTestId('where')).toHaveTextContent(href.split('?')[0]);
 	});
 
-	it('the installed tree by default when the BFF sends one (S9); a search shows the matching rows, flat', async () => {
+	it('flat by default; ?view=tree shows the installed tree (S9); a search shows the matching rows, flat', async () => {
 		route_fetch();
 		const fetch_mock = vi.mocked(globalThis.fetch);
 		const routed = fetch_mock.getMockImplementation()!;
@@ -120,10 +120,14 @@ describe('Realm teams page', () => {
 			? new Response(JSON.stringify({ ok: true, data: { ...teams(), tree } }))
 			: routed(url, init)));
 		render_page();
+		await screen.findByTestId('team-@cliq/feature-dev-js');
+		expect(screen.queryByTestId('tree-@cliq/feature-dev-js')).toBeNull();
+		cleanup();
+		render_page('/o/measureone/realms/prod-us/teams?view=tree');
 		const top = await screen.findByTestId('tree-@cliq/feature-dev-js');
 		expect(within(top).getByRole('link', { name: 'recon' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/measureone/recon');
 		expect(screen.queryByRole('table')).toBeNull();
-		render_page('/o/measureone/realms/prod-us/teams?q=recon');
+		render_page('/o/measureone/realms/prod-us/teams?view=tree&q=recon');
 		expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
 	});
 

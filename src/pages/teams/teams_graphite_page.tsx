@@ -173,8 +173,8 @@ export function Component() {
 	const [search, set_search] = useSearchParams();
 	const status: Status = search.get('status') === 'draft' ? 'draft' : search.get('status') === 'published' ? 'published' : 'all';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
-	/** Tree (the default, S9) or the flat list with Uses / Used by. */
-	const view: 'tree' | 'flat' = search.get('view') === 'flat' ? 'flat' : 'tree';
+	/** The flat list with Uses / Used by (the default), or the tree (S9, `?view=tree`). */
+	const view: 'tree' | 'flat' = search.get('view') === 'tree' ? 'tree' : 'flat';
 	const [open_install, set_open_install] = useState<string | null>(null);
 	const [msg, set_msg] = useState<string | null>(null);
 	const [err, set_err] = useState<string | null>(null);
@@ -246,7 +246,7 @@ export function Component() {
 								</button>
 							))}
 						</div>
-						<View_switch view={view} on_change={(v) => set_param('view', v === 'tree' ? null : v, true)} />
+						<View_switch view={view} on_change={(v) => set_param('view', v === 'flat' ? null : v, true)} />
 						{msg ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]">{msg}</p> : null}
 						{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
 						<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">

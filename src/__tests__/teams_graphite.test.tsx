@@ -256,7 +256,7 @@ describe('Build › Teams list', () => {
 		expect(await screen.findByText(/added to sandbox/)).toBeInTheDocument();
 	});
 
-	it('a tree by default when the BFF sends one (S9): top-level teams, sub-teams nested with versions and markers; Flat shows the list with Uses · Used by', async () => {
+	it('flat by default with Uses · Used by; Tree shows top-level teams, sub-teams nested with versions and markers (S9)', async () => {
 		const calls = route_fetch();
 		const base = list_data();
 		const node = (label: string, version: string | null, over: Record<string, unknown> = {}, children: unknown[] = []) => ({ label, team_id: label, version, pinned: false, may_call: false, used_by: 0, cycle: false, children, ...over });
@@ -270,6 +270,12 @@ describe('Build › Teams list', () => {
 			? (calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }), new Response(JSON.stringify({ ok: true, data: { ...base, tree, items: [{ ...base.items[0]!, uses: ['@measureone/leaf'], used_by: [] }] } })))
 			: routed(url, init)));
 		render_at('/teams?org=measureone');
+		const row = await screen.findByTestId('team-measureone/feature-dev-js');
+		expect(within(row).getByTestId('uses-cell')).toHaveTextContent('uses @measureone/leaf');
+		expect(screen.queryByTestId('tree-@measureone/feature-dev-js')).toBeNull();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Tree' }));
+		expect(await screen.findByTestId('loc')).toHaveTextContent('view=tree');
 		const top = await screen.findByTestId('tree-@measureone/feature-dev-js');
 		expect(within(top).getByRole('link', { name: 'feature-dev-js' })).toHaveAttribute('href', '/teams/measureone/feature-dev-js?org=measureone');
 		const leaf = within(top).getByTestId('tree-@measureone/feature-dev-js>@measureone/leaf#0');
@@ -282,9 +288,8 @@ describe('Build › Teams list', () => {
 		expect(screen.queryByRole('table')).toBeNull();
 
 		fireEvent.click(screen.getByRole('button', { name: 'Flat' }));
-		expect(await screen.findByTestId('loc')).toHaveTextContent('view=flat');
-		const row = await screen.findByTestId('team-measureone/feature-dev-js');
-		expect(within(row).getByTestId('uses-cell')).toHaveTextContent('uses @measureone/leaf');
+		await waitFor(() => expect(screen.getByTestId('loc')).not.toHaveTextContent('view='));
+		expect(await screen.findByTestId('team-measureone/feature-dev-js')).toBeInTheDocument();
 	});
 
 	it('only a team the org added has Remove; it takes it off the Teams list (PLAN-team-visibility §3.6)', async () => {

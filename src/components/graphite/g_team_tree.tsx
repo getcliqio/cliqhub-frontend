@@ -79,7 +79,7 @@ export function View_switch({ view, on_change }: { view: 'tree' | 'flat'; on_cha
 	);
 	return (
 		<div role="group" aria-label="View" className="flex w-fit gap-0.5 self-end rounded-lg bg-[var(--g-soft)] p-0.5">
-			{btn('tree', 'Tree')}{btn('flat', 'Flat')}
+			{btn('flat', 'Flat')}{btn('tree', 'Tree')}
 		</div>
 	);
 }
