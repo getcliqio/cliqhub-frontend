@@ -55,6 +55,27 @@ export interface Team_list_row {
 	/** Why it is on the org's Teams list (All): own, cliq or added — only an added team can be removed. */
 	list_kind?: 'own' | 'cliq' | 'added' | null;
 	installs: Team_install[];
+	/** The teams its latest version calls (`@scope/slug`; flat view, S9). */
+	uses?: string[];
+	/** The listed teams calling it (flat view, S9). */
+	used_by?: string[];
+}
+
+/** One node of a team tree, as the BFF builds it (PLAN-team-bundle S9). */
+export interface Team_tree_node {
+	/** `@scope/slug`. */
+	label: string;
+	team_id: string | null;
+	/** The pin, the installed version, or the latest known; null when unknown. */
+	version: string | null;
+	pinned: boolean;
+	/** From a dynamic map's `teams:` list. */
+	may_call: boolean;
+	/** How many listed teams call it. */
+	used_by: number;
+	/** Already on the path above: not opened again. */
+	cycle: boolean;
+	children: Team_tree_node[];
 }
 
 export interface Team_list_data {
@@ -68,6 +89,8 @@ export interface Team_list_data {
 	realms_checked: number;
 	realms_total: number;
 	partial: boolean;
+	/** The whole list as a tree (S9; older BFFs omit it). */
+	tree?: Team_tree_node[];
 }
 
 export interface Team_release { version: string; changelog: string | null; published_at: number | null; is_latest: boolean }
@@ -125,7 +148,7 @@ export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
 	view: Team_view;
-	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team> };
+	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team>; /** Teams whose latest version calls this one, that you can see (S9). */ used_by?: Array<{ id: string; label: string; latest_version: string }> };
 	workflow?: {
 		phases: Team_phase[];
 		support: Team_phase[];

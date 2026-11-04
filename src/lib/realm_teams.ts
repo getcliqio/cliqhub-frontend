@@ -1,4 +1,5 @@
 /** Realm › Teams — types for `POST /v1/realm_teams/get`. */
+import type { Team_tree_node } from '@/lib/team_page';
 export interface Realm_team_row {
 	/** Catalog team id (published teams; null for local installs): what realms/add_team and remove_team take. */
 	team_id: string | null;
@@ -16,6 +17,9 @@ export interface Realm_team_row {
 	online_daemon_count: number;
 	/** Online daemons not on the realm's version (older, or not installed); null when not on the realm's list. */
 	online_stale: number | null;
+	/** The teams it calls directly, as installed; the listed teams calling it (flat view, S9). */
+	uses?: string[];
+	used_by?: string[];
 	/** Unpinned sub-teams with a newer published version than the realm installed (PLAN-team-bundle S8); null off the list. */
 	sub_team_updates?: number | null;
 	last_run_at: number | null;
@@ -37,6 +41,8 @@ export interface Realm_teams_data {
 	total: number;
 	offset: number;
 	limit: number;
+	/** The realm's teams as their installed tree (S9); null/absent when the BFF couldn't build it. */
+	tree?: Team_tree_node[] | null;
 }
 
 /** "3/3", "1/3", "0/3" — or "no daemons online". */

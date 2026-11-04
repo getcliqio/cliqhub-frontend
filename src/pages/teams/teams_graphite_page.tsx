@@ -19,6 +19,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { avatar_outline } from '@/lib/admin';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { Team_tree, Uses_cell, View_switch } from '@/components/graphite/g_team_tree';
 
 export const TEAM_LIST_PAGE_SIZE = 25;
 
@@ -172,6 +173,8 @@ export function Component() {
 	const [search, set_search] = useSearchParams();
 	const status: Status = search.get('status') === 'draft' ? 'draft' : search.get('status') === 'published' ? 'published' : 'all';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
+	/** Tree (the default, S9) or the flat list with Uses / Used by. */
+	const view: 'tree' | 'flat' = search.get('view') === 'flat' ? 'flat' : 'tree';
 	const [open_install, set_open_install] = useState<string | null>(null);
 	const [msg, set_msg] = useState<string | null>(null);
 	const [err, set_err] = useState<string | null>(null);
@@ -218,6 +221,9 @@ export function Component() {
 	const to = data ? Math.min(data.offset + data.limit, data.total) : 0;
 	const org_q = view_org ? `?org=${encodeURIComponent(view_org.slug)}` : '';
 	const href = (t: Team_list_row) => `${team_href(t.scope, t.name)}${org_q}`;
+	/** A tree node's page: `@scope/slug` → the team page. */
+	const tree_href = (label: string) => { const [sc, nm] = label.replace(/^@/, '').split('/'); return nm ? `${team_href(sc, nm)}${org_q}` : null; };
+	const show_tree = view === 'tree' && Boolean(data?.tree);
 
 	return (
 		<Graphite_shell data={overview.data} title="Teams">
@@ -240,22 +246,25 @@ export function Component() {
 								</button>
 							))}
 						</div>
+						<View_switch view={view} on_change={(v) => set_param('view', v === 'tree' ? null : v, true)} />
 						{msg ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]">{msg}</p> : null}
 						{err ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]">{err}</p> : null}
 						<div className="rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
-							{data && data.items.length === 0 ? (
+							{show_tree && data ? <Team_tree nodes={data.tree!} href={tree_href} empty={status === 'draft' ? 'No drafts.' : 'No teams yet.'} /> : null}
+							{!show_tree && data && data.items.length === 0 ? (
 								<div className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">
 									{status === 'draft' ? 'No drafts.' : <>No {status === 'published' ? 'published ' : ''}teams yet. <Link to="/builder" className="text-[var(--g-acc)] hover:underline">Build one</Link>.</>}
 								</div>
 							) : null}
-							{data && data.items.length ? (
+							{!show_tree && data && data.items.length ? (
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 											<Sort_th sort={cols} k="name" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Phases</th>
 											<th className="px-4 py-2.5 font-semibold">Latest</th>
+											<th className="px-4 py-2.5 font-semibold">Uses · Used by</th>
 											<th className="w-[120px] px-4 py-2.5" />
 										</tr>
 									</thead>
@@ -276,6 +285,7 @@ export function Component() {
 													</td>
 													<td className="px-4 py-2.5"><Phase_squares types={t.phase_kinds ?? t.phase_types} names={t.phase_names} /></td>
 													<td className={`px-4 py-2.5 ${t.latest_version ? 'g-mono' : 'text-[var(--g-ink-3)]'}`}>{t.latest_version ?? 'never published'}{t.visibility === 'private' || t.visibility === 'public' ? <span className="ml-1.5 rounded bg-[var(--g-soft)] px-1.5 py-px font-sans text-[11px] text-[var(--g-ink-3)]" data-testid="list-visibility">{t.visibility === 'public' ? 'Public' : 'Private'}</span> : null}</td>
+													<td className="px-4 py-2.5"><Uses_cell uses={t.uses} used_by={t.used_by} /></td>
 													<td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
 														<span className="relative inline-flex items-center gap-1.5">
 															{t.status === 'published' && t.id ? (
@@ -302,7 +312,7 @@ export function Component() {
 									</tbody>
 								</table>
 							) : null}
-							{data && data.total > data.limit ? (
+							{!show_tree && data && data.total > data.limit ? (
 								<div className="flex items-center justify-end gap-2 border-t border-[var(--g-line)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
 									<span>{from}–{to} of {data.total}</span>
 									<button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => set_param('page', page - 1 ? String(page - 1) : null, true)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">‹</button>

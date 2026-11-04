@@ -109,6 +109,24 @@ describe('Realm teams page', () => {
 		expect(await screen.findByTestId('where')).toHaveTextContent(href.split('?')[0]);
 	});
 
+	it('the installed tree by default when the BFF sends one (S9); a search shows the matching rows, flat', async () => {
+		route_fetch();
+		const fetch_mock = vi.mocked(globalThis.fetch);
+		const routed = fetch_mock.getMockImplementation()!;
+		const tree = [{ label: '@cliq/feature-dev-js', team_id: 't-fdj', version: '2.4.1', pinned: false, may_call: false, used_by: 0, cycle: false, children: [
+			{ label: '@measureone/recon', team_id: 't-recon', version: '0.8.3', pinned: true, may_call: false, used_by: 1, cycle: false, children: [] },
+		] }];
+		fetch_mock.mockImplementation(async (url, init) => (String(url) === '/v1/realm_teams/get'
+			? new Response(JSON.stringify({ ok: true, data: { ...teams(), tree } }))
+			: routed(url, init)));
+		render_page();
+		const top = await screen.findByTestId('tree-@cliq/feature-dev-js');
+		expect(within(top).getByRole('link', { name: 'recon' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/measureone/recon');
+		expect(screen.queryByRole('table')).toBeNull();
+		render_page('/o/measureone/realms/prod-us/teams?q=recon');
+		expect((await screen.findAllByRole('table')).length).toBeGreaterThan(0);
+	});
+
 	it('search goes to the BFF', async () => {
 		const calls = route_fetch();
 		render_page();

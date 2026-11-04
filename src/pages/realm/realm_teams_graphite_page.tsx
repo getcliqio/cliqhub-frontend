@@ -26,6 +26,7 @@ import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, Row_open, use_row_open } from '@/components/graphite/g_row';
 import { Team_purpose_line } from '@/components/graphite/g_team_purpose';
+import { Team_tree, Uses_cell, View_switch } from '@/components/graphite/g_team_tree';
 
 export const TEAMS_PAGE_SIZE = 25;
 
@@ -244,6 +245,8 @@ export function Component() {
 	const [search, set_search] = useSearchParams();
 	const q = search.get('q') ?? '';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
+	/** Tree (the default, S9: the installed tree) or flat; a search shows the matching rows, flat. */
+	const view: 'tree' | 'flat' = search.get('view') === 'flat' ? 'flat' : 'tree';
 	const [draft, set_draft] = useState(q);
 	const [running, set_running] = useState<Realm_team_row | null>(null);
 	const [versioning, set_versioning] = useState<Realm_team_row | null>(null);
@@ -269,6 +272,9 @@ export function Component() {
 		{ refresh_ms: 30_000, fallback_error: 'Could not load teams.' },
 	);
 	const data = read.data;
+	const show_tree = view === 'tree' && !q && Boolean(data?.tree);
+	/** A tree node's page: this realm's page of that team. */
+	const tree_href = (label: string) => { const [sc, nm] = label.replace(/^@/, '').split('/'); return nm ? `${base}/teams/${encodeURIComponent(sc)}/${encodeURIComponent(nm)}` : null; };
 	const cols = sort.with_sortable(data?.sortable);
 	const realm_id = data?.realm.id ?? null;
 	const manage = access.realm(realm_id, 'operate', 'realms.teams.manage');
@@ -310,15 +316,17 @@ export function Component() {
 					<>
 						<div className="flex flex-wrap items-center gap-2">
 							<input aria-label="Search teams" value={draft} onChange={(e) => set_draft(e.target.value)} placeholder="Search by name or what you want to do…" className={`${INPUT} w-[300px]`} />
+							{!q ? <View_switch view={view} on_change={(v) => set_param('view', v === 'tree' ? null : v, true)} /> : null}
 							<button type="button" disabled={!realm_id || !manage.ok} title={manage.reason ?? undefined} onClick={() => set_installing(true)} className={`${PRIMARY} ${GATED} ml-auto`}><Plus aria-hidden className="h-3.5 w-3.5" />Install a team</button>
 						</div>
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
-							{data && data.items.length === 0 ? (
+							{show_tree && data ? <Team_tree nodes={data.tree!} href={tree_href} empty="No teams in this realm yet — install one to get started." /> : null}
+							{!show_tree && data && data.items.length === 0 ? (
 								<p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{q ? 'No teams match this search.' : 'No teams in this realm yet — install one to get started.'}</p>
 							) : null}
-							{data && data.items.length ? (
+							{!show_tree && data && data.items.length ? (
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
@@ -341,6 +349,7 @@ export function Component() {
 															{r.sub_team_updates ? <button type="button" disabled={!manage.ok} title={manage.reason ?? 'Newer versions of sub-teams it calls without a pinned version: add the team again (same version) to install them'} onClick={(e) => { e.stopPropagation(); set_versioning(r); }} className={`shrink-0 rounded-full bg-[var(--g-soft)] px-2 py-0.5 text-[11px] text-[var(--g-ink-2,var(--g-ink))] hover:underline ${GATED}`} data-testid="sub-team-updates-badge">{r.sub_team_updates} sub-team update{r.sub_team_updates === 1 ? '' : 's'}</button> : null}
 														</span>
 														<Team_purpose_line purpose={r} />
+														{r.uses?.length || r.used_by?.length ? <Uses_cell uses={r.uses} used_by={r.used_by} /> : null}
 															<span className="flex flex-wrap gap-2 text-[11px] text-[var(--g-ink-3)]">
 															{r.origin === 'cli' ? <span>local install (not on Hub; nothing known about when to use it)</span> : null}
 															{!r.in_team_list ? <span>on a daemon, not on the realm’s team list</span> : null}
@@ -371,7 +380,7 @@ export function Component() {
 									</tbody>
 								</table>
 							) : null}
-							{data && data.total > data.limit ? (
+							{!show_tree && data && data.total > data.limit ? (
 								<div className="flex items-center justify-end gap-2 border-t border-[var(--g-line)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]">
 									<span>{from}–{to} of {data.total}</span>
 									<button type="button" aria-label="Previous page" disabled={page === 0} onClick={() => set_param('page', page - 1 ? String(page - 1) : null, true)} className="grid h-7 w-7 place-items-center rounded-md border border-[var(--g-line)] disabled:opacity-40">‹</button>

@@ -544,6 +544,26 @@ export function Component() {
 		</section>
 	) : null;
 
+	/** Who calls this team (S9): the teams whose latest version runs it, among those you can see. */
+	const used_by = o?.used_by ?? [];
+	const used_by_card = o && used_by.length ? (
+		<section className={CARD} data-testid="used-by">
+			<h3 className={H3}>Used by <span className="text-[12px] font-normal text-[var(--g-ink-3)]">{used_by.length}</span></h3>
+			<ul>
+				{used_by.map((u) => {
+					const [sc, nm] = u.label.replace(/^@/, '').split('/');
+					return (
+						<li key={u.id} className="flex items-center gap-2 border-b border-[var(--g-line-2)] px-4 py-2 text-[12.5px] last:border-b-0">
+							<Link to={team_href(sc, nm)} className="font-semibold hover:underline">{nm}</Link>
+							<span className="g-mono text-[11px] text-[var(--g-ink-3)]">@{sc}</span>
+							<span className="g-mono ml-auto text-[11.5px] text-[var(--g-ink-3)]">{u.latest_version}</span>
+						</li>
+					);
+				})}
+			</ul>
+		</section>
+	) : null;
+
 	const ver_total = team?.versions.length ?? 0;
 	const ver_pages = Math.max(1, Math.ceil(ver_total / VERSIONS_PAGE_SIZE));
 	const viewing_at = Math.max(0, team?.versions.findIndex((v) => v.version === team.version) ?? 0);
@@ -664,7 +684,7 @@ export function Component() {
 								<div className={`grid grid-cols-1 items-start gap-3.5 ${in_realm ? '' : 'lg:grid-cols-[250px_minmax(0,1fr)]'}`}>
 									{in_realm ? null : run_inputs}
 									{/* In a realm: only the installed version — no version history; its danger zone is uninstalling from the realm. */}
-								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
+								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : used_by_card}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
 								</div>
 								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name, org_id: sidebar_realm.org_id }} on_close={() => set_run_open(false)} /> : null}
 							</>

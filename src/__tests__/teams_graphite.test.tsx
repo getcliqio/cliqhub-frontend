@@ -256,6 +256,37 @@ describe('Build › Teams list', () => {
 		expect(await screen.findByText(/added to sandbox/)).toBeInTheDocument();
 	});
 
+	it('a tree by default when the BFF sends one (S9): top-level teams, sub-teams nested with versions and markers; Flat shows the list with Uses · Used by', async () => {
+		const calls = route_fetch();
+		const base = list_data();
+		const node = (label: string, version: string | null, over: Record<string, unknown> = {}, children: unknown[] = []) => ({ label, team_id: label, version, pinned: false, may_call: false, used_by: 0, cycle: false, children, ...over });
+		const tree = [node('@measureone/feature-dev-js', '1.4.2', {}, [
+			node('@measureone/leaf', '1.0.0', { pinned: true, used_by: 2 }),
+			node('@measureone/extra', '2.0.0', { may_call: true }),
+		])];
+		const fetch_mock = vi.mocked(globalThis.fetch);
+		const routed = fetch_mock.getMockImplementation()!;
+		fetch_mock.mockImplementation(async (url, init) => (String(url) === '/v1/team_list/get'
+			? (calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }), new Response(JSON.stringify({ ok: true, data: { ...base, tree, items: [{ ...base.items[0]!, uses: ['@measureone/leaf'], used_by: [] }] } })))
+			: routed(url, init)));
+		render_at('/teams?org=measureone');
+		const top = await screen.findByTestId('tree-@measureone/feature-dev-js');
+		expect(within(top).getByRole('link', { name: 'feature-dev-js' })).toHaveAttribute('href', '/teams/measureone/feature-dev-js?org=measureone');
+		const leaf = within(top).getByTestId('tree-@measureone/feature-dev-js>@measureone/leaf#0');
+		expect(within(leaf).getByTestId('tree-version')).toHaveTextContent('1.0.0pinned');
+		expect(within(leaf).getByTestId('tree-used-by')).toHaveTextContent('used by 2');
+		expect(within(top).getByText('may call')).toBeInTheDocument();
+		// Folding a level hides it.
+		fireEvent.click(within(top).getByRole('button', { name: 'Fold @measureone/feature-dev-js' }));
+		expect(screen.queryByTestId('tree-@measureone/feature-dev-js>@measureone/leaf#0')).toBeNull();
+		expect(screen.queryByRole('table')).toBeNull();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Flat' }));
+		expect(await screen.findByTestId('loc')).toHaveTextContent('view=flat');
+		const row = await screen.findByTestId('team-measureone/feature-dev-js');
+		expect(within(row).getByTestId('uses-cell')).toHaveTextContent('uses @measureone/leaf');
+	});
+
 	it('only a team the org added has Remove; it takes it off the Teams list (PLAN-team-visibility §3.6)', async () => {
 		const calls = route_fetch();
 		const added = { id: 't3', name: 'tool', scope: 'other', description: 'A tool', status: 'published' as const, latest_version: '3.0.0', author: 'ben', phase_types: null, list_kind: 'added' as const, installs: [] };
@@ -288,6 +319,14 @@ describe('Team page', () => {
 		expect(phase_kind('human').color).not.toBe(phase_kind('gate').color);
 		expect(phase_subtitle(ph('review', 'gate', { agent: 'hug', reviewers: '$(inputs.reviewers)' }))).toBe('reviewer · $(inputs.reviewers)');
 		expect(phase_subtitle(ph('run', 'standard', { agent: 'exec', commands: ['a', 'b'] }))).toBe('2 commands');
+	});
+
+	it('Used by: the teams whose latest version calls this one (S9); none, no card', async () => {
+		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, used_by: [{ id: 't9', label: '@measureone/pipeline', latest_version: '2.1.0' }] } } : {}));
+		render_at('/teams/measureone/feature-dev-js');
+		const card = await screen.findByTestId('used-by');
+		expect(within(card).getByRole('link', { name: 'pipeline' })).toHaveAttribute('href', '/teams/measureone/pipeline');
+		expect(card).toHaveTextContent('2.1.0');
 	});
 
 	it('one page, one read: header actions, workflow, inputs, versions, danger zone — no tabs', async () => {
