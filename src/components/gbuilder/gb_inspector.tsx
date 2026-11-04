@@ -258,6 +258,7 @@ export function Phase_panel({ team, name, on_change, on_select, on_close }: { te
 			{kind === 'team' ? (
 				<Section title="Sub-team">
 					<input aria-label="Team" value={phase.team ?? ''} onChange={(e) => on({ team: e.target.value })} placeholder="@scope/team-name" className={`${IN} g-mono`} />
+					<Sub_team_version value={phase.team ?? ''} on_change={(team) => on({ team })} />
 					<p className="mb-1 mt-2.5 text-[11.5px] text-[var(--g-ink-3)]">Inputs it needs</p>
 					{Object.entries(phase.inputs ?? {}).map(([key, val], i) => (
 						<div key={i} className="mb-1.5 grid grid-cols-[1fr_1.4fr_auto] gap-1.5">
@@ -293,6 +294,54 @@ export function Phase_panel({ team, name, on_change, on_select, on_close }: { te
 				<Section title="Support"><p className="text-[12px] text-[var(--g-ink-3)]">Not in the flow — any phase can call it.</p></Section>
 			)}
 		</div>
+	);
+}
+
+/** `@scope/slug[@version]` → its parts, or null while it isn't a ref yet. */
+export function parse_sub_team_ref(value: string): { scope: string; slug: string; version: string | null } | null {
+	const m = /^@?([a-z0-9][a-z0-9._-]*)\/([a-z0-9][a-z0-9._-]*)(?:@([\w.-]+))?$/i.exec(value.trim());
+	if (!m) return null;
+	const version = m[3] && m[3].toLowerCase() !== 'latest' ? m[3] : null;
+	return { scope: m[1], slug: m[2], version };
+}
+
+/**
+ * A sub-team's version (PLAN-team-bundle S8): "latest" (the latest published when the realm installs the team, kept
+ * until it is added again) or one published version, pinned. Reads `POST /v1/teams/get_versions {scope, name}`.
+ */
+export function Sub_team_version({ value, on_change }: { value: string; on_change: (team: string) => void }) {
+	const auth_fetch = useAuthFetch();
+	const ref = parse_sub_team_ref(value);
+	const key = ref ? `${ref.scope}/${ref.slug}` : '';
+	const [versions, set_versions] = useState<string[] | null>(null);
+	useEffect(() => {
+		set_versions(null);
+		if (!key) return;
+		const [scope, name] = key.split('/');
+		let live = true;
+		const h = window.setTimeout(() => {
+			auth_fetch('/v1/teams/get_versions', { method: 'POST', body: JSON.stringify({ scope, name }) })
+				.then(async (res) => {
+					if (!live) return;
+					if (!res.ok) { set_versions([]); return; }
+					const json = await res.json() as { data?: { versions?: Array<{ version?: string | null }> } };
+					set_versions((json.data?.versions ?? []).map((v) => v.version).filter((v): v is string => Boolean(v)));
+				})
+				.catch(() => { if (live) set_versions([]); });
+		}, 350);
+		return () => { live = false; window.clearTimeout(h); };
+	}, [auth_fetch, key]);
+	if (!ref) return null;
+	const pinned = ref.version ?? '';
+	const choices = versions && pinned && !versions.includes(pinned) ? [pinned, ...versions] : versions ?? (pinned ? [pinned] : []);
+	return (
+		<label className="mt-1.5 grid grid-cols-[auto_1fr] items-center gap-2 text-[12px] text-[var(--g-ink-3)]">Version
+			<select aria-label="Sub-team version" value={pinned} onChange={(e) => on_change(`@${ref.scope}/${ref.slug}${e.target.value ? '@' + e.target.value : ''}`)} className={IN}>
+				<option value="">latest (when the realm installs it)</option>
+				{choices.map((v) => <option key={v} value={v}>{v}{versions && !versions.includes(v) ? ' (not published)' : ''}</option>)}
+			</select>
+			{versions && versions.length === 0 ? <span className="col-span-2 text-[11.5px] text-[var(--g-warn,var(--g-ink-3))]">No published version of @{ref.scope}/{ref.slug} found.</span> : null}
+		</label>
 	);
 }
 

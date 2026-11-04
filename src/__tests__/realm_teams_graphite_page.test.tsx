@@ -19,7 +19,7 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 		realm: { id: 'r-prod', slug: 'prod-us', name: 'prod-us', org_slug: 'measureone' },
 		items: [
 			{ team_id: 't-fdj', version_id: 'v-fdj-241', scope: 'cliq', slug: 'feature-dev-js', label: '@cliq/feature-dev-js', version: '2.4.1', latest_version: '2.5.0', update_available: true, origin: 'hub', in_team_list: true, installed_count: 3, online_daemon_count: 3, online_stale: 0, last_run_at: Date.now() - 60_000, missing_agents: [], description: 'Builds JS features', use_when: ['You have a Jira ticket for a JS change', 'A failing JS test to fix'], not_for: ['Python services'], required_inputs: [{ name: 'ticket', description: 'The Jira key' }] },
-			{ team_id: 't-recon', version_id: 'v-recon-083', scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, last_run_at: null, missing_agents: ['matcher'], description: 'Matches ledgers', use_when: [], not_for: [], required_inputs: [] },
+			{ team_id: 't-recon', version_id: 'v-recon-083', scope: 'measureone', slug: 'recon', label: '@measureone/recon', version: '0.8.3', latest_version: '0.8.3', update_available: false, origin: 'hub', in_team_list: true, installed_count: 1, online_daemon_count: 3, online_stale: 2, sub_team_updates: 2, last_run_at: null, missing_agents: ['matcher'], description: 'Matches ledgers', use_when: [], not_for: [], required_inputs: [] },
 			// Published, but only on a daemon (installed with the CLI): not on the realm's list yet.
 			{ team_id: 't-scratch', version_id: null, scope: 'sapan', slug: 'scratch', label: '@sapan/scratch', version: null, latest_version: null, update_available: false, origin: 'cli', in_team_list: false, installed_count: 1, online_daemon_count: 3, online_stale: null, last_run_at: null, missing_agents: [], description: null, use_when: [], not_for: [], required_inputs: [] },
 		],
@@ -68,6 +68,9 @@ describe('Realm teams page', () => {
 		// A team only daemons report (not on the realm's list): what they have.
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText('1/3')).toBeInTheDocument();
 		expect(within(recon).getByText(/needs agents: matcher/)).toBeInTheDocument();
+		// Sub-team updates (S8): newer versions of sub-teams it calls without a pin; none on a team without.
+		expect(within(recon).getByTestId('sub-team-updates-badge')).toHaveTextContent('2 sub-team updates');
+		expect(within(fd).queryByTestId('sub-team-updates-badge')).toBeNull();
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText(/not on the realm’s team list/)).toBeInTheDocument();
 		// No coverage chips: the Online daemons column says what matters.
 		expect(screen.queryByRole('group', { name: 'Coverage' })).toBeNull();

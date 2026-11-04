@@ -16,6 +16,8 @@ export interface Realm_team_row {
 	online_daemon_count: number;
 	/** Online daemons not on the realm's version (older, or not installed); null when not on the realm's list. */
 	online_stale: number | null;
+	/** Unpinned sub-teams with a newer published version than the realm installed (PLAN-team-bundle S8); null off the list. */
+	sub_team_updates?: number | null;
 	last_run_at: number | null;
 	missing_agents: string[];
 	/** What the team does (catalog); null for local installs. */
