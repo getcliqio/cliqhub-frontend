@@ -33,6 +33,10 @@ import { Workflow_legend } from '@/components/graphite/g_workflow_graph';
 import { Team_workflow } from '@/components/graphite/g_team_workflow';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
+import { Version_drawer } from '@/components/graphite/g_version_drawer';
+import { Team_purpose } from '@/components/graphite/g_team_purpose';
+import { Team_structure, ref_label } from '@/components/graphite/g_team_structure';
+import type { Team_tree_node } from '@/lib/team_page';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
 import { Gb_identity, type Team_identity } from '@/components/gbuilder/gb_identity';
 
@@ -239,6 +243,7 @@ export function Component() {
 	const access = use_access(overview.data);
 	const sidebar_realm = in_realm ? overview.data?.orgs.find((o) => o.slug === realm_org)?.realms.find((r) => r.slug === realm_slug) ?? null : null;
 	const runnable = access.realm(sidebar_realm?.id, 'operate', 'teams.run');
+	const realm_manage = access.realm(sidebar_realm?.id, 'operate', 'realms.teams.manage');
 	const view_scope = use_view_scope(overview.data);
 	const view_org = view_scope.kind === 'all' ? null : view_scope.org;
 	const post = use_post();
@@ -250,6 +255,8 @@ export function Component() {
 	const [mode, set_mode_state] = useState<Workflow_mode>(() => (search.get('tab') === 'files' ? 'yaml' : read_mode()));
 	const [install_open, set_install_open] = useState(false);
 	const [run_open, set_run_open] = useState(false);
+	/** The Change version drawer (in a realm). */
+	const [versioning, set_versioning] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
 	/** The fork identity step, open (PLAN-team-bundle S3). */
 	const [forking, set_forking] = useState<{ busy: boolean; error: string | null } | null>(null);
@@ -277,6 +284,8 @@ export function Component() {
 		scope: team_scope, name, view: 'overview',
 		...(version ? { version } : {}),
 		...(view_org ? { org_id: view_org.id } : {}),
+		// In a realm: the sub-team tree as installed there.
+		...(in_realm && sidebar_realm ? { realm_id: sidebar_realm.id } : {}),
 	} : null;
 	const read = use_bff_read<Team_page_data>('/v1/team_page/get', body, { refresh_ms: 120_000, fallback_error: 'Could not load this team.' });
 	const data = read.data;
@@ -286,6 +295,26 @@ export function Component() {
 	const team_yml = files.find((f) => f.path === 'team.yml')?.content ?? null;
 	const label = team?.label ?? (team_scope ? `@${team_scope}/${name}` : name);
 	const is_latest = !team || team.version === team.latest_version;
+	/** In a realm: the teams clicked down through to get here (`?via=`, labels), for the breadcrumb. */
+	const via = in_realm ? (search.get('via') ?? '').split(',').map((x) => x.trim()).filter((x) => /^@[^/\s]+\/[^/\s]+$/.test(x)) : [];
+	/** A team's page in this realm, at a version, with the trail that led there. */
+	const realm_team_href = (label: string, v: string | null, trail: string[]): string => {
+		const [sc, nm] = label.replace(/^@/, '').split('/');
+		const q = new URLSearchParams();
+		if (v) q.set('v', v);
+		if (trail.length) q.set('via', trail.join(','));
+		const qs = q.toString();
+		return `/o/${realm_org}/realms/${realm_slug}/teams/${encodeURIComponent(sc)}/${encodeURIComponent(nm)}${qs ? `?${qs}` : ''}`;
+	};
+	/** A sub-team's page: in a realm, at the installed version, one step further down the trail; else its catalog page. */
+	const sub_href = (n: Pick<Team_tree_node, 'label' | 'version' | 'pinned'>): string | null => {
+		const [sc, nm] = n.label.replace(/^@/, '').split('/');
+		if (!sc || !nm) return null;
+		if (in_realm) return realm_team_href(n.label, n.version, [...via, label]);
+		return `${team_href(sc, nm)}${n.pinned && n.version ? `?v=${encodeURIComponent(n.version)}` : ''}`;
+	};
+	/** In a realm: the realm's install of this team (its version, whether a newer one is out). */
+	const realm_install = in_realm && sidebar_realm ? (o?.installs ?? []).find((i) => i.realm_id === sidebar_realm.id) ?? null : null;
 	const realms = useMemo(() => (overview.data?.orgs ?? []).filter((x) => !view_org || x.id === view_org.id).flatMap((x) => x.realms.map((r) => ({ id: r.id, slug: r.slug, name: r.name, org_slug: r.org_slug }))), [overview.data, view_org]);
 	const phases = o?.phases ?? [];
 	const all_phases = useMemo(() => [...phases, ...(o?.support ?? [])], [phases, o?.support]);
@@ -385,18 +414,32 @@ export function Component() {
 		<div className="flex items-start gap-4">
 			{in_realm ? null : <Team_avatar name={name} size={48} />}
 			<div className="min-w-0 flex-1">
-				{in_realm ? <nav aria-label="Back to teams" className="mb-0.5 text-[12.5px] text-[var(--g-ink-3)]"><Link to={`/o/${realm_org}/realms/${realm_slug}/teams`} className="hover:text-[var(--g-ink)]">All teams</Link> ›</nav> : null}
+				{/* In a realm: All teams › the teams clicked down through (each opens with the trail before it) › this one (the title). */}
+				{in_realm ? (
+					<nav aria-label="Back to teams" className="mb-0.5 flex flex-wrap items-center gap-1 text-[12.5px] text-[var(--g-ink-3)]" data-testid="team-trail">
+						<Link to={`/o/${realm_org}/realms/${realm_slug}/teams`} className="hover:text-[var(--g-ink)]">All teams</Link> ›
+						{via.map((l, i) => <span key={`${l}-${i}`} className="inline-flex items-center gap-1"><Link to={realm_team_href(l, null, via.slice(0, i))} className="g-mono hover:text-[var(--g-ink)]">{l}</Link> ›</span>)}
+					</nav>
+				) : null}
 				<div className="flex flex-wrap items-center gap-2.5">
-					{/* In a realm the realm's name is the page title; the team gets a small one under "All teams". */}
-					{in_realm ? <h2 className="g-mono text-[14px] font-semibold" data-testid="team-title">{team?.name ?? name}</h2> : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
+					{/* In a realm the realm's name is the page title; the team gets a small one under "All teams": @scope/name and the version installed here. */}
+					{in_realm ? <h2 className="g-mono text-[14px] font-semibold" data-testid="team-title">{label}</h2> : <h1 className="text-[22px] font-semibold tracking-tight">{team?.name ?? name}</h1>}
+					{in_realm && team?.version ? <span className="g-mono text-[12.5px] text-[var(--g-ink-3)]" title="The version installed in this realm" data-testid="installed-version">v{team.version}</span> : null}
+					{/* Next to the version: a small button (the row-action style, compact) to change the version this realm runs. */}
+					{in_realm && team?.scope && sidebar_realm && realm_install?.in_team_list ? <button type="button" disabled={!realm_manage.ok} title={realm_manage.reason ?? 'Pick the version this realm runs'} onClick={() => set_versioning(true)} className="shrink-0 rounded-md border border-[var(--g-line)] px-2 py-0.5 text-[11.5px] font-semibold hover:border-[var(--g-line-strong)] hover:bg-[var(--g-soft)] disabled:cursor-not-allowed disabled:opacity-45" data-testid="change-version">{realm_install.behind ? 'Update…' : 'Change version…'}</button> : null}
 					{team && !in_realm ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at && !in_realm ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>
 				{team?.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
-				<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
-					{in_realm && team ? (
-						<span className="g-mono text-[var(--g-ink-2)]" data-testid="installed-version">{team.version ? `v${team.version} installed here` : 'installed here'}</span>
-					) : team && team.versions.length ? (
+				{o?.tree ? <Team_structure root={o.tree} href={sub_href} on_phase={(p) => (in_realm ? pick(p) : set_params({ phase: p }))} /> : null}
+				{team ? <Team_purpose purpose={team} className="mt-2 max-w-[780px]" /> : null}
+				{/* In a realm the name and version are in the title: only the author and tags are left. */}
+				{in_realm ? (team?.author || team?.tags.length ? (
+					<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
+						{[team.author ? `by ${team.author}` : null, team.tags.length ? team.tags.join(' · ') : null].filter(Boolean).join(' · ')}
+					</div>
+				) : null) : <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
+					{team && team.versions.length ? (
 						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value }, false)} className={`${INPUT} h-6 w-[140px] text-[12px]`}>
 							{team.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.is_latest ? ' · latest' : ''}</option>)}
 						</select>
@@ -404,7 +447,7 @@ export function Component() {
 					<span className="g-mono text-[var(--g-ink-2)]">{label}</span>
 					{team?.author ? <span>· by {team.author}</span> : null}
 					{team?.tags.length ? <span>· {team.tags.join(' · ')}</span> : null}
-				</div>
+				</div>}
 			</div>
 			{/* In a realm a team can only be run (and viewed): no Fork, Download, Edit or Install. */}
 			{in_realm && team?.scope && sidebar_realm ? (
@@ -473,6 +516,8 @@ export function Component() {
 					graph_class="border-b border-[var(--g-line)] bg-[var(--g-input)]"
 					selected={sel?.name ?? null}
 					on_select={(p) => pick(p)}
+					// A sub-team opens on its own page (at its installed version), not in place.
+					on_open_team={(ref) => { const { label: l, pin } = ref_label(ref); const n = o.tree?.children.find((c) => c.label === l); const to = sub_href({ label: l, version: n?.version ?? pin, pinned: Boolean(pin) }); if (to) navigate(to); }}
 					start={{ inputs: o.inputs, selected: inputs_sel, on_select: () => pick(INPUTS_SEL) }}
 					below={(v) => (v.top
 						? <Phase_table phases={phases} support={o.support} inputs={o.inputs} team_yml={team_yml} selected={inputs_sel ? INPUTS_SEL : v.selected} on_pick={pick} sub_teams={v.sub_teams} expanded={v.expanded} on_open={v.open} />
@@ -624,7 +669,6 @@ export function Component() {
 	const can_unpublish = Boolean(team?.can_edit && team.status === 'published');
 	const can_delete_version = Boolean(team?.can_edit && team.status === 'published' && team.versions.length > 1);
 	// In a realm the one thing to do with an installed team: take it off this realm.
-	const realm_manage = access.realm(sidebar_realm?.id, 'operate', 'realms.teams.manage');
 	const realm_danger = in_realm && team?.scope && sidebar_realm ? (
 		<details className="rounded-[10px] border border-[var(--g-bad-line)] bg-[var(--g-panel)]" data-testid="realm-danger-zone">
 			<summary className="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-[var(--g-bad)]">Danger zone <span className="text-[12px] font-normal text-[var(--g-ink-3)]">· uninstall from {sidebar_realm.name || realm_slug}</span></summary>
@@ -687,6 +731,14 @@ export function Component() {
 								<div className="flex min-w-0 flex-col gap-3.5">{workflow}{in_realm ? null : used_by_card}{in_realm ? null : versions_card}{in_realm ? realm_danger : danger}</div>
 								</div>
 								{run_open && team?.scope && sidebar_realm ? <Run_in_realm_dialog scope={team.scope} slug={team.name} fixed_realm={{ id: sidebar_realm.id, slug: sidebar_realm.slug, name: sidebar_realm.name, org_id: sidebar_realm.org_id }} on_close={() => set_run_open(false)} /> : null}
+								{versioning && team?.scope && sidebar_realm ? (
+									<Version_drawer
+										realm_id={sidebar_realm.id}
+										row={{ label, scope: team.scope, slug: team.name, team_id: team.id, version: realm_install?.version ?? team.version, latest_version: team.latest_version, update_available: Boolean(realm_install?.behind) }}
+										on_close={() => set_versioning(false)}
+										on_done={async (text, v) => { set_versioning(false); set_msg({ tone: 'ok', text }); set_params({ v }); await read.reload(); }}
+									/>
+								) : null}
 							</>
 						)}
 					</>

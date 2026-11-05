@@ -552,15 +552,18 @@ describe('Team page', () => {
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
 		await screen.findByTestId('workflow');
 		expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1); // the realm's
-		expect(screen.getByTestId('team-title')).toHaveTextContent('feature-dev-js');
-		expect(screen.getByTestId('installed-version')).toHaveTextContent('v1.4.2 installed here');
+		// The title is @scope/name with the version installed here next to it; the line under it doesn't repeat them.
+		expect(screen.getByTestId('team-title')).toHaveTextContent(/^@measureone\/feature-dev-js$/);
+		expect(screen.getByTestId('installed-version')).toHaveTextContent(/^v1\.4\.2$/);
+		expect(screen.getByTestId('installed-version').parentElement).toBe(screen.getByTestId('team-title').parentElement);
+		expect(screen.getByTestId('team-meta')).toHaveTextContent(/^by sapan$/);
 		expect(screen.queryByRole('combobox', { name: 'Version' })).toBeNull();
 		for (const name of [/Fork/, /^Download$/, /^Edit$/, /Install/]) expect(screen.queryByRole('button', { name })).toBeNull();
 		expect(screen.queryByTestId('versions')).toBeNull();
 		expect(screen.queryByTestId('danger-zone')).toBeNull();
 	});
 
-	it('opened from a realm: the table follows the diagram — open a sub-team, or expand it under its step', async () => {
+	it('opened from a realm: the table follows the diagram — expand a sub-team under its step, or open its page', async () => {
 		const SUB = [ph('code', 'standard', { role: 'Write the code.' }), ph('test', 'gate', { depends_on: ['code'], agent: 'cursor' })];
 		const with_sub = PHASES.map((p) => (p.name === 'open-pr' ? { ...p, type: 'map', agent: null, team: '@m/builder' } : p));
 		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, phases: with_sub, sub_teams: { '@m/builder': { scope: 'm', name: 'builder', version: '1', phases: SUB } } } } : {}));
@@ -575,13 +578,10 @@ describe('Team page', () => {
 		expect(within(table).getAllByTestId('team-phase-row').find((r) => r.getAttribute('data-team-row') === 'open-pr/code')).toHaveTextContent('Write the code.');
 		fireEvent.click(table.querySelector('[data-team-group="open-pr"]')!);
 		expect(row_ids()).not.toContain('open-pr/code');
-		// Open: the diagram and the table switch to the sub-team (no run inputs: they are the team's own).
+		// Open: goes to the sub-team's own page in this realm, one step down the trail (not in place).
 		fireEvent.click(screen.getByRole('button', { name: 'Collapsed' }));
 		fireEvent.click(within(screen.getByTestId('phase-table')).getByRole('button', { name: 'Open builder' }));
-		expect(row_ids()).toEqual(['code', 'test']);
-		expect(screen.queryByTestId('inputs-row')).toBeNull();
-		fireEvent.click(within(screen.getByTestId('workflow-path')).getByRole('button', { name: 'feature-dev-js' }));
-		expect(row_ids()).toContain('open-pr');
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toBe(`/o/measureone/realms/prod-us/teams/m/builder?via=${encodeURIComponent('@measureone/feature-dev-js')}`));
 	});
 
 	it('opened from a realm: Phases — the graph starts at the Run inputs; the table lists the inputs, then the phases; picking one picks it in both', async () => {
@@ -631,6 +631,79 @@ describe('Team page', () => {
 		await screen.findByTestId('phase-table');
 		fireEvent.click(screen.getByRole('button', { name: 'Run…' }));
 		expect(screen.getByRole('dialog', { name: 'Run dialog' })).toHaveTextContent('measureone/feature-dev-js');
+	});
+
+	it('opened from a realm: the sub-team tree under the title — phase → team at its installed version, linked down the trail', async () => {
+		const calls = route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, tree: { label: '@measureone/feature-dev-js', team_id: 'tid', version: '1.4.2', pinned: false, may_call: false, used_by: 0, cycle: false, children: [
+			{ label: '@m/builder', team_id: 'b', version: '3.0.0', pinned: false, may_call: false, used_by: 0, cycle: false, phase: 'open-pr', children: [
+				{ label: '@m/tester', team_id: 'x', version: '1.0.0', pinned: true, may_call: false, used_by: 0, cycle: false, phase: 'test', children: [] },
+			] },
+		] } } } : {}));
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const tree = await screen.findByTestId('team-structure');
+		// The page asks for the tree as installed in this realm.
+		expect(calls.find((c) => c.url === '/v1/team_page/get')?.body).toMatchObject({ realm_id: 'r-prod' });
+		const nodes = within(tree).getAllByTestId('structure-node');
+		expect(nodes.map((n) => n.getAttribute('data-label'))).toEqual(['@m/builder', '@m/tester']);
+		expect(nodes[0]).toHaveTextContent('open-pr→@m/builderv3.0.0');
+		expect(nodes[1]).toHaveTextContent('test→@m/testerv1.0.0pinned');
+		expect(within(tree).getByRole('link', { name: '@m/builder' })).toHaveAttribute('href', `/o/measureone/realms/prod-us/teams/m/builder?v=3.0.0&via=${encodeURIComponent('@measureone/feature-dev-js')}`);
+		// The root's phase name picks that phase below.
+		fireEvent.click(within(tree).getByRole('button', { name: 'open-pr' }));
+		expect(screen.getByTestId('loc').textContent).toContain('phase=open-pr');
+	});
+
+	it('opened from a realm: the breadcrumb is the trail clicked down through, each crumb opening with the trail before it', async () => {
+		route_fetch();
+		render_at(`/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?via=${encodeURIComponent('@cliq/release-train,@m/builder')}`);
+		const trail = await screen.findByTestId('team-trail');
+		expect(trail.textContent!.replace(/\s+/g, '')).toBe('Allteams›@cliq/release-train›@m/builder›');
+		expect(within(trail).getByRole('link', { name: '@cliq/release-train' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/teams/cliq/release-train');
+		expect(within(trail).getByRole('link', { name: '@m/builder' })).toHaveAttribute('href', `/o/measureone/realms/prod-us/teams/m/builder?via=${encodeURIComponent('@cliq/release-train')}`);
+	});
+
+	it('no sub-teams: no tree', async () => {
+		route_fetch((v) => (v === 'overview' ? { overview: { ...page_data('overview').overview!, tree: { label: '@measureone/feature-dev-js', team_id: 'tid', version: '1.4.2', pinned: false, may_call: false, used_by: 0, cycle: false, children: [] } } } : {}));
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		await screen.findByTestId('workflow');
+		expect(screen.queryByTestId('team-structure')).toBeNull();
+	});
+
+	it('opened from a realm: Change version… sits next to the version and moves the realm to the version picked (one write)', async () => {
+		const calls = route_fetch();
+		const routed = vi.mocked(globalThis.fetch).getMockImplementation()!;
+		vi.mocked(globalThis.fetch).mockImplementation(async (url, init) => {
+			if (String(url) !== '/v1/teams/get_versions') return routed(url, init);
+			calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) });
+			return new Response(JSON.stringify({ ok: true, data: { versions: [{ id: 'v-142', version: '1.4.2', changelog: 'Parallel security scan', published_at: Date.now() }, { id: 'v-130', version: '1.3.0', changelog: null, published_at: null }] } }));
+		});
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const change = await screen.findByTestId('change-version');
+		expect(change).toHaveTextContent('Change version…'); // prod-us is on the latest (behind: false)
+		expect(change.previousElementSibling).toBe(screen.getByTestId('installed-version'));
+		fireEvent.click(change);
+		const drawer = await screen.findByRole('dialog', { name: 'Version of @measureone/feature-dev-js' });
+		expect(calls.find((c) => c.url === '/v1/teams/get_versions')?.body).toEqual({ name: 'feature-dev-js', scope: 'measureone' });
+		expect(await within(drawer).findByRole('radio', { name: /1\.4\.2/ })).toBeChecked();
+		fireEvent.click(within(drawer).getByRole('radio', { name: /1\.3\.0/ }));
+		fireEvent.click(within(drawer).getByRole('button', { name: 'Update realm to 1.3.0' }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/add_team').map((c) => c.body)).toEqual([{ realm_id: 'r-prod', team_id: 'tid', version_id: 'v-130' }]));
+		await waitFor(() => expect(screen.getByTestId('loc').textContent).toContain('v=1.3.0'));
+		expect(screen.queryByRole('dialog', { name: /Version of/ })).toBeNull();
+	});
+
+	it('opened from a realm: a realm behind the latest says Update…', async () => {
+		route_fetch();
+		render_at('/o/measureone/realms/staging/teams/measureone/feature-dev-js?v=1.3.0');
+		expect(await screen.findByTestId('change-version')).toHaveTextContent('Update…');
+	});
+
+	it('the header shows when to use the team and when not to (team.yml use_when / not_for)', async () => {
+		route_fetch((v) => (v === 'overview' ? { team: { ...HEADER, use_when: ['A Jira ticket for a JS change'], not_for: ['Python services'] } } : {}));
+		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		const purpose = await screen.findByTestId('team-purpose');
+		expect(purpose).toHaveTextContent('Use whenA Jira ticket for a JS change');
+		expect(purpose).toHaveTextContent('Not forPython services');
 	});
 
 	it('opened from a realm: its danger zone uninstalls it from that realm (one write), then back to the realm\'s teams', async () => {
