@@ -113,39 +113,42 @@ describe('Realm teams page', () => {
 		expect(screen.queryByRole('button', { name: /^Tree$|^Flat$/ })).toBeNull();
 	});
 
-	it('Top-level / All: the default asks for the top-level teams; All asks for every team; the counts from the BFF', async () => {
+	it('Top-level / Recently run / All: the default asks for the top-level teams; the others ask for their view; the counts from the BFF', async () => {
 		const calls = route_fetch();
 		const fetch_mock = vi.mocked(globalThis.fetch);
 		const routed = fetch_mock.getMockImplementation()!;
 		fetch_mock.mockImplementation(async (url, init) => (String(url) === '/v1/realm_teams/get'
-			? (calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }), new Response(JSON.stringify({ ok: true, data: { ...teams(), counts: { teams: 3, all: 9 } } })))
+			? (calls.push({ url: String(url), body: JSON.parse(String(init?.body ?? '{}')) }), new Response(JSON.stringify({ ok: true, data: { ...teams(), counts: { teams: 3, recent: 2, all: 9 } } })))
 			: routed(url, init)));
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		const group = screen.getByRole('group', { name: 'Which teams' });
 		expect(within(group).getByRole('button', { name: /Top-level/ })).toHaveAttribute('aria-pressed', 'true');
 		expect(within(group).getByRole('button', { name: /Top-level/ })).toHaveAttribute('title', 'Teams people start: no other team here runs them, or they are also started directly');
-		expect(within(group).getByRole('button', { name: /All/ })).toHaveTextContent('All 9');
+		expect(within(group).getAllByRole('button').map((b) => b.textContent)).toEqual(['Top-level 3', 'Recently run 2', 'All 9']);
 		expect(calls.filter((c) => c.url === '/v1/realm_teams/get')[0].body).not.toHaveProperty('show');
-		fireEvent.click(within(group).getByRole('button', { name: /All/ }));
+		fireEvent.click(within(group).getByRole('button', { name: /Recently run/ }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realm_teams/get').at(-1)!.body).toMatchObject({ show: 'recent' }));
+		fireEvent.click(within(await screen.findByRole('group', { name: 'Which teams' })).getByRole('button', { name: /All/ }));
 		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realm_teams/get').at(-1)!.body).toMatchObject({ show: 'all' }));
 		// A search covers every team: no switch.
 		render_page('/o/measureone/realms/prod-us/teams?q=rec');
 		await waitFor(() => expect(screen.getAllByRole('group', { name: 'Which teams' })).toHaveLength(1)); // the first page's only
 	});
 
-	it('Recently run first (not repeated), then Everything else; the Sub-team column dots a team another team runs', async () => {
+	it('one list, no sections; the Is Sub Team column dots a team another team runs', async () => {
 		route_fetch();
 		const fetch_mock = vi.mocked(globalThis.fetch);
 		const routed = fetch_mock.getMockImplementation()!;
 		const [fdj, recon, scratch] = teams().items;
 		fetch_mock.mockImplementation(async (url, init) => (String(url) === '/v1/realm_teams/get'
-			? new Response(JSON.stringify({ ok: true, data: { ...teams(), recent: [fdj], items: [{ ...recon, used_by: ['@cliq/feature-dev-js'] }, scratch], total: 2 } }))
+			? new Response(JSON.stringify({ ok: true, data: { ...teams(), items: [fdj, { ...recon, used_by: ['@cliq/feature-dev-js'] }, scratch], total: 3 } }))
 			: routed(url, init)));
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		const rows = screen.getAllByRole('row').map((r) => r.getAttribute('data-testid') ?? r.textContent);
-		expect(rows.slice(1)).toEqual(['Recently run', 'team-@cliq/feature-dev-js', 'Everything else', 'team-@measureone/recon', 'team-@sapan/scratch']);
+		expect(rows.slice(1)).toEqual(['team-@cliq/feature-dev-js', 'team-@measureone/recon', 'team-@sapan/scratch']);
+		expect(screen.queryByText('Everything else')).toBeNull();
 		const dot = within(screen.getByTestId('team-@measureone/recon')).getByTestId('sub-team-dot');
 		expect(dot).toHaveAttribute('title', 'Run by @cliq/feature-dev-js');
 		expect(within(screen.getByTestId('team-@cliq/feature-dev-js')).queryByTestId('sub-team-dot')).toBeNull();

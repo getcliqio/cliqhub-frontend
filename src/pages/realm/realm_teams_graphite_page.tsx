@@ -136,8 +136,8 @@ export function Component() {
 	const [search, set_search] = useSearchParams();
 	const q = search.get('q') ?? '';
 	const page = Math.max(0, Number(search.get('page') ?? 0) || 0);
-	/** Top-level (the default: the teams no other team here calls) or All; a search always covers all. */
-	const show: 'teams' | 'all' = search.get('show') === 'all' ? 'all' : 'teams';
+	/** Top-level (the default: teams people start), Recently run (started directly, newest first) or All; a search covers all. */
+	const show: 'teams' | 'recent' | 'all' = search.get('show') === 'all' ? 'all' : search.get('show') === 'recent' ? 'recent' : 'teams';
 	const [draft, set_draft] = useState(q);
 	const [running, set_running] = useState<Realm_team_row | null>(null);
 	const [installing, set_installing] = useState(() => search.get('install') === '1');
@@ -157,7 +157,7 @@ export function Component() {
 	const sort = use_table_sort({ keys: ['team', 'origin'], default_sort: { by: 'team', dir: 'asc' } });
 	const read = use_bff_read<Realm_teams_data>(
 		'/v1/realm_teams/get',
-		org && slug ? { org_slug: org, slug, limit: TEAMS_PAGE_SIZE, offset: page * TEAMS_PAGE_SIZE, ...(q ? { q } : {}), ...(show === 'all' ? { show } : {}), ...sort.body } : null,
+		org && slug ? { org_slug: org, slug, limit: TEAMS_PAGE_SIZE, offset: page * TEAMS_PAGE_SIZE, ...(q ? { q } : {}), ...(show !== 'teams' ? { show } : {}), ...sort.body } : null,
 		{ refresh_ms: 30_000, fallback_error: 'Could not load teams.' },
 	);
 	const data = read.data;
@@ -168,8 +168,6 @@ export function Component() {
 	const sidebar_realm = overview.data?.orgs.flatMap((o) => o.realms).find((r) => r.id === realm_id) ?? null;
 	const from = data && data.total ? data.offset + 1 : 0;
 	const to = data ? Math.min(data.offset + data.limit, data.total) : 0;
-	/** Recently run (the BFF's, first page only): above the rest, not repeated in it. */
-	const recent = data && page === 0 && !q ? data.recent ?? [] : [];
 
 	/** One team: name · version (and update badges), description, warnings; Sub-team; Last run; Run. */
 	const team_row = (r: Realm_team_row) => (
@@ -233,8 +231,8 @@ export function Component() {
 							{/* A search covers every team, so the switch only shows without one. */}
 							{!q && data?.counts ? (
 								<div role="group" aria-label="Which teams" className="flex overflow-hidden rounded-md border border-[var(--g-line-strong)] text-[12px]">
-									{([['teams', 'Top-level', 'Teams people start: no other team here runs them, or they are also started directly'], ['all', 'All', 'Every team, sub-teams too']] as const).map(([k, text, hint]) => (
-										<button key={k} type="button" aria-pressed={show === k} title={hint} onClick={() => set_param('show', k === 'all' ? 'all' : null)} className={`h-8 px-3 ${show === k ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
+									{([['teams', 'Top-level', 'Teams people start: no other team here runs them, or they are also started directly'], ['recent', 'Recently run', 'Teams started directly, newest first'], ['all', 'All', 'Every team, sub-teams too']] as const).map(([k, text, hint]) => (
+										<button key={k} type="button" aria-pressed={show === k} title={hint} onClick={() => set_param('show', k === 'teams' ? null : k)} className={`h-8 px-3 ${show === k ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
 											{text} <span className="font-normal text-[var(--g-ink-3)]">{data.counts![k]}</span>
 										</button>
 									))}
@@ -245,10 +243,10 @@ export function Component() {
 						{msg ? <p role={msg.tone === 'bad' ? 'alert' : 'status'} className={`text-[12.5px] ${msg.tone === 'bad' ? 'text-[var(--g-bad)]' : 'text-[var(--g-ok)]'}`}>{msg.text}</p> : null}
 						<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
 							{read.status === 'loading' ? <div className="h-[360px] animate-pulse" aria-busy="true" aria-label="Loading teams" /> : null}
-							{data && data.items.length === 0 && !recent.length ? (
+							{data && data.items.length === 0 ? (
 								<p className="px-4 py-12 text-center text-[13px] text-[var(--g-ink-3)]">{q ? 'No teams match this search.' : 'No teams in this realm yet — install one to get started.'}</p>
 							) : null}
-							{data && (data.items.length || recent.length) ? (
+							{data && data.items.length ? (
 								<table className="w-full text-left text-[12.5px]">
 									<thead>
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
@@ -259,9 +257,6 @@ export function Component() {
 										</tr>
 									</thead>
 									<tbody>
-										{recent.length ? <tr className="border-b border-[var(--g-line-2)] bg-[var(--g-soft)]"><th colSpan={4} scope="rowgroup" className="px-4 py-1.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">Recently run</th></tr> : null}
-										{recent.map(team_row)}
-										{recent.length && data.items.length ? <tr className="border-b border-[var(--g-line-2)] bg-[var(--g-soft)]"><th colSpan={4} scope="rowgroup" className="px-4 py-1.5 text-left text-[10.5px] font-semibold uppercase tracking-[0.07em] text-[var(--g-ink-3)]">Everything else</th></tr> : null}
 										{data.items.map(team_row)}
 									</tbody>
 								</table>
@@ -278,7 +273,7 @@ export function Component() {
 				)}
 			</div>
 			{installing && realm_id ? (
-				<Install_drawer realm_id={realm_id} org_id={sidebar_realm?.org_id ?? null} org_slug={org ?? ''} installed={new Set([...(data?.recent ?? []), ...(data?.items ?? [])].filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
+				<Install_drawer realm_id={realm_id} org_id={sidebar_realm?.org_id ?? null} org_slug={org ?? ''} installed={new Set((data?.items ?? []).filter((r) => r.in_team_list && r.scope).map((r) => `${r.scope}/${r.slug}`))} on_close={() => set_installing(false)} on_installed={() => read.reload()} />
 			) : null}
 			{running && running.scope && data ? (
 				<Run_in_realm_dialog scope={running.scope} slug={running.slug} fixed_realm={{ id: data.realm.id, slug: data.realm.slug, name: data.realm.name, org_id: sidebar_realm?.org_id }} on_close={() => set_running(null)} />
