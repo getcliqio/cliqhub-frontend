@@ -75,6 +75,8 @@ export interface Team_tree_node {
 	used_by: number;
 	/** Already on the path above: not opened again. */
 	cycle: boolean;
+	/** The caller's phase that runs it (a team's own tree; absent on top-level rows). */
+	phase?: string | null;
 	children: Team_tree_node[];
 }
 
@@ -110,6 +112,9 @@ export interface Team_header {
 	/** public: everyone; private: the scope's members (PLAN-team-visibility §3.2); draft: never published. */
 	visibility: 'public' | 'private' | 'draft';
 	tags: string[];
+	/** team.yml `use_when` / `not_for` of the version shown (older BFFs omit them). */
+	use_when?: string[];
+	not_for?: string[];
 	can_edit: boolean;
 	can_delete: boolean;
 	can_toggle_listing: boolean;
@@ -148,7 +153,7 @@ export interface Team_page_data {
 	team: Team_header;
 	counts: { phases: number; versions: number; runs: number | null };
 	view: Team_view;
-	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team>; /** Teams whose latest version calls this one, that you can see (S9). */ used_by?: Array<{ id: string; label: string; latest_version: string }> };
+	overview?: { phases: Team_phase[]; support: Team_phase[]; inputs: Team_input[]; agents: string[]; /** Agents the team defines (team.yml `agents:`). */ agent_defs?: Array<{ name: string; entry: string | null; env: string[] }>; latest: Team_release | null; installs: Team_install[]; /** Teams the steps run, at every depth. */ sub_teams?: Record<string, Team_sub_team>; /** Teams whose latest version calls this one, that you can see (S9). */ used_by?: Array<{ id: string; label: string; latest_version: string }>; /** This team and the sub-teams its phases run, nested (installed versions in a realm). */ tree?: Team_tree_node };
 	workflow?: {
 		phases: Team_phase[];
 		support: Team_phase[];

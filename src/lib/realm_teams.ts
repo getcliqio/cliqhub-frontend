@@ -41,6 +41,12 @@ export interface Realm_teams_data {
 	total: number;
 	offset: number;
 	limit: number;
+	/** The most recently run teams in the view (up to 5, first page; not repeated in `items`); empty on a search. */
+	recent?: Realm_team_row[];
+	/** The view applied: `all` on a search, or when the BFF couldn't read the whole list. */
+	show?: 'teams' | 'all';
+	/** How many teams each view has; null when the whole list couldn't be read. */
+	counts?: { teams: number; all: number } | null;
 	/** The realm's teams as their installed tree (S9); null/absent when the BFF couldn't build it. */
 	tree?: Team_tree_node[] | null;
 }

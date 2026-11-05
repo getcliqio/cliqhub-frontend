@@ -3,7 +3,8 @@
  * ("N steps ›" on the node; a path above leads back up) or, with Sub-teams: Expanded, drawn in
  * place inside labelled frames, at every depth. Selection, the start node and the run overlay
  * belong to the team itself, so they apply at the top level (and to its own steps when expanded).
- * `below` draws something that follows the same view (the realm page's step table).
+ * `below` draws something that follows the same view (the realm page's step table). With `on_open_team`, opening
+ * a sub-team goes there (its own page) instead of showing it here.
  */
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
@@ -36,6 +37,7 @@ export function Team_workflow({
 	height = 220,
 	below,
 	graph_class,
+	on_open_team,
 }: {
 	/** The team's own name, first in the path. */
 	team_name: string;
@@ -44,6 +46,8 @@ export function Team_workflow({
 	below?: (view: Workflow_view_state) => ReactNode;
 	/** Classes for the path bar + diagram (`below` is drawn after it, outside). */
 	graph_class?: string;
+	/** Opening a sub-team (its ref) goes to its page instead of showing it in place. */
+	on_open_team?: (ref: string) => void;
 } & Pick<Graph_props, 'selected' | 'on_select' | 'statuses' | 'start' | 'height'>) {
 	const [path, set_path] = useState<string[]>([]);
 	const [expanded, set_expanded] = useState(false);
@@ -58,6 +62,7 @@ export function Team_workflow({
 	// Steps inside an expanded sub-team are not this team's own: they can't be selected.
 	const own_select = top && on_select ? (n: string) => { if (!n.includes('/')) on_select(n); } : undefined;
 	const go = (next: string[]) => { set_path(next); set_inner_sel(null); };
+	const open_team = (ref: string) => (on_open_team ? on_open_team(ref) : go([...shown, ref]));
 
 	return (
 		<div>
@@ -96,7 +101,7 @@ export function Team_workflow({
 				phases={view.phases}
 				groups={view.groups}
 				sub_teams={subs}
-				on_open={(ref) => go([...shown, ref])}
+				on_open={open_team}
 				height={height}
 				label={shown.length ? `${subs[shown[shown.length - 1]].name} workflow` : 'Team workflow'}
 				selected={top ? selected : null}
@@ -109,7 +114,7 @@ export function Team_workflow({
 				top, phases: here, sub_teams: subs, expanded: expanded && has_subs,
 				selected: top ? selected ?? null : inner_sel,
 				pick: top ? (n) => on_select?.(n) : (n) => set_inner_sel((cur) => (cur === n ? null : n)),
-				open: (ref) => go([...shown, ref]),
+				open: open_team,
 			})}
 		</div>
 	);
