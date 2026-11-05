@@ -233,7 +233,7 @@ export function Component() {
 							{/* A search covers every team, so the switch only shows without one. */}
 							{!q && data?.counts ? (
 								<div role="group" aria-label="Which teams" className="flex overflow-hidden rounded-md border border-[var(--g-line-strong)] text-[12px]">
-									{([['teams', 'Top-level', 'Teams no other team in this realm runs'], ['all', 'All', 'Every team, sub-teams too']] as const).map(([k, text, hint]) => (
+									{([['teams', 'Top-level', 'Teams people start: no other team here runs them, or they are also started directly'], ['all', 'All', 'Every team, sub-teams too']] as const).map(([k, text, hint]) => (
 										<button key={k} type="button" aria-pressed={show === k} title={hint} onClick={() => set_param('show', k === 'all' ? 'all' : null)} className={`h-8 px-3 ${show === k ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
 											{text} <span className="font-normal text-[var(--g-ink-3)]">{data.counts![k]}</span>
 										</button>

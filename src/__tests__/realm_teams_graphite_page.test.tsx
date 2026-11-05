@@ -124,7 +124,7 @@ describe('Realm teams page', () => {
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		const group = screen.getByRole('group', { name: 'Which teams' });
 		expect(within(group).getByRole('button', { name: /Top-level/ })).toHaveAttribute('aria-pressed', 'true');
-		expect(within(group).getByRole('button', { name: /Top-level/ })).toHaveAttribute('title', 'Teams no other team in this realm runs');
+		expect(within(group).getByRole('button', { name: /Top-level/ })).toHaveAttribute('title', 'Teams people start: no other team here runs them, or they are also started directly');
 		expect(within(group).getByRole('button', { name: /All/ })).toHaveTextContent('All 9');
 		expect(calls.filter((c) => c.url === '/v1/realm_teams/get')[0].body).not.toHaveProperty('show');
 		fireEvent.click(within(group).getByRole('button', { name: /All/ }));
