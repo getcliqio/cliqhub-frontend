@@ -62,6 +62,8 @@ export interface Hug {
 	hug: { name: string; sha256: string } | null;
 	/** What's asked, in plain text. */
 	summary: string | null;
+	/** The requester's latest status line while open ("1 answer couldn't be used; …"), or null (§6.1 progress). */
+	progress?: string | null;
 	/** The hug's params (only the hug reads them). */
 	params: Record<string, unknown>;
 	files: Hug_file_slot[];
@@ -229,15 +231,17 @@ export function value_text(v: unknown): string {
 	return JSON.stringify(v);
 }
 
-// ── Drafts (unsent answers, this browser only) ─────────────────────────────
+// ── Drafts (unsent answers, this tab's session only — §9.2.9) ──────────────
+// sessionStorage: a draft survives a reload in the same tab and is gone when the tab closes, so an answer never
+// outlives the visit (a shared machine, a signed-out person).
 
 const draft_key = (hug_id: string, user_id: string) => `hug-draft:${user_id}:${hug_id}`;
 
-/** The unsent answer this person kept for this Hug in this browser, or null. */
+/** The unsent answer this person kept for this Hug in this tab, or null. */
 export function load_draft(hug_id: string, user_id: string | null | undefined): Record<string, unknown> | null {
 	if (!user_id) return null;
 	try {
-		const raw = localStorage.getItem(draft_key(hug_id, user_id));
+		const raw = sessionStorage.getItem(draft_key(hug_id, user_id));
 		const v = raw ? JSON.parse(raw) as unknown : null;
 		return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
 	} catch {
@@ -249,7 +253,7 @@ export function load_draft(hug_id: string, user_id: string | null | undefined): 
 export function save_draft(hug_id: string, user_id: string | null | undefined, values: Record<string, unknown> | null): void {
 	if (!user_id) return;
 	try {
-		if (values) localStorage.setItem(draft_key(hug_id, user_id), JSON.stringify(values));
-		else localStorage.removeItem(draft_key(hug_id, user_id));
+		if (values) sessionStorage.setItem(draft_key(hug_id, user_id), JSON.stringify(values));
+		else sessionStorage.removeItem(draft_key(hug_id, user_id));
 	} catch { /* storage off (private window, quota): drafts aren't kept */ }
 }

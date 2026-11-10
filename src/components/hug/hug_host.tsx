@@ -4,17 +4,24 @@
  * Wraps `host_hug` from `@getcliqio/hug-frontend/host`: the frame (`sandbox="allow-scripts"`, from the content origin),
  * the bridge's checks, and what the frame asks the Hub to do — pick and upload a file into one of the Hug's upload
  * slots (`/v1/artifacts/upload`), read a file it may read (`/v1/artifacts/download`, with the viewer's permissions),
- * download one, open a link (one from the params at once; any other shown first). The page owns Submit: it reads the
+ * download one, open a link (one from the params at once; any other shown first in the Hub's dialog, §6.1). The page owns Submit: it reads the
  * answer's state from `on_state` and sends through the handle in `host_ref`.
  *
  * The frame is made once per Hug and URL; later changes (mode, ending) go through the handle, not a re-render.
  */
-import { useEffect, useRef, type MutableRefObject } from 'react';
-import { host_hug, type AnswerSnapshot, type HostInit, type HugHost } from '@getcliqio/hug-frontend/host';
+import { createContext, useContext, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { host_hug, type AnswerSnapshot, type HostInit, type HugHost, type ReadBudget } from '@getcliqio/hug-frontend/host';
+import { G_BTN, G_PRIMARY } from '@/components/graphite/g_agents';
 import { useAuthFetch } from '@/lib/auth_context';
 import { file_problem, upload_file, type File_ref, type Hug, type Hug_file_slot, type Hug_response } from '@/lib/hug';
 
 type Answer = NonNullable<HostInit['mine']>;
+
+/**
+ * The page's read budget (§6.3: reads ≤ 50 MB per Hug page), shared by every frame on it — the answer frame and each
+ * response's view frame. Without a provider each frame has its own.
+ */
+export const Hug_read_budget = createContext<ReadBudget | undefined>(undefined);
 
 /** A response as the bridge carries an answer. */
 export function answer_of(r: Hug_response | null): Answer | null {
@@ -77,9 +84,12 @@ export interface Hug_host_props {
 export function Hug_host({ hug, content_url, mode, mine, viewing, draft = null, viewer, loading = 'eager', host_ref, on_state, label }: Hug_host_props) {
 	const container = useRef<HTMLDivElement | null>(null);
 	const auth_fetch = useAuthFetch();
+	const budget = useContext(Hug_read_budget);
 	// The latest props for callbacks, without re-making the frame.
 	const latest = useRef({ on_state, auth_fetch });
 	latest.current = { on_state, auth_fetch };
+	// A link the hug asked to open that isn't in its params: shown in the dialog until the person chooses.
+	const [link, set_link] = useState<{ url: string; choose: (open: boolean) => void } | null>(null);
 
 	useEffect(() => {
 		if (!container.current) return undefined;
@@ -97,6 +107,7 @@ export function Hug_host({ hug, content_url, mode, mine, viewing, draft = null, 
 			src: content_url,
 			title: label ?? hug.title,
 			loading,
+			...(budget ? { read_budget: budget } : {}),
 			init: {
 				hug: {
 					id: hug.id, name: hug.hug?.name ?? '', title: hug.title, ...(hug.summary ? { summary: hug.summary } : {}),
@@ -110,7 +121,7 @@ export function Hug_host({ hug, content_url, mode, mine, viewing, draft = null, 
 				mine: answer_of(mine),
 				viewing: answer_of(viewing),
 				draft,
-				progress: null,
+				progress: hug.progress ?? null,
 				theme: hub_theme(container.current),
 				locale: navigator.language || 'en-US',
 				mode,
@@ -128,9 +139,12 @@ export function Hug_host({ hug, content_url, mode, mine, viewing, draft = null, 
 				});
 			},
 			open_link: (url, listed) => {
-				if (listed || window.confirm(`This Hug wants to open a link that isn't one it was given:\n\n${url}\n\nOpen it?`)) {
-					window.open(url, '_blank', 'noopener,noreferrer');
-				}
+				const go = () => { window.open(url, '_blank', 'noopener,noreferrer'); };
+				if (listed) { go(); return undefined; }
+				// The host waits for the choice (one link at a time).
+				return new Promise<void>((resolve) => {
+					set_link({ url, choose: (open) => { set_link(null); if (open) go(); resolve(); } });
+				});
 			},
 			on_state: (s) => latest.current.on_state?.(s),
 			on_issue: (issue) => console.warn('[hug]', issue.reason),
@@ -144,5 +158,32 @@ export function Hug_host({ hug, content_url, mode, mine, viewing, draft = null, 
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [hug.id, content_url, viewing?.response_id]);
 
-	return <div ref={container} className="hug-frame w-full" data-testid="hug-frame" />;
+	return (
+		<>
+			<div ref={container} className="hug-frame w-full" data-testid="hug-frame" />
+			{link ? <Link_dialog url={link.url} on_choose={link.choose} /> : null}
+		</>
+	);
+}
+
+/** "Open this link?" — a link the hug wasn't given, in full, before it opens (§6.1 `open_link`). Escape cancels. */
+function Link_dialog({ url, on_choose }: { url: string; on_choose: (open: boolean) => void }) {
+	return (
+		<div className="fixed inset-0 z-50 grid place-items-center bg-[var(--g-backdrop)] p-4 backdrop-blur-[2px]"
+			onKeyDown={(e) => { if (e.key === 'Escape') on_choose(false); }}>
+			<div role="alertdialog" aria-modal="true" aria-labelledby="hug-link-title" aria-describedby="hug-link-url" data-testid="hug-link-dialog"
+				className="w-full max-w-[520px] rounded-2xl border border-[var(--g-line)] bg-[var(--g-panel)] shadow-[var(--g-pop-shadow)]">
+				<div className="border-b border-[var(--g-line)] px-5 py-3.5">
+					<b id="hug-link-title" className="text-[16px]">Open this link?</b>
+					<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">This Hug wants to open a link it wasn’t given. Check where it goes first.</p>
+				</div>
+				<p id="hug-link-url" className="g-mono break-all px-5 py-4 text-[13px] text-[var(--g-ink)]">{url}</p>
+				<div className="flex justify-end gap-2 border-t border-[var(--g-line)] px-5 py-3">
+					{/* eslint-disable-next-line jsx-a11y/no-autofocus -- the safe choice gets focus in a confirmation */}
+					<button type="button" autoFocus onClick={() => on_choose(false)} className={G_BTN}>Cancel</button>
+					<button type="button" onClick={() => on_choose(true)} className={G_PRIMARY}>Open link</button>
+				</div>
+			</div>
+		</div>
+	);
 }

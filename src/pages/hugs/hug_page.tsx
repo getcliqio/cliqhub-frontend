@@ -17,7 +17,7 @@
  * phase is opened. Writes: `/v1/hugs/respond` (values and the hug's one-line summary); files stream to
  * `/v1/artifacts/upload` when the hug asks for one.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AnswerSnapshot, HugHost } from '@getcliqio/hug-frontend/host';
 import { Link, useParams } from 'react-router';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
@@ -30,7 +30,8 @@ import type { Team_phase } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
 import { G_phase_output } from '@/components/graphite/g_phase_output';
-import { answer_of, Hug_host } from '@/components/hug/hug_host';
+import { answer_of, Hug_host, Hug_read_budget } from '@/components/hug/hug_host';
+import { read_budget } from '@getcliqio/hug-frontend/host';
 import { Hug_responses, Response_values } from '@/components/hug/hug_responses';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { G_BTN, G_PRIMARY } from '@/components/graphite/g_agents';
@@ -48,11 +49,16 @@ function until(iso: string, now: number = Date.now()): string {
 
 const clock = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-function Status_pill({ hug, open, answered }: { hug: Hug; open: boolean; answered: boolean }) {
+/**
+ * The status pill (§6.4): "Answered" once this person has; "Waiting on you" while they may answer; "Open" when they
+ * can't (not sent to them, or the Hug has no page to answer in).
+ */
+function Status_pill({ hug, open, answered, can_answer }: { hug: Hug; open: boolean; answered: boolean; can_answer: boolean }) {
 	if (open) {
-		return answered
-			? <span className="rounded-full bg-[var(--g-ok-soft)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-ok)]">Response sent</span>
-			: <span className="rounded-full bg-[rgba(255,122,217,.14)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-hug)]">Waiting on you</span>;
+		if (answered) return <span className="rounded-full bg-[var(--g-ok-soft)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-ok)]">Answered</span>;
+		return can_answer
+			? <span className="rounded-full bg-[rgba(255,122,217,.14)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-hug)]">Waiting on you</span>
+			: <span className="rounded-full bg-[var(--g-soft)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-ink-3)]">Open</span>;
 	}
 	const tone = hug.status === 'closed' ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : 'bg-[var(--g-soft)] text-[var(--g-ink-3)]';
 	return <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${tone}`}>{hug.status === 'open' ? 'Expired' : status_label(hug)}</span>;
@@ -184,13 +190,16 @@ function Answer({ hug, content_url, mine, me, viewer, run_href, waiting, on_sent
 }) {
 	const auth_fetch = useAuthFetch();
 	const host = useRef<HugHost | null>(null);
-	const [answering, set_answering] = useState(!mine);
+	// This tab's unsent answer — a first answer, or a change to one (read once, when the page opens).
+	const [draft] = useState(() => load_draft(hug.id, me));
+	const [answering, set_answering] = useState(!mine || draft !== null);
 	const [snapshot, set_snapshot] = useState<AnswerSnapshot | null>(null);
 	const [busy, set_busy] = useState(false);
 	const [error, set_error] = useState<string | null>(null);
 	const [sent, set_sent] = useState(false);
 	const [not_for_you, set_not_for_you] = useState(false);
-	const draft = useMemo(() => (mine ? null : load_draft(hug.id, me)), [hug.id, me, mine]);
+	// The open Hug changed (the page re-reads it): tell the hug (§6.1 `update`). When it ends, the page draws state 5.
+	useEffect(() => { host.current?.update({ expires_at: hug.expires_at, progress: hug.progress ?? null }); }, [hug.expires_at, hug.progress]);
 
 	// Core refused at Submit (its view changed while the page was open, e.g. a role lost runs.view): read-only now.
 	if (not_for_you) return <Not_for_you hug={hug} content_url={content_url} me={me} viewer={viewer} />;
@@ -216,17 +225,18 @@ function Answer({ hug, content_url, mine, me, viewer, run_href, waiting, on_sent
 		}
 	};
 	const change = () => { set_sent(false); set_error(null); host.current?.set_mode('answer'); set_answering(true); };
-	const cancel = () => { set_error(null); host.current?.set_mode('view', answer_of(mine)); set_answering(false); };
+	const cancel = () => { set_error(null); save_draft(hug.id, me, null); host.current?.set_mode('view', answer_of(mine)); set_answering(false); };
 	const problems = snapshot?.problems.length ?? 0;
 
 	return (
 		<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-acc-line)] bg-[var(--g-panel)] px-5 py-4" aria-label="Your response" data-testid="answer">
 			<h2 className="text-[15px] font-semibold">Your response</h2>
 			<Others_line hug={hug} me={me} />
+			<Progress_line hug={hug} />
 			<Hug_host
 				hug={hug}
 				content_url={content_url}
-				mode={mine ? 'view' : 'answer'}
+				mode={mine && draft === null ? 'view' : 'answer'}
 				mine={mine}
 				viewing={mine}
 				draft={draft}
@@ -266,11 +276,18 @@ function Answer({ hug, content_url, mine, me, viewer, run_href, waiting, on_sent
 	);
 }
 
+/** The requester's status line while the Hug is open (§2, §6.1): why it's still waiting, e.g. an answer it couldn't use. */
+function Progress_line({ hug }: { hug: Hug }) {
+	if (!hug.progress) return null;
+	return <p role="status" className="text-[12.5px] text-[var(--g-warn-text)]" data-testid="hug-progress">{hug.progress}</p>;
+}
+
 /** §6.4 state 4 — an open Hug this person may see but not answer: no answer frame, no Submit; the answers so far. */
 function Not_for_you({ hug, content_url, me, viewer }: { hug: Hug; content_url: string; me: string | null; viewer: { name: string; via: string[] } }) {
 	return (
 		<section className={`${PANEL} flex flex-col gap-3 px-5 py-4`} aria-label="Answers so far" data-testid="not-for-you">
 			<p className="text-[12.5px] text-[var(--g-ink-3)]">Only people this Hug was sent to can answer it ({hug.channels.join(', ')}).</p>
+			<Progress_line hug={hug} />
 			{hug.responses.length
 				? <Hug_responses hug={hug} content_url={content_url} me={me} viewer={viewer} />
 				: <p className="text-[12.5px] text-[var(--g-ink-3)]">No answers yet.</p>}
@@ -306,7 +323,12 @@ export function Component() {
 	const overview = use_overview();
 	const { user } = useAuth();
 	const read = use_bff_read<Hug_page_data>('/v1/hug_page/get', hug_id ? { hug_id } : null, { refresh_ms: 20_000, fallback_error: 'Could not load this Hug.' });
+	// One read budget for every frame on this page (§6.3), new for each Hug.
+	const budget = useMemo(() => read_budget(), [hug_id]);
 	const h = read.data?.hug ?? null;
+	// A Hug that no longer takes answers keeps no draft.
+	const ended = h !== null && !is_answerable(h);
+	useEffect(() => { if (h && ended) save_draft(h.id, user?.id, null); }, [h?.id, ended, user?.id]);
 
 	if (!h) {
 		return (
@@ -330,11 +352,12 @@ export function Component() {
 	const can_answer = h.viewer?.can_answer ?? true;
 
 	return (
+		<Hug_read_budget.Provider value={budget}>
 		<Graphite_shell data={overview.data} title="Hug" current_realm_id={h.realm_id}>
 			<div className="mx-auto flex w-full max-w-[960px] flex-col gap-4 px-7 py-6">
 				<div className="flex items-center gap-2 text-[12.5px] text-[var(--g-ink-3)]">
 					<nav aria-label="Breadcrumb" className="min-w-0 truncate"><Link to="/hugs" className="hover:text-[var(--g-ink)]">HUGs</Link> › {h.title}</nav>
-					<span className="ml-auto"><Status_pill hug={h} open={open} answered={Boolean(mine)} /></span>
+					<span className="ml-auto"><Status_pill hug={h} open={open} answered={Boolean(mine)} can_answer={can_answer && content_url !== null} /></span>
 				</div>
 
 				<section className={`${PANEL} flex flex-col gap-2.5 px-5 py-4`} aria-label="Review">
@@ -375,5 +398,6 @@ export function Component() {
 				)}
 			</div>
 		</Graphite_shell>
+		</Hug_read_budget.Provider>
 	);
 }
