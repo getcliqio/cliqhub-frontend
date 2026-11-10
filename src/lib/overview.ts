@@ -71,6 +71,8 @@ export interface Overview_item {
 	kind: 'hug' | 'input' | 'run';
 	id: string;
 	title: string;
+	/** A Hug's plain-text summary of what's asked (absent for runs and from an older BFF). */
+	summary?: string | null;
 	org_id: string;
 	org_slug: string;
 	realm_id: string | null;

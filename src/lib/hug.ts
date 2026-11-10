@@ -1,47 +1,45 @@
 /**
- * Hugs — a person is asked for input (PLAN-hug-requests, PLAN-hug-templates). Types for
- * `POST /v1/hug_page/get`, the form's values, checks for messages, answering (`POST /v1/hugs/respond`)
- * and file uploads (`POST /v1/artifacts/upload?hug_id&requested_input&name`, the file as the raw body).
+ * Hugs — a person is asked for input (PLAN-hug-requests, PLAN-hug-widgets). Types for `POST /v1/hug_page/get`,
+ * answering (`POST /v1/hugs/respond`) and file uploads (`POST /v1/artifacts/upload?hug_id&requested_input&name`,
+ * the file as the raw body).
  *
- * A Hug names a template (`form`, `approval`) and carries its params; the page renders by template.
- * Core has the template check every answer and is the authority; the checks here mirror the SDK's
- * input rules only to show messages before sending (src/__tests__/hug_contract.test.ts keeps them in
- * step). Core's 422 problems are shown the same way, per key.
+ * A Hug is opened with a hug — a frontend the page frames from the content origin (`content_url`) and talks to
+ * through the host bridge (`components/hug/hug_host.tsx`). The hug checks answers; Core checks only their envelope
+ * (size, a one-line summary, uploads under the Hug's upload slots). A Hug with no hug (opened before hugs) or whose
+ * bundle is gone is shown read-only (`content_url: null`).
  */
 
 import { mark_overview_stale } from '@/lib/overview';
 
 // ── What Core sends ────────────────────────────────────────────────────────
 
-interface Input_common {
+/** A file a hug can read or a person uploaded. */
+export interface File_ref {
+	artifact_id: string;
 	name: string;
-	label?: string;
-	help?: string;
-	required?: boolean;
-	default?: unknown;
-	ui?: Record<string, unknown>;
+	size: number;
+	content_type: string;
+	sha256?: string;
 }
-export type Requested_input =
-	| Input_common & { type: 'text'; multiline?: boolean; min_length?: number; max_length?: number }
-	| Input_common & { type: 'number'; min?: number; max?: number; integer?: boolean }
-	| Input_common & { type: 'boolean' }
-	| Input_common & { type: 'enum'; choices: Array<{ value: string; label?: string }>; multiple?: boolean }
-	| Input_common & { type: 'file'; accept?: string[]; max_bytes?: number; multiple?: boolean }
-	| Input_common & { type: 'channel'; multiple?: boolean };
 
-export type Context_block =
-	| { type: 'markdown'; text: string }
-	| { type: 'artifact'; artifact_id: string; label?: string }
-	| { type: 'checks'; results: Array<{ name: string; ok: boolean; summary?: string }> }
-	| { type: 'transcript'; turns: Array<{ role: string; content: string }> };
+/** An upload slot: a top-level answer key that takes files. */
+export interface Hug_file_slot {
+	name: string;
+	accept?: string[];
+	max_bytes?: number;
+	multiple?: boolean;
+	required?: boolean;
+}
 
 export interface Hug_response {
 	response_id: string;
 	responder: { user_id: string; name: string };
 	/** The Hug's channels that reached this person. */
 	via: string[];
-	/** The answer, as the template's keys (a comment, a decision, a reason… among them). */
+	/** The answer, as the hug's keys. */
 	values: Record<string, unknown>;
+	/** The answer in one line, from the hug ("Approved"); absent when it gave none. */
+	summary?: string;
 	responded_at: string;
 }
 
@@ -60,11 +58,14 @@ export interface Hug {
 	realm_slug: string | null;
 	org_slug: string | null;
 	title: string;
-	/** The template's name, and the version the Hug resolved to. */
-	template: string;
-	template_version: number;
-	/** The template's params (`prompt`, `context`, `inputs`, and its own options). */
+	/** The hug it was opened with; null for a Hug opened before hugs. */
+	hug: { name: string; sha256: string } | null;
+	/** What's asked, in plain text. */
+	summary: string | null;
+	/** The hug's params (only the hug reads them). */
 	params: Record<string, unknown>;
+	files: Hug_file_slot[];
+	attachments: File_ref[];
 	channels: string[];
 	status: Hug_status;
 	outcome: string | null;
@@ -75,6 +76,11 @@ export interface Hug {
 	/** People its channels reach who can't see it, so it wasn't sent to them. */
 	not_sent_to?: Array<{ name: string; channel: string }>;
 	responses: Hug_response[];
+	/**
+	 * What the person reading it may do: answer only when Core would take their answer (open, and its channels
+	 * reached them — `via`). Without it (an older Core) the page offers the answer and Core decides on Submit.
+	 */
+	viewer?: { can_answer: boolean; via: string[] } | null;
 }
 
 /** One phase of the Hug's run (for the workflow graph). */
@@ -98,234 +104,13 @@ export interface Hug_run {
 
 export interface Hug_page_data {
 	hug: Hug;
-	/** Absent from an older BFF. */
+	/** Where the hug is framed from; null → the read-only fallback view. */
+	content_url: string | null;
 	run?: Hug_run | null;
-}
-
-/** The templates this page renders; anything else is shown as unsupported. */
-export type Template_name = 'form' | 'approval';
-
-/** The Hug's template, when this page renders it. */
-export function hug_template(h: Pick<Hug, 'template'>): Template_name | null {
-	return h.template === 'form' || h.template === 'approval' ? h.template : null;
-}
-
-/** The requested inputs (`params.inputs`). */
-export function hug_inputs(h: Pick<Hug, 'params'>): Requested_input[] {
-	return Array.isArray(h.params?.inputs) ? h.params.inputs as Requested_input[] : [];
-}
-
-/** The prompt (`params.prompt`). */
-export function hug_prompt(h: Pick<Hug, 'params'>): string {
-	return typeof h.params?.prompt === 'string' ? h.params.prompt : '';
-}
-
-/** What the requester attached (`params.context`). */
-export function hug_context(h: Pick<Hug, 'params'>): Context_block[] {
-	return Array.isArray(h.params?.context) ? h.params.context as Context_block[] : [];
-}
-
-/** `approval`'s choices when rejecting (`params.reject_choices`). */
-export function reject_choices(h: Pick<Hug, 'params'>): Array<{ value: string; label?: string }> {
-	return Array.isArray(h.params?.reject_choices) ? h.params.reject_choices as Array<{ value: string; label?: string }> : [];
-}
-
-/** Answer keys the templates add themselves (not inputs). */
-export const TEMPLATE_KEYS = ['comment', 'declined', 'decision', 'reason', 'choice'] as const;
-
-/** What an answer says beyond its inputs: approved / rejected (and where to), or couldn't answer. */
-export function answer_summary(h: Pick<Hug, 'params'>, values: Record<string, unknown>): string | null {
-	if (typeof values.declined === 'string') return "Couldn't answer";
-	if (values.decision === 'approve') return 'Approved';
-	if (values.decision === 'reject') {
-		const choice = reject_choices(h).find((c) => c.value === values.choice);
-		return choice ? `Rejected — ${choice.label ?? choice.value}` : 'Rejected';
-	}
-	return null;
-}
-
-/** Inputs a response must have, and the rest (a boolean always has a value, so it is never missing). */
-export function split_inputs(inputs: readonly Requested_input[]): { required: Requested_input[]; optional: Requested_input[] } {
-	const required = inputs.filter((i) => i.required !== false && i.type !== 'boolean');
-	return { required, optional: inputs.filter((i) => !required.includes(i)) };
-}
-
-/** How many required inputs the form doesn't have a value for yet. */
-export function missing_required(inputs: readonly Requested_input[], form: Form_values): number {
-	const values = to_values(inputs, form);
-	return split_inputs(inputs).required.filter((i) => values[i.name] === undefined).length;
-}
-
-/** A file uploaded for a `file` input (what the value holds). */
-export interface File_ref {
-	artifact_id: string;
-	name: string;
-	size: number;
-	content_type: string;
 }
 
 export function hug_href(hug_id: string): string {
 	return `/hugs/${encodeURIComponent(hug_id)}`;
-}
-
-// ── The form ───────────────────────────────────────────────────────────────
-
-/** A form value per type: text and number are kept as typed (string), the rest as sent. */
-export type Form_value = string | boolean | string[] | File_ref[];
-export type Form_values = Record<string, Form_value>;
-
-/** Form values to start from: the caller's own answer when they gave one, else each input's default. */
-export function initial_values(inputs: readonly Requested_input[], mine?: Hug_response | null): Form_values {
-	const out: Form_values = {};
-	for (const i of inputs) {
-		const v = mine && i.name in mine.values ? mine.values[i.name] : i.default;
-		out[i.name] = to_form(i, v);
-	}
-	return out;
-}
-
-function to_form(i: Requested_input, v: unknown): Form_value {
-	switch (i.type) {
-		case 'boolean': return v === true;
-		case 'number': return typeof v === 'number' ? String(v) : '';
-		case 'enum':
-			if (i.multiple) return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-			return typeof v === 'string' ? v : '';
-		case 'channel': return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : typeof v === 'string' && v ? [v] : [];
-		case 'file': {
-			const list = Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : [];
-			return list.filter((f): f is File_ref => !!f && typeof (f as File_ref).artifact_id === 'string');
-		}
-		default: return typeof v === 'string' ? v : '';
-	}
-}
-
-/**
- * Form values → the values Core takes. An empty optional input is left out; an empty required one
- * is left out too, so Core (and {@link value_problems}) report it as required.
- */
-export function to_values(inputs: readonly Requested_input[], form: Form_values): Record<string, unknown> {
-	const out: Record<string, unknown> = {};
-	for (const i of inputs) {
-		const v = form[i.name];
-		switch (i.type) {
-			case 'boolean': out[i.name] = v === true; break;
-			case 'number': {
-				const s = typeof v === 'string' ? v.trim() : '';
-				if (s !== '') out[i.name] = Number(s);
-				break;
-			}
-			case 'enum':
-				if (i.multiple) { if (Array.isArray(v) && v.length) out[i.name] = v; } else if (typeof v === 'string' && v) out[i.name] = v;
-				break;
-			case 'channel': if (Array.isArray(v) && v.length) out[i.name] = v; break;
-			case 'file': {
-				const refs = (Array.isArray(v) ? v : []) as File_ref[];
-				if (refs.length) out[i.name] = i.multiple ? refs.map((f) => ({ artifact_id: f.artifact_id })) : { artifact_id: refs[0].artifact_id };
-				break;
-			}
-			default: if (typeof v === 'string' && v !== '') out[i.name] = v;
-		}
-	}
-	return out;
-}
-
-/** Most files one input takes (the SDK's MAX_FILES_PER_INPUT). */
-export const MAX_FILES_PER_INPUT = 10;
-
-/**
- * What's wrong with each value, keyed by input name — the SDK's `validate_values` rules, worded the
- * same, for messages before sending.
- */
-export function value_problems(inputs: readonly Requested_input[], values: Record<string, unknown>): Record<string, string> {
-	const out: Record<string, string> = {};
-	for (const i of inputs) {
-		const v = values[i.name];
-		if (v === undefined || v === null) {
-			if (i.required !== false) out[i.name] = 'required';
-			continue;
-		}
-		const p = problem(i, v);
-		if (p) out[i.name] = p;
-	}
-	return out;
-}
-
-function problem(i: Requested_input, v: unknown): string | null {
-	switch (i.type) {
-		case 'text': {
-			if (typeof v !== 'string') return 'must be text';
-			const max = i.max_length ?? 100_000;
-			if (v.length > max) return `must be at most ${max} characters`;
-			if (i.min_length !== undefined && v.length < i.min_length) return `must be at least ${i.min_length} characters`;
-			if (i.required !== false && v.trim() === '') return 'required';
-			return null;
-		}
-		case 'number':
-			if (typeof v !== 'number' || !Number.isFinite(v)) return 'must be a number';
-			if (i.integer && !Number.isInteger(v)) return 'must be a whole number';
-			if (i.min !== undefined && v < i.min) return `must be at least ${i.min}`;
-			if (i.max !== undefined && v > i.max) return `must be at most ${i.max}`;
-			return null;
-		case 'boolean': return typeof v === 'boolean' ? null : 'must be true or false';
-		case 'enum': {
-			const allowed = new Set(i.choices.map((c) => c.value));
-			if (i.multiple) {
-				if (!Array.isArray(v) || !v.every((x) => typeof x === 'string')) return 'must be a list of choices';
-				if (new Set(v).size !== v.length) return 'has a choice more than once';
-				if (i.required !== false && v.length === 0) return 'required';
-				const bad = v.find((x) => !allowed.has(x));
-				return bad === undefined ? null : `'${bad}' is not one of the choices`;
-			}
-			if (typeof v !== 'string') return 'must be one of the choices';
-			return allowed.has(v) ? null : `'${v}' is not one of the choices`;
-		}
-		case 'file': {
-			const is_ref = (x: unknown) => !!x && typeof x === 'object' && !Array.isArray(x) && typeof (x as File_ref).artifact_id === 'string' && (x as File_ref).artifact_id !== '';
-			if (i.multiple) {
-				if (!Array.isArray(v) || !v.every(is_ref)) return 'must be a list of uploaded files';
-				if (v.length > MAX_FILES_PER_INPUT) return `takes at most ${MAX_FILES_PER_INPUT} files`;
-				if (i.required !== false && v.length === 0) return 'required';
-				return null;
-			}
-			return is_ref(v) ? null : 'must be an uploaded file';
-		}
-		case 'channel':
-			if (!Array.isArray(v) || !v.every((x) => typeof x === 'string' && x.trim() !== '')) return 'must be a list of channel names';
-			if (!i.multiple && v.length > 1) return 'takes one channel';
-			if (i.required !== false && v.length === 0) return 'required';
-			return null;
-	}
-}
-
-/**
- * Core's refusal message (`name: problem; name: problem`) → problems per input; the rest (not about
- * one input) under `''`.
- */
-export function problems_from_message(message: string, inputs: readonly Requested_input[]): Record<string, string> {
-	const names = new Set<string>([...inputs.map((i) => i.name), ...TEMPLATE_KEYS]);
-	const out: Record<string, string> = {};
-	for (const part of message.split('; ')) {
-		const at = part.indexOf(': ');
-		const name = at > 0 ? part.slice(0, at) : '';
-		if (names.has(name)) out[name] = part.slice(at + 2);
-		else out[''] = out[''] ? `${out['']}; ${part}` : part;
-	}
-	return out;
-}
-
-/** The label people see for an input. */
-export function input_label(i: Requested_input): string {
-	return i.label || i.name.replace(/_/g, ' ');
-}
-
-/** The label of an enum value (its choice label, else the value). */
-export function choice_label(i: Requested_input, value: unknown): string {
-	if (i.type === 'enum' && typeof value === 'string') return i.choices.find((c) => c.value === value)?.label ?? value;
-	if (Array.isArray(value)) return value.map((v) => (typeof v === 'object' && v ? String((v as File_ref).name ?? (v as File_ref).artifact_id) : choice_label(i, v))).join(', ');
-	if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-	if (value && typeof value === 'object') return String((value as File_ref).name ?? (value as File_ref).artifact_id ?? '');
-	return value == null ? '' : String(value);
 }
 
 // ── Answering ──────────────────────────────────────────────────────────────
@@ -333,24 +118,29 @@ export function choice_label(i: Requested_input, value: unknown): string {
 type Auth_fetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Submit (or replace) the caller's answer. Resolves with Core's error message when it refuses. */
-export async function respond(auth_fetch: Auth_fetch, hug_id: string, values: Record<string, unknown>): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
-	const body: Record<string, unknown> = { hug_id, values };
+export async function respond(
+	auth_fetch: Auth_fetch,
+	hug_id: string,
+	values: Record<string, unknown>,
+	summary?: string,
+): Promise<{ ok: true; response_id: string } | { ok: false; status: number; message: string }> {
+	const body: Record<string, unknown> = { hug_id, values, ...(summary ? { summary } : {}) };
 	const res = await auth_fetch('/v1/hugs/respond', { method: 'POST', body: JSON.stringify(body) });
-	const d = await res.json().catch(() => null) as { ok?: boolean; error?: { message?: string } | string } | null;
+	const d = await res.json().catch(() => null) as { ok?: boolean; data?: { response_id?: string }; error?: { message?: string } | string } | null;
 	if (res.ok && d?.ok) {
 		// The nav's HUG count (and any overview on screen) reloads.
 		mark_overview_stale();
-		return { ok: true };
+		return { ok: true, response_id: d.data?.response_id ?? '' };
 	}
 	const message = typeof d?.error === 'string' ? d.error : d?.error?.message ?? 'Could not send your answer.';
 	return { ok: false, status: res.status, message };
 }
 
-/** Why a file can't be sent for this input, checked before uploading (Core checks again). */
-export function file_problem(input: Extract<Requested_input, { type: 'file' }>, file: { name: string; type: string; size: number }, max_mb: number): string | null {
-	const limit = Math.min(max_mb * 1024 * 1024, input.max_bytes ?? Infinity);
+/** Why a file can't go into this upload slot, checked before uploading (Core checks again). */
+export function file_problem(slot: Hug_file_slot, file: { name: string; type: string; size: number }, max_mb: number = UPLOAD_MAX_MB): string | null {
+	const limit = Math.min(max_mb * 1024 * 1024, slot.max_bytes ?? Infinity);
 	if (file.size > limit) return `${file.name} is larger than ${limit >= 1024 * 1024 ? `${Math.floor(limit / (1024 * 1024))} MB` : `${limit} bytes`}`;
-	if (input.accept?.length && !accepts(input.accept, file)) return `${file.name} isn't one of: ${input.accept.join(', ')}`;
+	if (slot.accept?.length && !accepts(slot.accept, file)) return `${file.name} isn't one of: ${slot.accept.join(', ')}`;
 	return null;
 }
 
@@ -375,20 +165,23 @@ export interface Upload {
 }
 
 /**
- * Stream one file to `/v1/artifacts/upload` for a Hug's `file` input: the file is the raw body (no
+ * Stream one file to `/v1/artifacts/upload` for one of a Hug's upload slots: the file is the raw body (no
  * multipart), its metadata in the query. XHR for progress and cancel.
  */
-export function upload_file(hug_id: string, input: string, file: File, on_progress: (fraction: number) => void): Upload {
+export function upload_file(hug_id: string, slot: string, file: File, on_progress: (fraction: number) => void = () => undefined): Upload {
 	const xhr = new XMLHttpRequest();
-	const q = new URLSearchParams({ hug_id, requested_input: input, name: file.name });
+	const q = new URLSearchParams({ hug_id, requested_input: slot, name: file.name });
 	const done = new Promise<File_ref>((resolve, reject) => {
 		xhr.upload.onprogress = (e) => { if (e.lengthComputable) on_progress(e.loaded / e.total); };
 		xhr.onload = () => {
-			let d: { ok?: boolean; data?: { artifact_id?: string; name?: string; size?: number; content_type?: string }; error?: { message?: string } | string } | null = null;
+			let d: { ok?: boolean; data?: { artifact_id?: string; name?: string; size?: number; content_type?: string; sha256?: string }; error?: { message?: string } | string } | null = null;
 			try { d = JSON.parse(xhr.responseText); } catch { /* not JSON (a proxy page) */ }
 			if (xhr.status >= 200 && xhr.status < 300 && d?.ok && d.data?.artifact_id) {
 				on_progress(1);
-				resolve({ artifact_id: d.data.artifact_id, name: d.data.name ?? file.name, size: d.data.size ?? file.size, content_type: d.data.content_type ?? file.type });
+				resolve({
+					artifact_id: d.data.artifact_id, name: d.data.name ?? file.name, size: d.data.size ?? file.size,
+					content_type: d.data.content_type ?? file.type, sha256: d.data.sha256 ?? '',
+				});
 				return;
 			}
 			const msg = typeof d?.error === 'string' ? d.error : d?.error?.message;
@@ -423,4 +216,40 @@ export function status_label(h: Pick<Hug, 'status' | 'outcome'>): string {
 	if (h.status === 'expired') return 'Expired';
 	if (h.status === 'cancelled') return h.outcome ? `Cancelled — ${h.outcome}` : 'Cancelled';
 	return h.outcome || 'Closed';
+}
+
+/** A value shown as text in the fallback view: strings as they are, file refs by name, the rest as JSON. */
+export function value_text(v: unknown): string {
+	if (v === null || v === undefined) return '—';
+	if (typeof v === 'string') return v;
+	if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+	const name = (x: unknown) => (x && typeof x === 'object' && 'artifact_id' in x && 'name' in x ? String((x as { name: unknown }).name) : null);
+	if (name(v)) return name(v)!;
+	if (Array.isArray(v) && v.length && v.every((x) => name(x))) return v.map(name).join(', ');
+	return JSON.stringify(v);
+}
+
+// ── Drafts (unsent answers, this browser only) ─────────────────────────────
+
+const draft_key = (hug_id: string, user_id: string) => `hug-draft:${user_id}:${hug_id}`;
+
+/** The unsent answer this person kept for this Hug in this browser, or null. */
+export function load_draft(hug_id: string, user_id: string | null | undefined): Record<string, unknown> | null {
+	if (!user_id) return null;
+	try {
+		const raw = localStorage.getItem(draft_key(hug_id, user_id));
+		const v = raw ? JSON.parse(raw) as unknown : null;
+		return v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Keep (or, with null, drop) this person's unsent answer for this Hug. */
+export function save_draft(hug_id: string, user_id: string | null | undefined, values: Record<string, unknown> | null): void {
+	if (!user_id) return;
+	try {
+		if (values) localStorage.setItem(draft_key(hug_id, user_id), JSON.stringify(values));
+		else localStorage.removeItem(draft_key(hug_id, user_id));
+	} catch { /* storage off (private window, quota): drafts aren't kept */ }
 }

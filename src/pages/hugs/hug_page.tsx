@@ -2,36 +2,39 @@
  * Hug — /hugs/:hug_id (Graphite). A person is asked for input. Top to bottom:
  *
  *   review    — one small line of metadata (target channel, opened, expires, HUG ID; who it
- *               wasn't sent to, when that happened), then the title and the prompt
+ *               wasn't sent to, when that happened), then the title and the Hug's summary
  *   workflow  — the team (`@scope/name vX`) and its run as a graph, each phase coloured by how it
  *               went and this Hug's phase highlighted; clicking a phase shows its output
- *   context   — what the requester attached (files, notes, checks, a conversation)
- *   response  — the Hug's template: `form` (the inputs, or Can't answer) or `approval` (Approve with
- *               the inputs, or Reject with a reason); once the Hug has ended, how it ended and the
- *               responses instead
+ *   response  — the Hug's hug in a sandboxed frame (`Hug_host`), in the states of PLAN-hug-widgets §6.4:
+ *               (1) answering; (2) your answer as sent, "Change answer"; (3) changing it, Cancel;
+ *               (4) a Hug that wasn't sent to you — the answers so far; (5) ended — how, and every answer.
+ *               The Hub draws Submit (label and tone from the hug) and everything around the frame.
+ *               Without a frame (a Hug opened before hugs, or its bundle gone) the answers are shown as
+ *               key-values and nothing can be answered.
  *
- * Read: `POST /v1/hug_page/get` (the Hug and its run's workflow; Core lets in anyone with runs.view
- * on the Hug's realm). A phase's output: `POST /v1/run_detail/get`, read only when a phase is opened.
- * Writes: `/v1/hugs/respond`; files stream to `/v1/artifacts/upload` as they are picked.
+ * Read: `POST /v1/hug_page/get` (the Hug, its `content_url` and its run's workflow; Core lets in anyone
+ * with runs.view on the Hug's realm). A phase's output: `POST /v1/run_detail/get`, read only when a
+ * phase is opened. Writes: `/v1/hugs/respond` (values and the hug's one-line summary); files stream to
+ * `/v1/artifacts/upload` when the hug asks for one.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import type { AnswerSnapshot, HugHost } from '@getcliqio/hug-frontend/host';
 import { Link, useParams } from 'react-router';
-import { useAuth } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago } from '@/lib/admin';
-import { answer_summary, choice_label, hug_context, hug_inputs, hug_prompt, is_answerable, my_response, status_label, TEMPLATE_KEYS, type Hug, type Hug_page_data, type Hug_response, type Hug_run } from '@/lib/hug';
+import { is_answerable, load_draft, my_response, respond, save_draft, status_label, type Hug, type Hug_page_data, type Hug_response, type Hug_run } from '@/lib/hug';
 import type { Run_detail_data } from '@/lib/realm_inbox';
 import type { Team_phase } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
 import { G_phase_output } from '@/components/graphite/g_phase_output';
-import { Md } from '@/components/graphite/g_md';
-import { Hug_context } from '@/components/hug/hug_context';
-import { Hug_form } from '@/components/hug/hug_form';
-import { Hug_responses } from '@/components/hug/hug_responses';
+import { answer_of, Hug_host } from '@/components/hug/hug_host';
+import { Hug_responses, Response_values } from '@/components/hug/hug_responses';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { G_BTN, G_PRIMARY } from '@/components/graphite/g_agents';
+import { G_DANGER } from '@/components/graphite/g_host';
 
 const PANEL = 'rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]';
 
@@ -141,20 +144,11 @@ function Workflow({ hug, run, run_href }: { hug: Hug; run: Hug_run; run_href: st
 	);
 }
 
-/** "Ana responded: approve, 5m ago" — others who already responded, in one quiet line. */
+/** "Ana responded: Approved, 5m ago" — others who already responded, in one quiet line (their answers' summaries). */
 function Others_line({ hug, me }: { hug: Hug; me: string | null | undefined }) {
 	const others = hug.responses.filter((r) => r.responder.user_id !== me);
 	if (!others.length) return null;
-	const first_value = (r: Hug_response): string | null => {
-		const summary = answer_summary(hug, r.values);
-		if (summary) return summary;
-		const input = hug_inputs(hug).find((i) => !(TEMPLATE_KEYS as readonly string[]).includes(i.name) && r.values[i.name] !== undefined && i.type !== 'file');
-		return input ? choice_label(input, r.values[input.name]) : null;
-	};
-	const shown = others.slice(0, 2).map((r) => {
-		const v = first_value(r);
-		return `${r.responder.name} responded${v ? `: ${v}` : ''}, ${ago(r.responded_at)} ago`;
-	});
+	const shown = others.slice(0, 2).map((r: Hug_response) => `${r.responder.name} responded${r.summary ? `: ${r.summary}` : ''}, ${ago(r.responded_at)} ago`);
 	return (
 		<p className="text-[12.5px] text-[var(--g-ink-3)]" data-testid="others-responded">
 			{shown.join(' · ')}{others.length > 2 ? ` · ${others.length - 2} more` : ''}
@@ -172,12 +166,146 @@ function Next_steps({ run_href, waiting }: { run_href: string | null; waiting: n
 	);
 }
 
+/**
+ * Your response, while the Hug is open (§6.4 states 1–3): one frame for the hug, in `answer` mode to answer or change
+ * an answer and in `view` mode to show the one you sent. Submit is the Hub's button, with the hug's label and tone,
+ * enabled only when the hug says the answer is valid. A Hug that wasn't sent to you (Core refuses the answer) shows
+ * the answers so far instead (state 4).
+ */
+function Answer({ hug, content_url, mine, me, viewer, run_href, waiting, on_sent }: {
+	hug: Hug;
+	content_url: string;
+	mine: Hug_response | null;
+	me: string | null;
+	viewer: { name: string; via: string[] };
+	run_href: string | null;
+	waiting: number;
+	on_sent: () => void;
+}) {
+	const auth_fetch = useAuthFetch();
+	const host = useRef<HugHost | null>(null);
+	const [answering, set_answering] = useState(!mine);
+	const [snapshot, set_snapshot] = useState<AnswerSnapshot | null>(null);
+	const [busy, set_busy] = useState(false);
+	const [error, set_error] = useState<string | null>(null);
+	const [sent, set_sent] = useState(false);
+	const [not_for_you, set_not_for_you] = useState(false);
+	const draft = useMemo(() => (mine ? null : load_draft(hug.id, me)), [hug.id, me, mine]);
+
+	// Core refused at Submit (its view changed while the page was open, e.g. a role lost runs.view): read-only now.
+	if (not_for_you) return <Not_for_you hug={hug} content_url={content_url} me={me} viewer={viewer} />;
+
+	const submit = async () => {
+		if (!host.current) return;
+		set_busy(true);
+		set_error(null);
+		const outcome = await host.current.submit(async (values, summary) => {
+			const r = await respond(auth_fetch, hug.id, values, summary);
+			if (r.ok) return { ok: true, answer: { values, ...(summary ? { summary } : {}), responder: viewer, responded_at: new Date().toISOString() } };
+			if (r.status === 403) set_not_for_you(true);
+			return { ok: false, problems: [{ message: r.message }] };
+		});
+		set_busy(false);
+		if (outcome?.ok) {
+			save_draft(hug.id, me, null);
+			set_answering(false);
+			set_sent(true);
+			on_sent();
+		} else if (outcome) {
+			set_error(outcome.problems.map((p) => p.message).join('; '));
+		}
+	};
+	const change = () => { set_sent(false); set_error(null); host.current?.set_mode('answer'); set_answering(true); };
+	const cancel = () => { set_error(null); host.current?.set_mode('view', answer_of(mine)); set_answering(false); };
+	const problems = snapshot?.problems.length ?? 0;
+
+	return (
+		<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-acc-line)] bg-[var(--g-panel)] px-5 py-4" aria-label="Your response" data-testid="answer">
+			<h2 className="text-[15px] font-semibold">Your response</h2>
+			<Others_line hug={hug} me={me} />
+			<Hug_host
+				hug={hug}
+				content_url={content_url}
+				mode={mine ? 'view' : 'answer'}
+				mine={mine}
+				viewing={mine}
+				draft={draft}
+				viewer={viewer}
+				host_ref={host}
+				on_state={(st) => {
+					set_snapshot(st);
+					if (host.current?.mode() === 'answer') save_draft(hug.id, me, st.values);
+				}}
+			/>
+			{sent ? <p role="status" className="text-[12.5px] text-[var(--g-ok)]" data-testid="hug-sent">Response submitted. You can change it while the Hug is open.</p> : null}
+			{error ? <p role="alert" className="text-[12.5px] text-[var(--g-bad)]" data-testid="hug-error">{error}</p> : null}
+			<div className="flex flex-wrap items-center gap-2" data-testid="hug-bar">
+				{answering ? (
+					<>
+						{problems ? <span className="text-[12px] text-[var(--g-ink-3)]" data-testid="hug-problems">{problems} problem{problems > 1 ? 's' : ''}</span> : null}
+						{mine ? <button type="button" className={`${G_BTN} ml-auto`} onClick={cancel}>Cancel</button> : null}
+						<button
+							type="button"
+							className={`${snapshot?.submit.tone === 'danger' ? G_DANGER : G_PRIMARY} ${mine ? '' : 'ml-auto'}`}
+							disabled={busy || !snapshot?.valid}
+							onClick={() => { void submit(); }}
+							data-testid="hug-submit"
+						>
+							{snapshot?.submit.label ?? 'Submit'}
+						</button>
+					</>
+				) : (
+					<>
+						<span className="text-[12.5px] text-[var(--g-ink-3)]">Submitted {mine ? clock(mine.responded_at) : 'just now'}</span>
+						<button type="button" className={G_BTN} onClick={change} data-testid="hug-change">Change answer</button>
+					</>
+				)}
+			</div>
+			{sent ? <Next_steps run_href={run_href} waiting={waiting} /> : null}
+		</section>
+	);
+}
+
+/** §6.4 state 4 — an open Hug this person may see but not answer: no answer frame, no Submit; the answers so far. */
+function Not_for_you({ hug, content_url, me, viewer }: { hug: Hug; content_url: string; me: string | null; viewer: { name: string; via: string[] } }) {
+	return (
+		<section className={`${PANEL} flex flex-col gap-3 px-5 py-4`} aria-label="Answers so far" data-testid="not-for-you">
+			<p className="text-[12.5px] text-[var(--g-ink-3)]">Only people this Hug was sent to can answer it ({hug.channels.join(', ')}).</p>
+			{hug.responses.length
+				? <Hug_responses hug={hug} content_url={content_url} me={me} viewer={viewer} />
+				: <p className="text-[12.5px] text-[var(--g-ink-3)]">No answers yet.</p>}
+		</section>
+	);
+}
+
+/** No frame for this Hug (opened before hugs, or its bundle is gone): its answers as key-values, nothing to answer. */
+function Fallback({ hug, me }: { hug: Hug; me: string | null }) {
+	return (
+		<div className="flex flex-col gap-3" data-testid="hug-fallback">
+			<p className="text-[12.5px] text-[var(--g-ink-3)]">This Hug’s page is no longer available. Its answers are shown as they were sent.</p>
+			{hug.responses.length ? (
+				<ul className="flex flex-col gap-3" aria-label="Answers">
+					{hug.responses.map((r) => (
+						<li key={r.response_id} className="flex flex-col gap-1" data-testid="hug-response">
+							<div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+								<b>{r.responder.name}{me && r.responder.user_id === me ? ' (you)' : ''}</b>
+								{r.summary ? <span className="rounded-full bg-[var(--g-soft)] px-2 py-0.5 text-[11.5px] font-semibold">{r.summary}</span> : null}
+								<span className="ml-auto text-[11.5px] text-[var(--g-ink-3)]">{new Date(r.responded_at).toLocaleString()}</span>
+							</div>
+							<Response_values values={r.values} />
+						</li>
+					))}
+				</ul>
+			) : <p className="text-[12.5px] text-[var(--g-ink-3)]">No answers.</p>}
+		</div>
+	);
+}
+
 export function Component() {
 	const { hug_id = '' } = useParams();
 	const overview = use_overview();
 	const { user } = useAuth();
 	const read = use_bff_read<Hug_page_data>('/v1/hug_page/get', hug_id ? { hug_id } : null, { refresh_ms: 20_000, fallback_error: 'Could not load this Hug.' });
-	const [sent, set_sent] = useState(false);
 	const h = read.data?.hug ?? null;
 
 	if (!h) {
@@ -191,10 +319,15 @@ export function Component() {
 	}
 
 	const open = is_answerable(h);
-	const mine = my_response(h, user?.id);
+	const me = user?.id ?? null;
+	const mine = my_response(h, me);
 	const run = read.data?.run ?? null;
+	const content_url = read.data?.content_url ?? null;
 	const run_href = h.org_slug && h.realm_slug ? `/o/${h.org_slug}/realms/${h.realm_slug}/runs/${encodeURIComponent(h.run_id)}` : null;
 	const waiting = overview.data?.orgs.find((o) => o.slug === h.org_slug)?.counts.needs_you ?? 0;
+	const viewer = { name: user?.display_name?.trim() || user?.username || 'you', via: h.viewer?.via ?? mine?.via ?? [] };
+	// Only someone Core would take an answer from is offered one (§6.4 state 4 otherwise: read-only).
+	const can_answer = h.viewer?.can_answer ?? true;
 
 	return (
 		<Graphite_shell data={overview.data} title="Hug" current_realm_id={h.realm_id}>
@@ -207,32 +340,36 @@ export function Component() {
 				<section className={`${PANEL} flex flex-col gap-2.5 px-5 py-4`} aria-label="Review">
 					<Meta_line hug={h} open={open} />
 					<h1 className="text-[20px] font-semibold tracking-tight">{h.title}</h1>
-					<Md class_name="text-[15px] leading-relaxed">{hug_prompt(h)}</Md>
+					{h.summary ? <p className="whitespace-pre-wrap text-[15px] leading-relaxed" data-testid="hug-summary">{h.summary}</p> : null}
 				</section>
 
 				{run ? <Workflow hug={h} run={run} run_href={run_href} /> : null}
 
-				<Hug_context blocks={hug_context(h)} />
-
-				{open ? (
-					<section className="flex flex-col gap-3 rounded-[10px] border border-[var(--g-acc-line)] bg-[var(--g-panel)] px-5 py-4" aria-label="Your response" data-testid="answer">
-						<h2 className="text-[15px] font-semibold">Your response</h2>
-						<Others_line hug={h} me={user?.id} />
-						{sent ? (
-							<div className="flex flex-col gap-2.5" data-testid="hug-sent">
-								<p role="status" className="text-[12.5px] text-[var(--g-ok)]">Response submitted. You can change it while the Hug is open.</p>
-								<Next_steps run_href={run_href} waiting={waiting} />
-							</div>
-						) : null}
-						<Hug_form key={mine?.response_id ?? 'new'} hug={h} mine={mine} on_sent={() => { set_sent(true); void read.reload(); }} />
-					</section>
+				{open && content_url && !can_answer ? (
+					<Not_for_you hug={h} content_url={content_url} me={me} viewer={viewer} />
+				) : open && content_url ? (
+					<Answer
+						key={h.id}
+						hug={h}
+						content_url={content_url}
+						mine={mine}
+						me={me}
+						viewer={viewer}
+						run_href={run_href}
+						waiting={waiting}
+						on_sent={() => { void read.reload(); }}
+					/>
 				) : (
 					<section className={`${PANEL} flex flex-col gap-3 px-5 py-4`} aria-label="Outcome" data-testid="outcome">
-						<div>
-							<h2 className="text-[15px] font-semibold">{h.status === 'open' ? 'Expired' : status_label(h)}</h2>
-							<p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">{h.outcome ? `${h.outcome} · ` : ''}This Hug no longer takes responses.</p>
-						</div>
-						{h.responses.length ? <Hug_responses hug={h} me={user?.id} /> : null}
+						{open ? null : (
+							<div>
+								<h2 className="text-[15px] font-semibold">{h.status === 'open' ? 'Expired' : status_label(h)}</h2>
+								<p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">{h.outcome ? `${h.outcome} · ` : ''}This Hug no longer takes responses.</p>
+							</div>
+						)}
+						{content_url
+							? (h.responses.length ? <Hug_responses hug={h} content_url={content_url} me={me} viewer={viewer} /> : null)
+							: <Fallback hug={h} me={me} />}
 						<Next_steps run_href={run_href} waiting={waiting} />
 					</section>
 				)}

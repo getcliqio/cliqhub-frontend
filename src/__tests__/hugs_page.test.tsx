@@ -16,7 +16,7 @@ const auth = {
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
 
-import { Component as HugsPage, HUG_DONE_TYPES } from '@/pages/hugs_page';
+import { Component as HugsPage, HUG_DONE_TYPES, needs_to_item } from '@/pages/hugs_page';
 
 const done: Inbox_item = {
 	id: 'd1', event: 'hug.responded', title: 'Approved design · PROJ-1', message: 'approved', severity: null, org_id: ORG_A, org_slug: 'measureone',
@@ -56,6 +56,13 @@ describe('HUGs', () => {
 		expect(screen.getByRole('tab', { name: /Waiting/ })).toHaveTextContent('5');
 		fireEvent.change(screen.getByRole('textbox', { name: 'Search HUGs' }), { target: { value: 'employer' } });
 		expect(screen.getAllByTestId(/^inbox-item-/).map((e) => e.dataset.testid)).toEqual(['inbox-item-hug-hug-88']);
+	});
+
+	it("a waiting Hug's row says what's asked (its summary), else which phase waits", () => {
+		const item = { kind: 'hug' as const, id: 'h', title: 'Review', org_id: ORG_A, org_slug: 'measureone', realm_id: null, realm_slug: null, run_id: null, team: null, phase: 'qa', state: 'open', at: 1 };
+		expect(needs_to_item({ ...item, summary: 'Approve the March batch' }).message).toBe('Approve the March batch');
+		expect(needs_to_item(item).message).toBe('Waiting for you · qa');
+		expect(needs_to_item({ ...item, summary: '  ' }).message).toBe('Waiting for you · qa');
 	});
 
 	it('follows the org (?org=)', async () => {

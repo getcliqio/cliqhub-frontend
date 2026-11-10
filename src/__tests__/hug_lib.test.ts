@@ -1,61 +1,57 @@
-/** lib/hug — form values, checks for messages, Core's problems per input, file checks, upload. */
+/** lib/hug — upload-slot checks, reading a Hug, answering (with the hug's summary), the fallback view's values, drafts, upload. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-	file_problem, initial_values, is_answerable, my_response, problems_from_message, status_label, to_values, upload_file, value_problems,
-	type Hug_response, type Requested_input,
+	file_problem, is_answerable, load_draft, my_response, respond, save_draft, status_label, upload_file, value_text,
+	type Hug_file_slot, type Hug_response,
 } from '@/lib/hug';
-
-const INPUTS: Requested_input[] = [
-	{ name: 'decision', type: 'enum', required: true, choices: [{ value: 'approve', label: 'Approve' }, { value: 'reject' }] },
-	{ name: 'risk', type: 'number', min: 1, max: 5, integer: true },
-	{ name: 'notes', type: 'text', required: false, max_length: 10 },
-	{ name: 'urgent', type: 'boolean', default: true },
-	{ name: 'tags', type: 'enum', multiple: true, required: false, choices: [{ value: 'a' }, { value: 'b' }] },
-	{ name: 'contract', type: 'file', required: false, accept: ['application/pdf', '.md'], max_bytes: 1000 },
-	{ name: 'notify', type: 'channel', multiple: true, required: false },
-];
 
 const mine: Hug_response = {
 	response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], responded_at: '2026-10-26T10:00:00Z',
-	values: { decision: 'approve', risk: 3, tags: ['b'], contract: { artifact_id: 'a1', name: 'c.pdf', size: 10, content_type: 'application/pdf' } },
+	values: { decision: 'approve' }, summary: 'Approved',
 };
 
-describe('form values', () => {
-	it('start from defaults, or from my own answer', () => {
-		expect(initial_values(INPUTS)).toEqual({ decision: '', risk: '', notes: '', urgent: true, tags: [], contract: [], notify: [] });
-		expect(initial_values(INPUTS, mine)).toMatchObject({ decision: 'approve', risk: '3', tags: ['b'], contract: [{ artifact_id: 'a1' }] });
-	});
-
-	it('become wire values: numbers parsed, empty ones left out, one file as a ref, several as a list', () => {
-		const form = { ...initial_values(INPUTS, mine), notes: '', notify: ['ops'] };
-		expect(to_values(INPUTS, form)).toEqual({ decision: 'approve', risk: 3, urgent: true, tags: ['b'], contract: { artifact_id: 'a1' }, notify: ['ops'] });
-		expect(to_values(INPUTS, initial_values(INPUTS))).toEqual({ urgent: true });
-	});
-});
-
-describe('value_problems (the SDK rules, for messages)', () => {
-	it('names what is wrong per input', () => {
-		expect(value_problems(INPUTS, { urgent: true })).toEqual({ decision: 'required', risk: 'required' });
-		expect(value_problems(INPUTS, { decision: 'maybe', risk: 2.5, notes: 'x'.repeat(11), urgent: true })).toEqual({
-			decision: "'maybe' is not one of the choices", risk: 'must be a whole number', notes: 'must be at most 10 characters',
-		});
-		expect(value_problems(INPUTS, { decision: 'approve', risk: 9, urgent: true })).toEqual({ risk: 'must be at most 5' });
-		expect(value_problems(INPUTS, { decision: 'approve', risk: 1, urgent: true })).toEqual({});
-	});
-
-	it("Core's refusal is split per input; the rest stays general", () => {
-		expect(problems_from_message('decision: required; risk: must be at least 1; Hug is closed', INPUTS))
-			.toEqual({ decision: 'required', risk: 'must be at least 1', '': 'Hug is closed' });
-	});
-});
-
-describe('file checks', () => {
-	const input = INPUTS[5] as Extract<Requested_input, { type: 'file' }>;
-	it('size (the smaller of the Hub limit and the input), then accept (types and extensions)', () => {
+describe('upload-slot checks', () => {
+	const input: Hug_file_slot = { name: 'contract', accept: ['application/pdf', '.md'], max_bytes: 1000 };
+	it('size (the smaller of the Hub limit and the slot), then accept (types and extensions)', () => {
 		expect(file_problem(input, { name: 'a.pdf', type: 'application/pdf', size: 2000 }, 50)).toBe('a.pdf is larger than 1000 bytes');
 		expect(file_problem(input, { name: 'a.png', type: 'image/png', size: 10 }, 50)).toBe("a.png isn't one of: application/pdf, .md");
 		expect(file_problem(input, { name: 'NOTES.MD', type: '', size: 10 }, 50)).toBeNull();
 		expect(file_problem({ ...input, max_bytes: undefined }, { name: 'a.pdf', type: 'application/pdf', size: 60 * 1024 * 1024 }, 50)).toBe('a.pdf is larger than 50 MB');
+	});
+});
+
+describe('answering', () => {
+	afterEach(() => vi.restoreAllMocks());
+	it("sends the values and the hug's summary; Core's refusal comes back with its message", async () => {
+		const sent: unknown[] = [];
+		const fetch_ok = vi.fn(async (_u: string, init?: RequestInit) => { sent.push(JSON.parse(String(init?.body))); return new Response(JSON.stringify({ ok: true, data: { response_id: 'r9' } })); });
+		expect(await respond(fetch_ok, 'h-1', { decision: 'approve' }, 'Approved')).toEqual({ ok: true, response_id: 'r9' });
+		expect(await respond(fetch_ok, 'h-1', { n: 1 })).toEqual({ ok: true, response_id: 'r9' });
+		expect(sent).toEqual([{ hug_id: 'h-1', values: { decision: 'approve' }, summary: 'Approved' }, { hug_id: 'h-1', values: { n: 1 } }]);
+		const refuse = async () => new Response(JSON.stringify({ ok: false, error: { message: 'summary is one line' } }), { status: 422 });
+		expect(await respond(refuse, 'h-1', {}, 'a')).toEqual({ ok: false, status: 422, message: 'summary is one line' });
+	});
+});
+
+describe('the fallback view and drafts', () => {
+	it('values as text: strings as they are, files by name, the rest as JSON', () => {
+		expect(value_text('autumn')).toBe('autumn');
+		expect(value_text(3)).toBe('3');
+		expect(value_text(null)).toBe('—');
+		expect(value_text({ artifact_id: 'a', name: 'MSA.pdf' })).toBe('MSA.pdf');
+		expect(value_text([{ artifact_id: 'a', name: 'a.pdf' }, { artifact_id: 'b', name: 'b.pdf' }])).toBe('a.pdf, b.pdf');
+		expect(value_text({ verdicts: [{ ok: true }] })).toBe('{"verdicts":[{"ok":true}]}');
+	});
+
+	it('a draft is kept per viewer and Hug, and dropped with null; nothing without a viewer', () => {
+		save_draft('h-1', 'u1', { n: 1 });
+		expect(load_draft('h-1', 'u1')).toEqual({ n: 1 });
+		expect(load_draft('h-1', 'u2')).toBeNull();
+		expect(load_draft('h-2', 'u1')).toBeNull();
+		save_draft('h-1', 'u1', null);
+		expect(load_draft('h-1', 'u1')).toBeNull();
+		save_draft('h-1', null, { n: 1 });
+		expect(load_draft('h-1', null)).toBeNull();
 	});
 });
 
@@ -107,7 +103,7 @@ describe('upload_file', () => {
 		expect(x.headers).toEqual({ 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/pdf' });
 		x.upload.onprogress!({ lengthComputable: true, loaded: 2, total: 4 });
 		x.reply(201, { ok: true, data: { artifact_id: 'a9', name: 'MSA v2.pdf', size: 4, content_type: 'application/pdf' } });
-		await expect(up.done).resolves.toEqual({ artifact_id: 'a9', name: 'MSA v2.pdf', size: 4, content_type: 'application/pdf' });
+		await expect(up.done).resolves.toEqual({ artifact_id: 'a9', name: 'MSA v2.pdf', size: 4, content_type: 'application/pdf', sha256: '' });
 		expect(progress).toEqual([0.5, 1]);
 	});
 

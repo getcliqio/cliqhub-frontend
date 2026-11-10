@@ -30,7 +30,8 @@ export function needs_to_item(i: Overview_item): Inbox_item {
 		id: `${i.kind}-${i.id}`,
 		event: 'hug.opened',
 		title: i.title,
-		message: i.phase ? `Waiting for you · ${i.phase}` : null,
+		// What's asked, when the Hug says; else which phase is waiting.
+		message: i.summary?.trim() || (i.phase ? `Waiting for you · ${i.phase}` : null),
 		severity: null,
 		org_id: i.org_id,
 		org_slug: i.org_slug,
@@ -66,7 +67,7 @@ function Waiting({ items, total, scope }: { items: Overview_item[]; total: numbe
 	const [q, set_q] = useState('');
 	const mine = items.filter((i) => i.kind === 'hug' && in_view(i, scope));
 	const shown = mine
-		.filter((i) => !q.trim() || `${i.title} ${i.team ?? ''} ${i.realm_slug ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
+		.filter((i) => !q.trim() || `${i.title} ${i.summary ?? ''} ${i.team ?? ''} ${i.realm_slug ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
 		// Oldest waiting first: the longest wait is the most urgent.
 		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 	return (
