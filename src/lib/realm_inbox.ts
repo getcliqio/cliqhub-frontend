@@ -222,12 +222,27 @@ export interface Run_phase_output {
 	complete: boolean;
 }
 
+/** One Hug of a run, as a round of its phase. */
+export interface Run_hug_round {
+	id: string;
+	title: string;
+	phase: string | null;
+	/** From 1. */
+	round: number;
+	status: string;
+	outcome: string | null;
+	created_at: number | null;
+	closed_at: number | null;
+}
+
 export interface Run_detail_data {
 	run: Run_row;
 	phases: Run_detail_phase[];
 	realm: Control_realm | null;
 	/** This run's open Hugs. */
 	hugs: Array<{ id: string; title: string; phase: string | null; created_at: number | null; expires_at: number | null; responded: boolean }>;
+	/** Every Hug of the run, oldest first: the rounds of each phase that asked people (a gate sent back asks again). */
+	hug_rounds?: Run_hug_round[];
 	/** Files the run stored and its run records (`artifacts/get`, composed by the BFF). */
 	artifacts: Run_artifact[];
 	/** Each phase output, oldest first (absent from an older BFF). */

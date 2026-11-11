@@ -37,6 +37,7 @@ import {
 	type Run_phase_output,
 	type Run_row,
 	type Section_status,
+	type Run_hug_round,
 } from '@/lib/realm_inbox';
 import { realm_path } from '@/lib/realm_url';
 import { format_datetime } from '@/lib/format_time';
@@ -241,8 +242,10 @@ function phase_duration(p: Run_detail_phase, now: number): string {
 	return format_duration((p.completed_at ?? now) - p.started_at);
 }
 
-function Phase_list({ phases, run_state, telemetry, on_open, selected = null, outputs, handoffs, artifacts = [], artifacts_status, run_link, children, child_link, resumed, on_resume_from, tree }: {
+function Phase_list({ phases, run_state, telemetry, on_open, selected = null, outputs, handoffs, artifacts = [], artifacts_status, run_link, children, child_link, resumed, on_resume_from, tree, rounds }: {
 	phases: Run_detail_phase[];
+	/** Each phase's Hugs, oldest first — shown when it asked more than once (a log of a gate's rounds). */
+	rounds?: Map<string, Run_hug_round[]>;
 	run_state: string;
 	telemetry?: Run_telemetry_data | null;
 	/** Select a phase (its output and artifacts show on the right). */
@@ -314,6 +317,17 @@ function Phase_list({ phases, run_state, telemetry, on_open, selected = null, ou
 											<State_dot state={a.status} />
 											<span className={a.status === 'failed' || a.status === 'crashed' ? 'text-[var(--g-bad-text)]' : undefined}>{a.status}</span>
 											{a.completed_at || a.started_at ? <span>{relative_time(a.completed_at ?? a.started_at)}</span> : null}
+										</span>
+									))}
+								</p>
+							) : null}
+							{(rounds?.get(p.phase)?.length ?? 0) > 1 ? (
+								<p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-[var(--g-ink-3)]" data-testid="phase-rounds" onClick={(e) => e.stopPropagation()}>
+									<span>people:</span>
+									{rounds!.get(p.phase)!.map((r) => (
+										<span key={r.id} className="inline-flex items-center gap-1">
+											<Link to={hug_href(r.id)} className="hover:underline">round {r.round}</Link>
+											<span>{r.outcome ?? (r.status === 'open' ? 'waiting' : r.status)}</span>
 										</span>
 									))}
 								</p>
@@ -623,6 +637,11 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, re
 	}, [children]);
 	const other_run_link = useCallback((r: { run_id: string; org_slug: string | null; realm_slug: string | null }) => other_run_href(r, org_slug, slug), [org_slug, slug]);
 	const live = is_live_state(run.state);
+	const rounds_by_phase = useMemo(() => {
+		const m = new Map<string, Run_hug_round[]>();
+		for (const r of data.hug_rounds ?? []) if (r.phase) m.set(r.phase, [...(m.get(r.phase) ?? []), r]);
+		return m;
+	}, [data.hug_rounds]);
 	const phase_sel = phase_pick ?? (phases.find((p) => p.status === 'running') ?? phases.find((p) => p.status === 'awaiting_input') ?? phases.find((p) => p.status === 'failed' || p.status === 'crashed') ?? null)?.phase ?? null;
 	const pick_phase = (name: string) => { set_step(null); set_phase_pick(name); };
 	// Workflow view: the run's phases on the team's graph, coloured by how each went.
@@ -668,7 +687,8 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, re
 		if (mode === 'already_terminal') return 'Run was already finished.';
 		return 'Cancel queued — waiting on the daemon to pick it up.';
 	});
-	const resume = (from_phase: string) => control('resume', '/v1/runs/resume', { from_phase }, () => `Resume queued from '${from_phase}' — waiting on the daemon to pick it up.`);
+	// Core's runs/resume drops repeats by `tx_id` and refuses a call without one ("tx_id is required"): one per click.
+	const resume = (from_phase: string) => control('resume', '/v1/runs/resume', { from_phase, tx_id: crypto.randomUUID() }, () => `Resume queued from '${from_phase}' — waiting on the daemon to pick it up.`);
 
 	const wait_title = (what: string) => (pending?.last_error
 		? `Waiting on daemon — ${pending.attempts}/${pending.max_attempts} attempts. Last error: ${pending.last_error}`
@@ -834,6 +854,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, re
 								on_resume_from={can_resume && gates.run.ok && pending?.endpoint !== '/v1/resume'
 									? (phase) => { set_resume_initial(phase); set_panel('resume'); }
 									: null}
+								rounds={rounds_by_phase}
 								tree={{ open: tree_open_now, toggle: toggle_tree, selected: step ? { run_id: step.run.run_id, phase: step.phase.name } : null, on_select: set_step, run_href: (id) => `${base}/runs/${encodeURIComponent(id)}` }}
 							/>
 						</>

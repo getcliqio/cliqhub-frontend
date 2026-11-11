@@ -103,7 +103,7 @@ const RUN: Hug_run = {
 	],
 };
 
-function route_fetch(h: Hug | (() => Hug), extra: Record<string, Handler> = {}, opts: { run?: Hug_run | null; content_url?: string | null } = {}) {
+function route_fetch(h: Hug | (() => Hug), extra: Record<string, Handler> = {}, opts: { run?: Hug_run | null; content_url?: string | null; rounds?: unknown[] } = {}) {
 	const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -113,7 +113,7 @@ function route_fetch(h: Hug | (() => Hug), extra: Record<string, Handler> = {}, 
 		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: single_org_overview() }));
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
 		if (u === '/v1/hug_page/get') {
-			const data = { hug: typeof h === 'function' ? h() : h, content_url: opts.content_url === undefined ? CONTENT : opts.content_url, run: opts.run ?? null };
+			const data = { hug: typeof h === 'function' ? h() : h, content_url: opts.content_url === undefined ? CONTENT : opts.content_url, run: opts.run ?? null, rounds: opts.rounds ?? [] };
 			return new Response(JSON.stringify({ ok: true, data }));
 		}
 		throw new Error(`unexpected ${u}`);
@@ -359,6 +359,42 @@ describe('Hug page', () => {
 		expect(four).toHaveTextContent('Only people this Hug was sent to can answer it (legal, ops).');
 		expect(within(four).getAllByTestId('hug-response')).toHaveLength(1);
 		expect(hosts.at(-1)!.opts.init).toMatchObject({ mode: 'view', viewing: { responder: { name: 'Bo' } } });
+	});
+
+	it('round 2 of a gate: the round in the details line, and every round with who answered what (e2e: a log of the iterations)', async () => {
+		route_fetch(hug({ iteration: 1 }), {}, { rounds: [
+			{ hug_id: 'h-0', round: 1, status: 'closed', outcome: 'Rejected by Elan', created_at: 1, closed_at: 2, current: false,
+				answers: [{ responder: 'Elan', summary: 'Rejected', note: "I don't like it", responded_at: '2026-11-10T21:55:33Z' }] },
+			{ hug_id: 'h-1', round: 2, status: 'open', outcome: null, created_at: 3, closed_at: null, current: true, answers: [] },
+		] });
+		render_page();
+		await screen.findByRole('region', { name: 'Your response' });
+		expect(screen.getByTestId('hug-round')).toHaveTextContent('Round 2');
+		const rows = within(screen.getByRole('region', { name: 'Rounds' })).getAllByTestId('hug-round-row');
+		expect(rows[0]).toHaveTextContent("Round 1 · Rejected by ElanElan: Rejected — “I don't like it”");
+		expect(within(rows[0]!).getByRole('link', { name: 'Round 1' })).toHaveAttribute('href', '/hugs/h-0');
+		expect(rows[1]).toHaveTextContent('Round 2 · this Hug');
+	});
+
+	it('a first round shows no round and no Rounds section', async () => {
+		route_fetch(hug());
+		render_page();
+		await screen.findByRole('region', { name: 'Your response' });
+		expect(screen.queryByTestId('hug-round')).toBeNull();
+		expect(screen.queryByRole('region', { name: 'Rounds' })).toBeNull();
+	});
+
+	it('a rejected approval reads red — pill and heading; an approved one green', async () => {
+		const no = response({ summary: 'Rejected', values: { decision: 'reject', reason: 'not yet' } });
+		route_fetch(hug({ status: 'closed', outcome: 'Rejected by Ann', closed_at: new Date().toISOString(), responses: [no] }));
+		const first = render_page();
+		await screen.findByRole('region', { name: 'Outcome' });
+		expect(screen.getByTestId('status-pill')).toHaveAttribute('data-tone', 'bad');
+		first.unmount();
+		route_fetch(hug({ status: 'closed', outcome: 'Approved', closed_at: new Date().toISOString(), responses: [response()] }));
+		render_page();
+		await screen.findByRole('region', { name: 'Outcome' });
+		expect(screen.getByTestId('status-pill')).toHaveAttribute('data-tone', 'good');
 	});
 
 	it('state 5 — ended: how, and every answer (mine first) in its own view frame, loaded as it scrolls into view; nothing to submit', async () => {

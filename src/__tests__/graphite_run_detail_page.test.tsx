@@ -95,6 +95,21 @@ describe('Graphite run detail', () => {
 		expect(other).toEqual([]);
 	});
 
+	it("a phase that asked people more than once lists its rounds, each linked to its Hug (e2e: a log of the iterations)", async () => {
+		const hug_rounds = [
+			{ id: 'h-0', title: 'Review: match', phase: 'match', round: 1, status: 'closed', outcome: 'Rejected by Elan', created_at: 1, closed_at: 2 },
+			{ id: 'h-1', title: 'Review: match', phase: 'match', round: 2, status: 'open', outcome: null, created_at: 3, closed_at: null },
+			{ id: 'h-9', title: 'Ask', phase: 'fetch', round: 1, status: 'closed', outcome: 'Answered by Ann', created_at: 1, closed_at: 2 },
+		];
+		route_fetch({ ...run_detail(), hug_rounds } as never);
+		render_page();
+		await ready();
+		const lines = screen.getAllByTestId('phase-rounds');
+		expect(lines).toHaveLength(1);   // fetch asked once: no rounds line
+		expect(lines[0]).toHaveTextContent('people:round 1Rejected by Elanround 2waiting');
+		expect(within(lines[0]!).getByRole('link', { name: 'round 1' })).toHaveAttribute('href', '/hugs/h-0');
+	});
+
 	it('the failed phase is selected first; a phase with nothing to show has no Output; no separate Files section', async () => {
 		route_fetch(run_detail());
 		render_page();
@@ -321,7 +336,8 @@ describe('Graphite run detail', () => {
 		fireEvent.change(screen.getByTestId('resume-select'), { target: { value: 'fetch' } });
 		fireEvent.click(screen.getByRole('button', { name: 'Resume from fetch' }));
 		expect(await screen.findByText(/Resume queued from 'fetch'/)).toBeInTheDocument();
-		expect(calls(spy, '/v1/runs/resume')).toEqual([{ run_id: 'run-77', from_phase: 'fetch' }]);
+		// With a tx_id: Core refuses a resume without one (live run 2026-11-10: "tx_id is required").
+		expect(calls(spy, '/v1/runs/resume')).toEqual([{ run_id: 'run-77', from_phase: 'fetch', tx_id: expect.stringMatching(/^[0-9a-f-]{36}$/) }]);
 	});
 
 	it('stranded control error offers Run again, prefilled from this run', async () => {

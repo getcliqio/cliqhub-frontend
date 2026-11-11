@@ -24,7 +24,7 @@ import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago } from '@/lib/admin';
-import { is_answerable, load_draft, my_response, respond, save_draft, status_label, type Hug, type Hug_page_data, type Hug_response, type Hug_run } from '@/lib/hug';
+import { hug_href, is_answerable, load_draft, my_response, outcome_tone, respond, save_draft, status_label, type Hug, type Hug_page_data, type Hug_round, type Hug_response, type Hug_run } from '@/lib/hug';
 import type { Run_detail_data } from '@/lib/realm_inbox';
 import type { Team_phase } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -53,6 +53,13 @@ const clock = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 
  * The status pill (§6.4): "Answered" once this person has; "Waiting on you" while they may answer; "Open" when they
  * can't (not sent to them, or the Hug has no page to answer in).
  */
+const TONE_PILL = {
+	good: 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]',
+	bad: 'bg-[var(--g-bad-soft)] text-[var(--g-bad)]',
+	neutral: 'bg-[var(--g-soft)] text-[var(--g-ink-3)]',
+} as const;
+const TONE_TEXT = { good: 'text-[var(--g-ok)]', bad: 'text-[var(--g-bad)]', neutral: '' } as const;
+
 function Status_pill({ hug, open, answered, can_answer }: { hug: Hug; open: boolean; answered: boolean; can_answer: boolean }) {
 	if (open) {
 		if (answered) return <span className="rounded-full bg-[var(--g-ok-soft)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-ok)]">Answered</span>;
@@ -60,18 +67,48 @@ function Status_pill({ hug, open, answered, can_answer }: { hug: Hug; open: bool
 			? <span className="rounded-full bg-[rgba(255,122,217,.14)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-hug)]">Waiting on you</span>
 			: <span className="rounded-full bg-[var(--g-soft)] px-2.5 py-0.5 text-[12px] font-semibold text-[var(--g-ink-3)]">Open</span>;
 	}
-	const tone = hug.status === 'closed' ? 'bg-[var(--g-ok-soft)] text-[var(--g-ok)]' : 'bg-[var(--g-soft)] text-[var(--g-ink-3)]';
-	return <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${tone}`}>{hug.status === 'open' ? 'Expired' : status_label(hug)}</span>;
+	// Green for an approval approved, red for one rejected, neutral otherwise (live run 2026-11-10: "Rejected" was green).
+	const tone = TONE_PILL[outcome_tone(hug)];
+	return <span className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold ${tone}`} data-testid="status-pill" data-tone={outcome_tone(hug)}>{hug.status === 'open' ? 'Expired' : status_label(hug)}</span>;
+}
+
+/**
+ * The rounds of this Hug's phase, oldest first (e2e 2026-11-10: "somewhere there should be a log of the iterations") —
+ * a gate sent back asks again, each round its own Hug. Earlier rounds say how they ended and who answered what.
+ */
+function Rounds({ rounds }: { rounds: Hug_round[] }) {
+	if (rounds.length < 2) return null;
+	return (
+		<section className={`${PANEL} flex flex-col gap-2 px-5 py-4`} aria-label="Rounds" data-testid="hug-rounds">
+			<h2 className="text-[15px] font-semibold">Rounds</h2>
+			<ol className="flex flex-col gap-2">
+				{rounds.map((r) => (
+					<li key={r.hug_id} className="text-[12.5px]" data-testid="hug-round-row">
+						<span className="font-semibold">
+							{r.current ? `Round ${r.round} · this Hug` : <Link to={hug_href(r.hug_id)} className="underline-offset-2 hover:underline">Round {r.round}</Link>}
+						</span>
+						{r.current ? null : <span className="text-[var(--g-ink-3)]"> · {r.outcome ?? status_label({ status: r.status, outcome: null })}</span>}
+						{r.answers.map((a, i) => (
+							<div key={i} className="mt-0.5 text-[var(--g-ink-2)]">
+								{a.responder}{a.summary ? `: ${a.summary}` : ''}{a.note ? <span className="text-[var(--g-ink-3)]"> — “{a.note}”</span> : null}
+							</div>
+						))}
+					</li>
+				))}
+			</ol>
+		</section>
+	);
 }
 
 /** One small line: target channel, opened, expires (or ended), HUG ID — and who it wasn't sent to, when that happened. */
-function Meta_line({ hug, open }: { hug: Hug; open: boolean }) {
+function Meta_line({ hug, open, round = null }: { hug: Hug; open: boolean; round?: number | null }) {
 	const [copied, set_copied] = useState(false);
 	const not_sent = hug.not_sent_to ?? [];
 	const item = 'whitespace-nowrap';
 	const val = 'text-[var(--g-ink-2)]';
 	return (
 		<div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-[var(--g-line)] pb-2.5 text-[11.5px] text-[var(--g-ink-3)]" data-testid="hug-meta">
+			{round ? <span className={item} data-testid="hug-round">Round <span className={val}>{round}</span></span> : null}
 			<span className={item}>Target channel <span className={`g-mono ${val}`}>{hug.channels.join(', ')}</span></span>
 			<span className={item}>Opened <span className={val}>{clock(hug.created_at)}, {ago(hug.created_at)} ago</span></span>
 			{open
@@ -361,10 +398,12 @@ export function Component() {
 				</div>
 
 				<section className={`${PANEL} flex flex-col gap-2.5 px-5 py-4`} aria-label="Review">
-					<Meta_line hug={h} open={open} />
+					<Meta_line hug={h} open={open} round={read.data?.rounds?.find((r) => r.current)?.round ?? null} />
 					<h1 className="text-[20px] font-semibold tracking-tight">{h.title}</h1>
 					{h.summary ? <p className="whitespace-pre-wrap text-[15px] leading-relaxed" data-testid="hug-summary">{h.summary}</p> : null}
 				</section>
+
+				<Rounds rounds={read.data?.rounds ?? []} />
 
 				{run ? <Workflow hug={h} run={run} run_href={run_href} /> : null}
 
@@ -386,7 +425,7 @@ export function Component() {
 					<section className={`${PANEL} flex flex-col gap-3 px-5 py-4`} aria-label="Outcome" data-testid="outcome">
 						{open ? null : (
 							<div>
-								<h2 className="text-[15px] font-semibold">{h.status === 'open' ? 'Expired' : status_label(h)}</h2>
+								<h2 className={`text-[15px] font-semibold ${TONE_TEXT[outcome_tone(h)]}`}>{h.status === 'open' ? 'Expired' : status_label(h)}</h2>
 								<p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">{h.outcome ? `${h.outcome} · ` : ''}This Hug no longer takes responses.</p>
 							</div>
 						)}

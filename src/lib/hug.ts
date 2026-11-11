@@ -109,6 +109,22 @@ export interface Hug_page_data {
 	/** Where the hug is framed from; null → the read-only fallback view. */
 	content_url: string | null;
 	run?: Hug_run | null;
+	/** The rounds of this Hug's phase, oldest first, when it asked more than once (a gate sent back); else empty. */
+	rounds?: Hug_round[];
+}
+
+/** One round of a phase's asking: its Hug, how it ended, and (before this one) who answered what. */
+export interface Hug_round {
+	hug_id: string;
+	/** From 1. */
+	round: number;
+	status: Hug_status;
+	outcome: string | null;
+	created_at: number | null;
+	closed_at: number | null;
+	/** The Hug being viewed. */
+	current: boolean;
+	answers: Array<{ responder: string; summary: string | null; note: string | null; responded_at: string | null }>;
 }
 
 export function hug_href(hug_id: string): string {
@@ -210,6 +226,19 @@ export function is_answerable(h: Pick<Hug, 'status' | 'expires_at'>, now: number
 /** The caller's own answer, when they gave one. */
 export function my_response(h: Pick<Hug, 'responses'>, user_id: string | null | undefined): Hug_response | null {
 	return user_id ? h.responses.find((r) => r.responder.user_id === user_id) ?? null : null;
+}
+
+/**
+ * How a Hug's end reads: `good` (an approval approved), `bad` (an approval rejected), else `neutral` — "closed" alone is
+ * neither (the outcome is the requester's free text, so it isn't read). An approval's verdict is its latest answer's
+ * `decision`.
+ */
+export function outcome_tone(h: Pick<Hug, 'status' | 'hug' | 'responses'>): 'good' | 'bad' | 'neutral' {
+	if (h.status !== 'closed' || h.hug?.name !== 'approval' || h.responses.length === 0) return 'neutral';
+	const latest = [...h.responses].sort((a, b) => a.responded_at.localeCompare(b.responded_at)).at(-1)!;
+	const decision = latest.values['decision'];
+	if (decision === 'reject') return 'bad';
+	return decision === 'approve' ? 'good' : 'neutral';
 }
 
 /** How a closed Hug ended, in words. */

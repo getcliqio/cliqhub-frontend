@@ -1,7 +1,7 @@
 /** lib/hug — upload-slot checks, reading a Hug, answering (with the hug's summary), the fallback view's values, drafts, upload. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-	file_problem, is_answerable, load_draft, my_response, respond, save_draft, status_label, upload_file, value_text,
+	file_problem, is_answerable, load_draft, my_response, outcome_tone, respond, save_draft, status_label, upload_file, value_text,
 	type Hug_file_slot, type Hug_response,
 } from '@/lib/hug';
 
@@ -41,6 +41,16 @@ describe('the fallback view and drafts', () => {
 		expect(value_text({ artifact_id: 'a', name: 'MSA.pdf' })).toBe('MSA.pdf');
 		expect(value_text([{ artifact_id: 'a', name: 'a.pdf' }, { artifact_id: 'b', name: 'b.pdf' }])).toBe('a.pdf, b.pdf');
 		expect(value_text({ verdicts: [{ ok: true }] })).toBe('{"verdicts":[{"ok":true}]}');
+	});
+
+	it('outcome tone: an approval approved is good, rejected bad; anything else neutral (live run: "Rejected" was green)', () => {
+		const r = (decision: string, at: string) => ({ values: { decision }, responded_at: at }) as never;
+		const approval = { name: 'approval', sha256: 'x' };
+		expect(outcome_tone({ status: 'closed', hug: approval, responses: [r('reject', '2026-11-10T21:55:00Z')] })).toBe('bad');
+		expect(outcome_tone({ status: 'closed', hug: approval, responses: [r('reject', '2026-11-10T21:55:00Z'), r('approve', '2026-11-10T21:57:00Z')] })).toBe('good');
+		expect(outcome_tone({ status: 'closed', hug: { name: 'form', sha256: 'x' }, responses: [r('reject', '2026-11-10T21:55:00Z')] })).toBe('neutral');
+		expect(outcome_tone({ status: 'expired', hug: approval, responses: [] })).toBe('neutral');
+		expect(outcome_tone({ status: 'closed', hug: null, responses: [] })).toBe('neutral');
 	});
 
 	it('a draft is kept per viewer and Hug, and dropped with null; nothing without a viewer', () => {
