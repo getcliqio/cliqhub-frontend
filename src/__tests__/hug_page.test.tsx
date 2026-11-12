@@ -406,7 +406,8 @@ describe('Hug page', () => {
 		const rows = within(outcome).getAllByTestId('hug-response');
 		expect(rows[0]).toHaveTextContent('Ann (you)');
 		expect(within(rows[1]!).getByTestId('hug-decision')).toHaveTextContent('Rejected');
-		expect(hosts.map((h) => [h.opts.init.mode, h.opts.init.viewing.responder.name, h.opts.loading])).toEqual([['view', 'Ann', 'lazy'], ['view', 'Bo', 'lazy']]);
+		// The view frames mount a tick after the Outcome region: wait for them (CI's Node is slower than a laptop's).
+		await waitFor(() => expect(hosts.map((h) => [h.opts.init.mode, h.opts.init.viewing.responder.name, h.opts.loading])).toEqual([['view', 'Ann', 'lazy'], ['view', 'Bo', 'lazy']]));
 		expect(screen.queryByTestId('hug-submit')).toBeNull();
 		expect(screen.getByTestId('not-sent')).toHaveTextContent('Not sent to kai (via legal)');
 		expect(within(outcome).getByRole('link', { name: 'Back to the run' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
@@ -490,7 +491,9 @@ describe('Hug page', () => {
 		await screen.findByRole('region', { name: 'Your response' });
 		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
 		const blob = await hosts[0]!.opts.read({ artifact_id: 'a-1', name: 'design.md' });
-		expect(blob).toBeInstanceOf(Blob);
+		// The file's bytes as the download answered them (route_fetch sends bodies as JSON) — not `instanceof Blob`: on
+		// Node 22 fetch's Blob isn't jsdom's Blob class; a browser has one.
+		expect(await blob.text()).toBe(JSON.stringify('file bytes'));
 		expect(calls.find((c) => c.url === '/v1/artifacts/download')?.body).toEqual({ artifact_id: 'a-1' });
 		const open = vi.spyOn(window, 'open').mockReturnValue(null);
 		const confirm = vi.spyOn(window, 'confirm');
