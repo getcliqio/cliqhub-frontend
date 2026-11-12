@@ -5,6 +5,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    # @getcliqio/hug-frontend comes from GitHub Packages (.npmrc reads GITHUB_TOKEN), as in cliqhub-core.
+    env:
+      GITHUB_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
