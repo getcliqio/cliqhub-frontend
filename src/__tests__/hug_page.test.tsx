@@ -335,7 +335,8 @@ describe('Hug page', () => {
 		expect(screen.queryByRole('region', { name: 'Your response' })).toBeNull();
 		expect(screen.queryByTestId('hug-submit')).toBeNull();
 		expect(screen.queryByTestId('hug-change')).toBeNull();
-		expect(hosts.map((h) => h.opts.init.mode)).toEqual(['view']);
+		// The widget host mounts after the page (async): wait for it rather than racing a slow CI runner.
+		await waitFor(() => expect(hosts.map((h) => h.opts.init.mode)).toEqual(['view']));
 		expect(calls.some((c) => c.url === '/v1/hugs/respond')).toBe(false);
 	});
 

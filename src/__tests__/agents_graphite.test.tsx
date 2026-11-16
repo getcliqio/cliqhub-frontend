@@ -240,8 +240,9 @@ describe('Agent page (org)', () => {
 		const form = await screen.findByTestId('settings-form');
 		fireEvent.change(within(form).getByLabelText('email'), { target: { value: 'x@y.z' } });
 		fireEvent.click(within(form).getByText('Save'));
-		expect(await within(form).findByRole('alert')).toHaveTextContent("Permission 'agents.manage' is required");
-	});
+		// The save round-trip can take over a second on a busy CI runner.
+		expect(await within(form).findByRole('alert', {}, { timeout: 4000 })).toHaveTextContent("Permission 'agents.manage' is required");
+	}, 15_000);
 
 	it('overrides card and used-by card; realm link goes to the realm page', async () => {
 		route_fetch();
