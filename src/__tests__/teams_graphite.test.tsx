@@ -645,6 +645,10 @@ describe('Team page', () => {
 			] },
 		] } } } : {}));
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
+		// The header says how many; the tree itself is in Details.
+		expect(await screen.findByTestId('sub-team-count')).toHaveTextContent('1 sub-team');
+		expect(screen.queryByTestId('team-structure')).toBeNull();
+		fireEvent.click(screen.getByTestId('team-details-open'));
 		const tree = await screen.findByTestId('team-structure');
 		// The page asks for the tree as installed in this realm.
 		expect(calls.find((c) => c.url === '/v1/team_page/get')?.body).toMatchObject({ realm_id: 'r-prod' });
@@ -656,6 +660,8 @@ describe('Team page', () => {
 		// The root's phase name picks that phase below.
 		fireEvent.click(within(tree).getByRole('button', { name: 'open-pr' }));
 		expect(screen.getByTestId('loc').textContent).toContain('phase=open-pr');
+		// …and closes Details so the phase is in view.
+		expect(screen.queryByTestId('team-details')).toBeNull();
 	});
 
 	it('opened from a realm: the breadcrumb is the trail clicked down through, each crumb opening with the trail before it', async () => {
@@ -703,12 +709,19 @@ describe('Team page', () => {
 		expect(await screen.findByTestId('change-version')).toHaveTextContent('Update…');
 	});
 
-	it('the header shows when to use the team and when not to (team.yml use_when / not_for)', async () => {
+	it('Details shows the full description and when to use the team and when not to (team.yml use_when / not_for); the header stays short', async () => {
 		route_fetch((v) => (v === 'overview' ? { team: { ...HEADER, use_when: ['A Jira ticket for a JS change'], not_for: ['Python services'] } } : {}));
 		render_at('/o/measureone/realms/prod-us/teams/measureone/feature-dev-js?v=1.4.2');
-		const purpose = await screen.findByTestId('team-purpose');
+		await screen.findByTestId('team-details-open');
+		expect(screen.queryByTestId('team-purpose')).toBeNull();
+		expect(screen.getByTestId('team-description').className).toContain('line-clamp-2');
+		fireEvent.click(screen.getByTestId('team-details-open'));
+		const details = screen.getByRole('dialog', { name: 'About @measureone/feature-dev-js' });
+		const purpose = within(details).getByTestId('team-purpose');
 		expect(purpose).toHaveTextContent('Use whenA Jira ticket for a JS change');
 		expect(purpose).toHaveTextContent('Not forPython services');
+		fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.queryByTestId('team-details')).toBeNull();
 	});
 
 	it('opened from a realm: its danger zone uninstalls it from that realm (one write), then back to the realm\'s teams', async () => {

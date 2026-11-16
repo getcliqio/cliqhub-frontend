@@ -34,7 +34,7 @@ import { Team_workflow } from '@/components/graphite/g_team_workflow';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Version_drawer } from '@/components/graphite/g_version_drawer';
-import { Team_purpose } from '@/components/graphite/g_team_purpose';
+import { Team_details_drawer, has_details } from '@/components/graphite/g_team_details';
 import { Team_structure, ref_label } from '@/components/graphite/g_team_structure';
 import type { Team_tree_node } from '@/lib/team_page';
 import { Install_popover, Status_badge, Team_avatar } from '@/pages/teams/teams_graphite_page';
@@ -257,6 +257,8 @@ export function Component() {
 	const [run_open, set_run_open] = useState(false);
 	/** The Change version drawer (in a realm). */
 	const [versioning, set_versioning] = useState(false);
+	/** The Details drawer (full description, use when / not for, sub-teams). */
+	const [details_open, set_details_open] = useState(false);
 	const [busy, set_busy] = useState<string | null>(null);
 	/** The fork identity step, open (PLAN-team-bundle S3). */
 	const [forking, set_forking] = useState<{ busy: boolean; error: string | null } | null>(null);
@@ -291,6 +293,8 @@ export function Component() {
 	const data = read.data;
 	const team = data?.team ?? null;
 	const o = data?.overview ?? null;
+	/** The sub-teams this team's own phases run (the tree's first level). */
+	const sub_team_count = o?.tree?.children.length ?? 0;
 	const files = data?.files?.files ?? [];
 	const team_yml = files.find((f) => f.path === 'team.yml')?.content ?? null;
 	const label = team?.label ?? (team_scope ? `@${team_scope}/${name}` : name);
@@ -430,15 +434,15 @@ export function Component() {
 					{team && !in_realm ? <Status_badge status={team.status} /> : null}
 					{team?.draft_saved_at && !in_realm ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11.5px] font-semibold text-[var(--g-warn-text)]" title="Saved in the Builder, not published yet" data-testid="unpublished-pill"><i aria-hidden className="h-1.5 w-1.5 rounded-full bg-current" />Unpublished changes · {relative_time(Date.parse(team.draft_saved_at))}</span> : null}
 				</div>
-				{team?.description ? <p className="mt-1 max-w-[780px] text-[13px] text-[var(--g-ink-2)]">{team.description}</p> : null}
-				{o?.tree ? <Team_structure root={o.tree} href={sub_href} on_phase={(p) => (in_realm ? pick(p) : set_params({ phase: p }))} /> : null}
-				{team ? <Team_purpose purpose={team} className="mt-2 max-w-[780px]" /> : null}
+				{/* Two lines of description; the rest (all of it, when to use it, sub-teams) is in Details. */}
+				{team?.description ? <p className="mt-1 line-clamp-2 max-w-[780px] text-[13px] text-[var(--g-ink-2)]" data-testid="team-description">{team.description}</p> : null}
+				<div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[var(--g-ink-3)]">
 				{/* In a realm the name and version are in the title: only the author and tags are left. */}
 				{in_realm ? (team?.author || team?.tags.length ? (
-					<div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="team-meta">
 						{[team.author ? `by ${team.author}` : null, team.tags.length ? team.tags.join(' · ') : null].filter(Boolean).join(' · ')}
 					</div>
-				) : null) : <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-[var(--g-ink-3)]" data-testid="team-meta">
+				) : null) : <div className="flex flex-wrap items-center gap-x-2 gap-y-1" data-testid="team-meta">
 					{team && team.versions.length ? (
 						<select aria-label="Version" value={team.version ?? ''} onChange={(e) => set_params({ v: e.target.value === team.latest_version ? null : e.target.value }, false)} className={`${INPUT} h-6 w-[140px] text-[12px]`}>
 							{team.versions.map((v) => <option key={v.version} value={v.version}>v{v.version}{v.is_latest ? ' · latest' : ''}</option>)}
@@ -448,6 +452,22 @@ export function Component() {
 					{team?.author ? <span>· by {team.author}</span> : null}
 					{team?.tags.length ? <span>· {team.tags.join(' · ')}</span> : null}
 				</div>}
+				{sub_team_count ? <span data-testid="sub-team-count">{sub_team_count} sub-team{sub_team_count === 1 ? '' : 's'}</span> : null}
+				{team && has_details(team, sub_team_count) ? (
+					<button type="button" onClick={() => set_details_open(true)} className="font-semibold text-[var(--g-acc)] hover:underline" data-testid="team-details-open">Details ›</button>
+				) : null}
+				</div>
+				{team && details_open ? (
+					<Team_details_drawer
+						title={label}
+						version={team.version}
+						team={team}
+						author={team.author}
+						tags={team.tags}
+						structure={o?.tree ? <Team_structure root={o.tree} href={sub_href} on_phase={(p) => { set_details_open(false); if (in_realm) pick(p); else set_params({ phase: p }); }} /> : null}
+						on_close={() => set_details_open(false)}
+					/>
+				) : null}
 			</div>
 			{/* In a realm a team can only be run (and viewed): no Fork, Download, Edit or Install. */}
 			{in_realm && team?.scope && sidebar_realm ? (
