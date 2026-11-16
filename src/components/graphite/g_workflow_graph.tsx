@@ -11,7 +11,7 @@
  */
 import { useId, type KeyboardEvent, type ReactElement } from 'react';
 import {
-	REVIEW_COLOR, layout_phases, wrap_columns, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle,
+	REVIEW_COLOR, WRAP_STEPS, layout_phases, wrap_columns, overlay_state, phase_kind, phase_kind_id, LEGEND_KINDS, phase_subtitle,
 	type Team_phase, type Team_sub_team, type Workflow_group,
 } from '@/lib/team_page';
 
@@ -62,8 +62,17 @@ export function Workflow_graph({
 	sub_teams = null,
 	groups = null,
 	on_open,
+	layout = 'wrap',
+	folds = null,
+	on_unfold,
 }: {
 	phases: Team_phase[];
+	/** `row`: one line, left to right (scrolls sideways); `wrap`: bands of a few steps, like lines of text. */
+	layout?: 'row' | 'wrap';
+	/** Folded runs of script steps (from fold_scripts): node name → the steps inside. */
+	folds?: Record<string, string[]> | null;
+	/** Open a folded run (its node name). */
+	on_unfold?: (name: string) => void;
 	selected?: string | null;
 	on_select?: (name: string) => void;
 	/** Run overlay: phase name → run phase status. */
@@ -88,7 +97,7 @@ export function Workflow_graph({
 	const frame_room = nest ? nest * FRAME_PAD + FRAME_LABEL : 0;
 	const top_pad = (L.loops.length ? 64 : 34) + frame_room;
 	const shift = start ? START_SHIFT : 0;
-	const wrap = wrap_columns(L);
+	const wrap = wrap_columns(L, layout === 'row' ? Math.max(1, L.cols) : WRAP_STEPS);
 	const bands = wrap[wrap.length - 1].band + 1;
 	const band_cols = Math.max(...wrap.map((c) => c.col)) + 1;
 	const band_h = L.rows * PITCH_Y;
@@ -247,6 +256,8 @@ export function Workflow_graph({
 					const badge = p.review && k.id !== 'human';
 					const is_sel = selected === p.name;
 					const st = statuses ? overlay_state(statuses[p.name]) : null;
+					const fold = folds?.[p.name];
+					if (fold) return <Fold_node key={p.name} name={p.name} steps={fold} x={x} y={y} color={k.color} glyph={k.glyph} fill={`url(#${uid}nf)`} shadow={`url(#${uid}soft)`} on_unfold={on_unfold} />;
 					const short = p.name.slice(p.name.lastIndexOf('/') + 1);
 				const title = short.length > 15 ? `${short.slice(0, 14)}…` : short;
 				const inside = p.team && !groups?.some((g) => g.id === p.name) ? sub_teams?.[p.team] : undefined;
@@ -311,6 +322,37 @@ export function Workflow_graph({
 				})}
 			</svg>
 		</div>
+	);
+}
+
+/** A folded run of script steps: a stacked card ("first step, +N more scripts") that opens on click. */
+function Fold_node({ name, steps, x, y, color, glyph, fill, shadow, on_unfold }: {
+	name: string; steps: string[]; x: number; y: number; color: string; glyph: string; fill: string; shadow: string;
+	on_unfold?: (name: string) => void;
+}) {
+	const first = steps[0].length > 15 ? `${steps[0].slice(0, 14)}…` : steps[0];
+	const open = on_unfold ? () => on_unfold(name) : undefined;
+	return (
+		<g
+			transform={`translate(${x},${y})`}
+			role={open ? 'button' : undefined}
+			tabIndex={open ? 0 : undefined}
+			aria-label={`${steps.length} script steps: ${steps.join(', ')}${open ? '. Open' : ''}`}
+			data-phase={name}
+			data-fold={steps.length}
+			onClick={open}
+			onKeyDown={open ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } } : undefined}
+			style={{ cursor: open ? 'pointer' : 'default', outline: 'none' }}
+		>
+			<title>{steps.join(' → ')}</title>
+			<rect x={8} y={-8} width={W} height={H} rx={12} fill={fill} stroke={hexa(color, 0.22)} />
+			<rect x={4} y={-4} width={W} height={H} rx={12} fill={fill} stroke={hexa(color, 0.3)} />
+			<rect width={W} height={H} rx={12} fill={fill} stroke={hexa(color, 0.38)} filter={shadow} />
+			<rect x={10} y={H / 2 - 13} width={26} height={26} rx={8} fill={hexa(color, 0.14)} stroke={hexa(color, 0.35)} />
+			<text x={23} y={H / 2 + 5} textAnchor="middle" fontSize={13} fill={color} fontWeight={700}>{glyph}</text>
+			<text x={45} y={H / 2 - 3} fontSize={12.5} style={{ fill: 'var(--g-ink)' }} fontWeight={600} fontFamily="var(--g-font)">{first}</text>
+			<text x={45} y={H / 2 + 13} fontSize={10.5} style={{ fill: 'var(--g-ink-3)' }} fontFamily="var(--g-font)">+{steps.length - 1} more script{steps.length === 2 ? '' : 's'} ›</text>
+		</g>
 	);
 }
 

@@ -8,9 +8,54 @@
  */
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import { Workflow_graph } from '@/components/graphite/g_workflow_graph';
-import { expand_sub_teams, type Team_phase, type Team_sub_team } from '@/lib/team_page';
+import { expand_sub_teams, fold_scripts, overlay_state, type Team_phase, type Team_sub_team } from '@/lib/team_page';
 
 type Graph_props = ComponentProps<typeof Workflow_graph>;
+
+/** How the diagram is drawn; remembered in this browser. */
+interface Workflow_prefs {
+	/** One line left to right (default), or wrapped into bands. */
+	layout: 'row' | 'wrap';
+	/** Runs of plain script steps folded into one node (default on). */
+	fold: boolean;
+}
+const PREFS_KEY = 'cliqhub.workflow.view';
+const DEFAULT_PREFS: Workflow_prefs = { layout: 'row', fold: true };
+
+function load_prefs(): Workflow_prefs {
+	try {
+		const v = JSON.parse(localStorage.getItem(PREFS_KEY) ?? 'null') as Partial<Workflow_prefs> | null;
+		return { layout: v?.layout === 'wrap' ? 'wrap' : 'row', fold: v?.fold !== false };
+	} catch {
+		// No storage (private window, blocked): the defaults.
+		return DEFAULT_PREFS;
+	}
+}
+function save_prefs(p: Workflow_prefs): void {
+	try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* No storage: the choice lasts this page only. */ }
+}
+
+/** A two-way switch in the diagram's toolbar. */
+function Toggle<T extends string | boolean>({ label, value, options, on_change }: {
+	label: string; value: T; options: ReadonlyArray<readonly [string, T]>; on_change: (v: T) => void;
+}) {
+	return (
+		<div role="group" aria-label={label} className="flex items-center gap-1.5 text-[var(--g-ink-3)]">
+			{label}:
+			<div className="flex overflow-hidden rounded-md border border-[var(--g-line-strong)]">
+				{options.map(([text, v]) => (
+					<button
+						key={text}
+						type="button"
+						aria-pressed={value === v}
+						onClick={() => on_change(v)}
+						className={`h-6 px-2 text-[11.5px] ${value === v ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'hover:text-[var(--g-ink)]'}`}
+					>{text}</button>
+				))}
+			</div>
+		</div>
+	);
+}
 
 /** What the diagram is showing, for whatever is drawn below it. */
 export interface Workflow_view_state {
@@ -53,52 +98,55 @@ export function Team_workflow({
 	const [expanded, set_expanded] = useState(false);
 	/** Selected step inside an opened sub-team (the page's selection is the team's own). */
 	const [inner_sel, set_inner_sel] = useState<string | null>(null);
+	const [prefs, set_prefs] = useState<Workflow_prefs>(load_prefs);
+	/** Steps of folded runs the user opened. */
+	const [opened, set_opened] = useState<string[]>([]);
 	const subs = sub_teams ?? {};
 	const shown = path.filter((ref) => subs[ref]);
 	const here = shown.length ? subs[shown[shown.length - 1]].phases : phases;
 	const has_subs = here.some((p) => p.team && subs[p.team]);
 	const view = expanded && has_subs ? expand_sub_teams(here, subs) : { phases: here, groups: [] };
 	const top = shown.length === 0;
+	// Never fold away the selected step or one the run overlay is drawing attention to.
+	// Opened runs stay open too (until the fold setting changes).
+	const keep = new Set([
+		...opened,
+		...(top && selected ? [selected] : []),
+		...Object.entries((top && statuses) || {}).filter(([, s]) => ['running', 'waiting', 'failed'].includes(overlay_state(s))).map(([n]) => n),
+	]);
+	const graph = prefs.fold ? fold_scripts(view.phases, keep) : { phases: view.phases, folds: {} };
+	const set_pref = (next: Partial<Workflow_prefs>) => { const p = { ...prefs, ...next }; set_prefs(p); save_prefs(p); set_opened([]); };
+	const unfold_run = (name: string) => set_opened((cur) => [...cur, ...(graph.folds[name] ?? [])]);
 	// Steps inside an expanded sub-team are not this team's own: they can't be selected.
 	const own_select = top && on_select ? (n: string) => { if (!n.includes('/')) on_select(n); } : undefined;
-	const go = (next: string[]) => { set_path(next); set_inner_sel(null); };
+	const go = (next: string[]) => { set_path(next); set_inner_sel(null); set_opened([]); };
 	const open_team = (ref: string) => (on_open_team ? on_open_team(ref) : go([...shown, ref]));
 
 	return (
 		<div>
 			<div className={graph_class}>
-			{has_subs || shown.length ? (
-				<div className="flex flex-wrap items-center gap-2 px-3.5 pt-2.5 text-[12px]" data-testid="workflow-path">
-					<nav aria-label="Sub-team path" className="flex flex-wrap items-center gap-1 text-[var(--g-ink-3)]">
-						{[team_name, ...shown.map((ref) => subs[ref].name)].map((label, i, all) => (
-							<span key={`${label}-${i}`} className="inline-flex items-center gap-1">
-								{i > 0 ? <span aria-hidden>›</span> : null}
-								{i === all.length - 1
-									? <span className="font-semibold text-[var(--g-ink)]" aria-current="page">{label}</span>
-									: <button type="button" className="hover:text-[var(--g-ink)] hover:underline" onClick={() => go(shown.slice(0, i))}>{label}</button>}
-							</span>
-						))}
-					</nav>
-					{has_subs ? (
-						<div role="group" aria-label="Sub-teams" className="ml-auto flex items-center gap-1.5 text-[var(--g-ink-3)]">
-							Sub-teams:
-							<div className="flex overflow-hidden rounded-md border border-[var(--g-line-strong)]">
-								{([['Collapsed', false], ['Expanded', true]] as const).map(([text, on]) => (
-									<button
-										key={text}
-										type="button"
-										aria-pressed={expanded === on}
-										onClick={() => set_expanded(on)}
-										className={`h-6 px-2 text-[11.5px] ${expanded === on ? 'bg-[var(--g-soft)] font-semibold text-[var(--g-ink)]' : 'hover:text-[var(--g-ink)]'}`}
-									>{text}</button>
-								))}
-							</div>
-						</div>
-					) : null}
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 pt-2.5 text-[12px]" data-testid="workflow-path">
+				<nav aria-label="Sub-team path" className="flex flex-wrap items-center gap-1 text-[var(--g-ink-3)]">
+					{[team_name, ...shown.map((ref) => subs[ref].name)].map((label, i, all) => (
+						<span key={`${label}-${i}`} className="inline-flex items-center gap-1">
+							{i > 0 ? <span aria-hidden>›</span> : null}
+							{i === all.length - 1
+								? <span className="font-semibold text-[var(--g-ink)]" aria-current="page">{label}</span>
+								: <button type="button" className="hover:text-[var(--g-ink)] hover:underline" onClick={() => go(shown.slice(0, i))}>{label}</button>}
+						</span>
+					))}
+				</nav>
+				<div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+					<Toggle label="Layout" value={prefs.layout} options={[['Left to right', 'row'], ['Wrapped', 'wrap']]} on_change={(layout) => set_pref({ layout })} />
+					<Toggle label="Scripts" value={prefs.fold} options={[['Folded', true], ['All', false]]} on_change={(fold) => set_pref({ fold })} />
+					{has_subs ? <Toggle label="Sub-teams" value={expanded} options={[['Collapsed', false], ['Expanded', true]]} on_change={set_expanded} /> : null}
 				</div>
-			) : null}
+			</div>
 			<Workflow_graph
-				phases={view.phases}
+				phases={graph.phases}
+				folds={graph.folds}
+				on_unfold={unfold_run}
+				layout={prefs.layout}
 				groups={view.groups}
 				sub_teams={subs}
 				on_open={open_team}

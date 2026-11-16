@@ -321,6 +321,7 @@ export const WRAP_STEPS = 6;
  * never falls inside a gate's route-back when it can be moved a step or two.
  */
 export function wrap_columns(L: Graph_layout, max = WRAP_STEPS): Array<{ band: number; col: number }> {
+	if (max >= L.cols) return Array.from({ length: L.cols }, (_, col) => ({ band: 0, col }));
 	const per = Math.ceil(L.cols / Math.max(1, Math.ceil(L.cols / max)));
 	const splits = (end: number) => L.loops.some((lp) => L.pos[lp.to].col < end && L.pos[lp.from].col >= end);
 	const out: Array<{ band: number; col: number }> = [];
@@ -369,6 +370,59 @@ export function expand_sub_teams(
 		groups.push({ id: `${prefix}${p.name}`, ref: p.team!, label: sub.name, each: p.type === 'map', depth, members: e.phases.map((x) => x.name) }, ...e.groups);
 	}
 	return { phases: out, groups };
+}
+
+/** Prefix of a folded run's node name (`fold:<first step>`). */
+export const FOLD_PREFIX = 'fold:';
+
+/**
+ * Folds each run of plain script steps (two or more, one after another, nothing branching in
+ * or out) into one node, so a long team reads at a glance. Steps inside a gate's route-back,
+ * reviewed steps, steps of an expanded sub-team and those in `keep` are never folded. The fold
+ * takes the first step's dependencies; whatever depended on the last step depends on the fold.
+ *
+ * @returns The steps with the folds in place, and each fold's steps by its node name.
+ */
+export function fold_scripts(phases: Team_phase[], keep: ReadonlySet<string> = new Set()): { phases: Team_phase[]; folds: Record<string, string[]> } {
+	const names = new Set(phases.map((p) => p.name));
+	const by_name = new Map(phases.map((p) => [p.name, p]));
+	const deps = new Map(phases.map((p) => [p.name, p.depends_on.filter((d) => names.has(d) && d !== p.name)]));
+	const kids = new Map<string, string[]>();
+	for (const [n, ds] of deps) for (const d of ds) kids.set(d, [...(kids.get(d) ?? []), n]);
+	const L = layout_phases(phases);
+	const in_loop = new Set(phases.filter((p) => L.loops.some((lp) => L.pos[p.name].col >= L.pos[lp.to].col && L.pos[p.name].col <= L.pos[lp.from].col)).map((p) => p.name));
+	const ok = (n: string) => {
+		const p = by_name.get(n)!;
+		return phase_kind_id(p) === 'script' && !p.review && !n.includes('/') && !in_loop.has(n) && !keep.has(n);
+	};
+	/** The step a run continues into from `n`: its only dependent, which depends only on it. */
+	const next = (n: string): string | null => {
+		const k = kids.get(n) ?? [];
+		return k.length === 1 && deps.get(k[0])!.length === 1 && ok(k[0]) ? k[0] : null;
+	};
+	const folds: Record<string, string[]> = {};
+	const fold_of = new Map<string, string>();
+	for (const p of phases) {
+		if (!ok(p.name) || fold_of.has(p.name)) continue;
+		const ds = deps.get(p.name)!;
+		if (ds.length === 1 && ok(ds[0]) && next(ds[0]) === p.name) continue; // not the start of its run
+		const run = [p.name];
+		for (let n = next(p.name); n && !run.includes(n); n = next(n)) run.push(n);
+		if (run.length < 2) continue;
+		const id = `${FOLD_PREFIX}${p.name}`;
+		folds[id] = run;
+		for (const n of run) fold_of.set(n, id);
+	}
+	if (!fold_of.size) return { phases, folds };
+	const last = new Map(Object.entries(folds).map(([id, run]) => [run[run.length - 1], id]));
+	const out: Team_phase[] = [];
+	for (const p of phases) {
+		const id = fold_of.get(p.name);
+		if (id && folds[id][0] !== p.name) continue;
+		const depends_on = p.depends_on.map((d) => last.get(d) ?? d);
+		out.push(id ? { ...p, name: id, depends_on } : { ...p, depends_on });
+	}
+	return { phases: out, folds };
 }
 
 export function team_href(scope: string | null, name: string, tab?: Team_view): string {
