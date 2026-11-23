@@ -108,9 +108,9 @@ describe('Realm layout', () => {
 		render_layout();
 		await screen.findByRole('heading', { name: 'Prod US' });
 		expect(within(nav()).getAllByRole('link').map((l) => l.getAttribute('data-testid'))).toEqual(['go-teams', 'go-runs', 'go-daemons', 'go-agents', 'go-notifications', 'go-settings']);
-		// A team is missing agent config; a run needs you / failed; daemons are online.
+		// A team is missing agent config; a run failed; daemons are online. (What needs you is in getHugs.)
 		expect(within(screen.getByTestId('go-teams')).getByTestId('nav-attention')).toHaveAccessibleName('1 team is missing agent config');
-		expect(within(screen.getByTestId('go-runs')).getByTestId('nav-attention')).toHaveAccessibleName('1 needs you · 1 failed in the last 24h');
+		expect(within(screen.getByTestId('go-runs')).getByTestId('nav-attention')).toHaveAccessibleName('1 failed in the last 24h');
 		expect(within(screen.getByTestId('go-daemons')).getByTestId('nav-dot-ok')).toHaveAccessibleName('2 online');
 		expect(within(screen.getByTestId('go-settings')).queryByTestId('nav-attention')).toBeNull();
 		expect(nav()).not.toHaveTextContent(/\d/);

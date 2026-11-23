@@ -88,7 +88,7 @@ describe('Shell nav', () => {
 		expect(within(nav).queryByText('Work')).toBeNull();
 		expect(within(nav).queryByText('Manage')).toBeNull();
 		expect(within(nav).getByRole('link', { name: /^HUGs/ })).toHaveAttribute('href', '/hugs?org=measureone');
-		expect(within(nav).getByRole('link', { name: /^HUGs/ })).toHaveTextContent('5');
+		expect(within(nav).getByRole('link', { name: /^HUGs/ })).toHaveTextContent(/^HUGs$/);
 		expect(within(screen.getByTestId('sidebar-realms')).getAllByRole('link').map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
 		// measureone: you're the owner → Org admin.
 		const admin = within(nav).getByTestId('nav-org-admin');

@@ -26,9 +26,8 @@ import { realm_path } from '@/lib/realm_url';
 import { sort_realms, use_view_scope, view_href } from '@/lib/view_scope';
 import { is_problem_event } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
-import { KIND_STYLE, KIND_STRIPE, Kind_icon, ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
+import { KIND_STRIPE } from '@/components/graphite/g_kinds';
 import { Count_badge, Graphite_shell, Org_chip, Realm_dot } from '@/components/graphite/graphite_shell';
-import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
 
 function greeting(now = new Date()): string {
 	const h = now.getHours();
@@ -76,29 +75,6 @@ function Where({ item, show_org, org }: { item: Overview_item; show_org: boolean
 	);
 }
 
-function Needs_row({ item, show_org, org }: { item: Overview_item; show_org: boolean; org?: Overview_org }) {
-	const row = use_row_open();
-	const meta = KIND_STYLE[item.kind];
-	return (
-		<li {...row({ to: item_href(item) })} className={`flex items-center gap-3 border-b border-[var(--g-line-2)] px-4 py-3 last:border-b-0 ${ROW_OPENS}`}>
-			<Kind_icon kind={item.kind} />
-			<div className="min-w-0 flex-1">
-				<p className="truncate text-[13.5px] font-semibold">
-					<span className="sr-only">{meta.label}: </span>
-					{item.title}
-				</p>
-				<div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-[var(--g-ink-3)]">
-					<Where item={item} show_org={show_org} org={org} />
-					{[item.team, item.phase, relative_time(item.at)].filter(Boolean).join(' · ')}
-				</div>
-			</div>
-			<Link to={item_href(item)} className={ROW_ACTION_CLS}>
-				{meta.action}
-			</Link>
-		</li>
-	);
-}
-
 const REALMS_PANEL_LIMIT = 6;
 const ATTENTION_LIMIT = 5;
 
@@ -108,7 +84,7 @@ function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: O
 		<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="realms-h">
 			<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
 				<h2 id="realms-h" className="text-[15px] font-semibold">Realms</h2>
-				<span className="text-[12px] text-[var(--g-ink-3)]">waiting on you first</span>
+				<span className="text-[12px] text-[var(--g-ink-3)]">latest activity first</span>
 				<Link to="/realms" className="ml-auto text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">All {total} realms →</Link>
 			</div>
 			{realms.map((r) => {
@@ -127,13 +103,7 @@ function Realms_panel({ orgs, realms, total }: { orgs: Overview_org[]; realms: O
 								{r.active_runs ? <><span aria-hidden>·</span>{r.active_runs} running</> : null}
 							</span>
 						</span>
-						{r.needs_you ? (
-							<span className="rounded-full bg-[var(--g-warn-soft)] px-2 py-0.5 text-[11px] font-semibold text-[var(--g-warn-text)]">
-								{r.needs_you} need{r.needs_you === 1 ? 's' : ''} you
-							</span>
-						) : (
-							<ArrowRight aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
-						)}
+						<ArrowRight aria-hidden className="h-3.5 w-3.5 text-[var(--g-ink-3)]" />
 					</Link>
 				);
 			})}
@@ -191,7 +161,6 @@ export function Overview_view({ data }: { data: Overview_data }) {
 	const multi_org = data.orgs.length > 0;
 	const show_org_tags = multi_org && scope.kind === 'all';
 
-	const needs_list = view.needs_you;
 	const realms_with_activity = new Set(view.live_runs.map((r) => r.realm_id).filter(Boolean)).size;
 	const offline = view.totals.daemons_total - view.totals.daemons_online;
 	// Same panel in every view: realms, each labelled with its org — no view switching.
@@ -239,11 +208,11 @@ export function Overview_view({ data }: { data: Overview_data }) {
 
 			<div className="grid grid-cols-2 gap-3.5 lg:grid-cols-4">
 				<Stat
-					label="Waiting on you"
+					label="Runs waiting"
 					tone="attention"
-					emphasize={view.totals.needs_you > 0}
-					value={view.totals.needs_you}
-					sub={`${plural(view.totals.open_hugs, 'open HUG')} · ${plural(view.totals.awaiting_input, 'run')} waiting`}
+					emphasize={view.totals.awaiting_input > 0}
+					value={view.totals.awaiting_input}
+					sub="for input"
 				/>
 				<Stat
 					label="Running now"
@@ -266,24 +235,10 @@ export function Overview_view({ data }: { data: Overview_data }) {
 			</div>
 
 			<div className="grid gap-3.5 xl:grid-cols-[1.5fr_1fr]">
-				<section className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-labelledby="needs-h">
-					<div className="flex items-center gap-2.5 border-b border-[var(--g-line)] px-4 py-3">
-						<h2 id="needs-h" className="text-[15px] font-semibold">HUGs</h2>
-						<span className="text-[12px] text-[var(--g-ink-3)]">waiting on a person</span>
-						<div className="ml-auto flex items-center gap-1">
-							<span className="g-mono text-[12px] text-[var(--g-ink-3)]">{view.needs_you.length}</span>
-							<Link to="/hugs" className="ml-2 text-[12px] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">All HUGs →</Link>
-						</div>
-					</div>
-					{needs_list.length === 0 ? (
-						<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-							<CheckCircle2 aria-hidden className="h-7 w-7 text-[var(--g-ok)]" />
-							<p className="text-[14px] font-semibold">You’re all caught up</p>
-							<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews, and agents asking you a question, show up here.</p>
-						</div>
-					) : (
-						<ul>{needs_list.map((i) => <Needs_row key={`${i.kind}-${i.id}`} item={i} show_org={show_org_tags} org={data.orgs.find((o) => o.id === i.org_id)} />)}</ul>
-					)}
+				<section className="flex flex-col items-start gap-2 rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)] px-4 py-4" aria-labelledby="needs-h" data-testid="hugs-in-gethugs">
+					<h2 id="needs-h" className="text-[15px] font-semibold">HUGs</h2>
+					<p className="text-[12.5px] text-[var(--g-ink-3)]">Reviews, and agents asking you a question, are answered in getHugs — it tells you when one is waiting.</p>
+					<Link to="/hugs" className="text-[12.5px] font-semibold text-[var(--g-acc)] hover:underline">Open your HUGs →</Link>
 				</section>
 
 				<Realms_panel orgs={view.orgs} realms={realms_panel} total={realms_total} />

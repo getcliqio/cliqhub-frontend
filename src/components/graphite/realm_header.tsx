@@ -135,7 +135,8 @@ export function Realm_header({ org_slug, slug, realm = null, item = null, childr
 	const online = s?.daemons?.online ?? realm?.daemons.online ?? null;
 	const missing = s?.teams?.missing_agents ?? 0;
 	// Open Hugs that reached you (a run awaiting input waits on one, so it isn't counted again).
-	const need_you = d ? d.counts.hugs : (realm?.needs_you ?? 0);
+	// What's waiting on a person is in getHugs (PLAN-gethugs-step6-ui-link.md); here only runs count.
+	const need_you = 0;
 	const failed = d?.counts.failed_24h ?? 0;
 	const running = d?.counts.running ?? realm?.active_runs ?? 0;
 	const only_member = Boolean(s?.you.is_admin && s?.people && s.people.total <= 1);

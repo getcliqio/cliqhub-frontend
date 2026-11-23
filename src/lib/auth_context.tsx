@@ -40,6 +40,8 @@ interface AuthState {
   acting_as: ClientActingAs | null;
   /** The user's default realm (set at signup / login); its org is the fallback org. */
   default_realm_id: string | null;
+  /** The getHugs web app, where people answer Hugs (its inbox is `<gethugs_app_url>/hugs`); null when there is none. */
+  gethugs_app_url: string | null;
   loading: boolean;
 }
 
@@ -67,6 +69,7 @@ const empty_auth_state = (): AuthState => ({
   act_as_user_id: null,
   acting_as: null,
   default_realm_id: null,
+  gethugs_app_url: null,
   loading: false,
 });
 
@@ -121,6 +124,7 @@ function apply_session(data: {
   user_id?: string;
   act_as_user_id?: string;
   default_realm_id?: string | null;
+  gethugs_app_url?: string | null;
 }): AuthState {
   const acting_as = data.acting_as ?? null;
   const act_as_user_id = data.act_as_user_id ?? data.user.id;
@@ -132,6 +136,7 @@ function apply_session(data: {
     act_as_user_id,
     acting_as,
     default_realm_id: data.default_realm_id ?? null,
+    gethugs_app_url: data.gethugs_app_url ?? null,
     loading: false,
   };
 }

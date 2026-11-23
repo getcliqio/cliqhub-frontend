@@ -79,9 +79,7 @@ describe('Overview page', () => {
 		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('MeasureOne');
 		expect(screen.getByText(/you’re an owner/)).toBeInTheDocument();
 		expect(screen.queryByText(/All my work/)).toBeNull();
-		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('5');
-		expect(screen.getByText('Approve architecture · PROJ-482')).toBeInTheDocument();
-		expect(screen.queryByText('Review docs page')).toBeNull();
+		expect(screen.getByTestId('stat-Runs waiting')).toHaveTextContent('1');
 		const panel = screen.getByRole('region', { name: 'Realms' });
 		expect(within(panel).getByTestId('realm-measureone-prod-us')).toHaveAttribute('href', '/o/measureone/realms/prod-us/inbox');
 		expect(within(panel).queryByTestId('realm-acme-labs-sandbox')).toBeNull();
@@ -92,9 +90,7 @@ describe('Overview page', () => {
 		render_page('/home?org=acme-labs');
 		expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Acme Labs');
 		expect(screen.getByText(/you’re a member/)).toBeInTheDocument();
-		expect(screen.getByTestId('stat-Waiting on you')).toHaveTextContent('1');
-		expect(screen.queryByText('Approve architecture · PROJ-482')).toBeNull();
-		expect(screen.getByText('Review docs page')).toBeInTheDocument();
+		expect(screen.getByTestId('stat-Runs waiting')).toHaveTextContent('0');
 		expect(screen.getByRole('region', { name: 'Realms' })).toHaveTextContent('sandbox');
 		expect(screen.getByRole('region', { name: 'Realms' })).not.toHaveTextContent('prod-us');
 		expect(screen.getByText('Nothing is running right now.')).toBeInTheDocument();
@@ -150,14 +146,13 @@ describe('Overview page', () => {
 		expect(names.slice(1).map((n) => n.match(/prod-us|staging/)?.[0])).toEqual(['prod-us', 'staging']);
 	});
 
-	it('HUGs waiting on you link to their Hug page', async () => {
+	it('HUGs are answered in getHugs: the dashboard links there, and lists none itself (PLAN-gethugs-step6-ui-link.md)', async () => {
 		respond(multi_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1, name: /MeasureOne/ });
-		expect(screen.getByText('Approve architecture · PROJ-482')).toBeInTheDocument();
-		expect(screen.queryByText('Review docs page')).toBeNull(); // Acme's
-		const answers = screen.getAllByRole('link', { name: 'Answer' }).map((a) => a.getAttribute('href'));
-		expect(answers).toEqual(expect.arrayContaining(['/hugs/hug-1', '/hugs/hug-88']));
+		expect(within(screen.getByTestId('hugs-in-gethugs')).getByRole('link', { name: /Open your HUGs/ })).toHaveAttribute('href', '/hugs');
+		expect(screen.queryByText('Approve architecture · PROJ-482')).toBeNull();
+		expect(screen.queryAllByRole('link', { name: 'Answer' })).toEqual([]);
 	});
 
 	it('Needs attention: only problems for this org from the latest events, with a way into the inbox', async () => {
@@ -181,12 +176,6 @@ describe('Overview page', () => {
 		respond(multi_org_overview());
 		render_page();
 		expect(within(await screen.findByTestId('needs-attention')).getByText('Nothing has gone wrong recently.')).toBeInTheDocument();
-	});
-
-	it('shows the caught-up empty state', async () => {
-		respond({ ...single_org_overview(), needs_you: [] });
-		render_page();
-		expect(await screen.findByText('You’re all caught up')).toBeInTheDocument();
 	});
 
 	it('shows onboarding when the user has no realms', async () => {
@@ -254,7 +243,8 @@ describe('Sidebar realms', () => {
 		const links = within(side).getAllByRole('link');
 		expect(links.map((a) => a.getAttribute('href'))).toEqual(['/o/measureone/realms/prod-us/inbox', '/o/measureone/realms/staging/inbox']);
 		expect(links.map((a) => a.textContent)).toEqual([expect.stringMatching(/^prod-us/), expect.stringMatching(/^staging/)]);
-		expect(within(side).getByLabelText('4 waiting on you')).toBeInTheDocument();
+		// No "waiting on you" counts: getHugs has them.
+		expect(within(side).queryByLabelText(/waiting on you/)).toBeNull();
 		// Nav links carry the org.
 		expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/home?org=measureone');
 	});
@@ -368,24 +358,13 @@ describe('Breadcrumb, account menu', () => {
 	});
 });
 
-describe('Colour by kind (overview)', () => {
-	afterEach(() => vi.restoreAllMocks());
-	it('HUG rows are pink, like everywhere else', async () => {
-		respond(multi_org_overview());
-		render_page();
-		await screen.findByRole('heading', { level: 1 });
-		const kinds = Array.from(document.querySelectorAll('[data-kind]')) as HTMLElement[];
-		expect(kinds.find((k) => k.dataset.kind === 'hug')!.style.color).toBe('var(--g-hug)');
-	});
-});
-
 describe('Stat strips', () => {
 	afterEach(() => vi.restoreAllMocks());
 	it('every tile has a colour strip, daemons reflect health', async () => {
 		respond(multi_org_overview());
 		render_page();
 		await screen.findByRole('heading', { level: 1 });
-		expect(screen.getByTestId('stat-Waiting on you')).toHaveAttribute('data-tone', 'attention');
+		expect(screen.getByTestId('stat-Runs waiting')).toHaveAttribute('data-tone', 'attention');
 		expect(screen.getByTestId('stat-Running now')).toHaveAttribute('data-tone', 'run');
 		expect(screen.getByTestId('stat-Failed · 24h')).toHaveAttribute('data-tone', 'failed');
 		expect(screen.getByTestId('stat-Daemons')).toHaveAttribute('data-tone', 'warn'); // 5/6 online

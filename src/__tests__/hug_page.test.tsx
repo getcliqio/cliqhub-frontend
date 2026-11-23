@@ -67,7 +67,7 @@ vi.mock('@getcliqio/hug-frontend/host', () => ({
 	},
 }));
 
-import { Component as HugPage } from '@/pages/hugs/hug_page';
+import { external_hug_url, Component as HugPage } from '@/pages/hugs/hug_page';
 
 const SHA = 'f'.repeat(64);
 const CONTENT = `https://content.test/hb/${SHA}/index.html`;
@@ -539,5 +539,13 @@ describe('Hug page', () => {
 		await screen.findByRole('region', { name: 'Your response' });
 		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
 		await waitFor(async () => expect(await hosts[0]!.opts.read({ artifact_id: 'a-2', name: 'x' })).toBe('read_denied'));
+	});
+});
+
+describe('a Hug asked through getHugs (PLAN-gethugs-step6-ui-link.md)', () => {
+	it('opens in getHugs: its hug_url names another Hug id; the Hub’s own Hugs stay here', () => {
+		expect(external_hug_url({ id: 'abc', hug_url: 'https://app.gethugs.ai/hugs/hug_123' })).toBe('https://app.gethugs.ai/hugs/hug_123');
+		expect(external_hug_url({ id: 'abc', hug_url: 'https://cliqhub.io/hugs/abc' })).toBeNull();
+		expect(external_hug_url({ id: 'abc', hug_url: null })).toBeNull();
 	});
 });

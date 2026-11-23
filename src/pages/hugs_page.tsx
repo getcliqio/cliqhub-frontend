@@ -1,3 +1,4 @@
+import { useAuth } from '@/lib/auth_context';
 /**
  * HUGs (Graphite) — everything in the org waiting on a person: reviews and agents asking a
  * question are all Hugs. Its own app, not part of the inbox.
@@ -6,7 +7,7 @@
  *             already loads (no extra call), oldest first.
  *   Done    — answered, closed or expired Hugs: the org's `hug.*` events from `POST /v1/inbox/get`.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router';
 import { RefreshCw, UserRoundCheck } from 'lucide-react';
 import { use_overview, type Overview_item } from '@/lib/overview';
@@ -123,6 +124,10 @@ function Done({ scope }: { scope: View_scope }) {
 }
 
 export function Component() {
+	// What's waiting on you is in getHugs' inbox (PLAN-gethugs-step6-ui-link.md).
+	const { gethugs_app_url } = useAuth();
+	const inbox = gethugs_app_url ? `${gethugs_app_url}/hugs` : null;
+	useEffect(() => { if (inbox) window.location.replace(inbox); }, [inbox]);
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
 	const [search, set_search] = useSearchParams();

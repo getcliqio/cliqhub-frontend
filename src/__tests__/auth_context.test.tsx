@@ -51,6 +51,19 @@ describe('AuthProvider', () => {
     expect(String(fetch_mock.mock.calls[0]?.[0])).toContain('/v1/session/get');
   });
 
+  it('carries the getHugs web app from the session (PLAN-gethugs-step6-ui-link.md)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, data: { user: MOCK_USER, scopes: [], acting_as: null, gethugs_app_url: 'https://app.gethugs.ai' } })),
+    );
+    function Gethugs() {
+      const { gethugs_app_url } = useAuth();
+      return <div>gethugs:{gethugs_app_url ?? 'none'}</div>;
+    }
+    render(<AuthProvider><Gethugs /></AuthProvider>);
+    await act(async () => {});
+    expect(screen.getByText('gethugs:https://app.gethugs.ai')).toBeInTheDocument();
+  });
+
   it('shows unauthenticated when no session exists', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: false }), { status: 401 }),

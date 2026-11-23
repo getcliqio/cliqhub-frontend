@@ -42,6 +42,24 @@ function render_page(path = '/hugs') {
 	return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/hugs" element={<HugsPage />} /></Routes></MemoryRouter>);
 }
 
+describe('HUGs live in getHugs (PLAN-gethugs-step6-ui-link.md)', () => {
+	it('with a getHugs web app, /hugs opens its inbox', async () => {
+		const original = window.location;
+		const replace = vi.fn();
+		Object.defineProperty(window, 'location', { value: { ...original, replace }, writable: true, configurable: true });
+		(auth as Record<string, unknown>).gethugs_app_url = 'https://app.gethugs.ai';
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, data: multi_org_overview() })));
+		try {
+			render_page();
+			await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.ai/hugs'));
+		} finally {
+			delete (auth as Record<string, unknown>).gethugs_app_url;
+			Object.defineProperty(window, 'location', { value: original, writable: true, configurable: true });
+			vi.restoreAllMocks();
+		}
+	});
+});
+
 describe('HUGs', () => {
 	afterEach(() => vi.restoreAllMocks());
 

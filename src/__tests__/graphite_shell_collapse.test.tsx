@@ -77,11 +77,11 @@ describe('Graphite shell — collapsible sidebar', () => {
 		expect(collapsed()).toBe(true);
 		expect(localStorage.getItem(SIDEBAR_KEY)).toBe('1');
 		const rail = screen.getByTestId('sidebar-rail');
-		// icons keep an accessible name and a tooltip; the badge is still there
-		const hugs = screen.getByRole('link', { name: 'HUGs (3)' });
-		expect(hugs.getAttribute('title')).toBe('HUGs (3)');
+		// icons keep an accessible name and a tooltip; HUGs has no count (getHugs has it, PLAN-gethugs-step6-ui-link.md)
+		const hugs = screen.getByRole('link', { name: 'HUGs' });
+		expect(hugs.getAttribute('title')).toBe('HUGs');
 		expect(rail.contains(hugs)).toBe(true);
-		expect(screen.getByTestId('rail-badge').textContent).toBe('3');
+		expect(screen.queryByTestId('rail-badge')).toBeNull();
 		expect(screen.getByRole('link', { name: 'Dashboard' })).toBeTruthy();
 		// the org switcher shrinks to the org chip and still opens
 		const sw = screen.getByTestId('view-switcher');

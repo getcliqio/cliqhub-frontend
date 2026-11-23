@@ -189,7 +189,6 @@ export function Org_switcher({ data, scope, on_close }: Switcher_props) {
 							<Org_chip org={org} />
 							<b className="font-semibold">{highlight(org.display_name || org.slug, q)}</b>
 							<span className="truncate text-[11.5px] text-[var(--g-ink-3)]">{org.status === 'error' ? 'couldn’t load' : `${org.role} · ${plural(org.realms.length, 'realm')}`}</span>
-							<Count_badge value={org.counts.needs_you} label="waiting on you" />
 							{current ? <Check aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--g-acc)]" /> : null}
 						</button>
 					);
@@ -222,7 +221,6 @@ export function Org_picker({ data }: { data: Overview_data | null }) {
 					<Org_chip org={o} size={28} />
 					<b className="font-semibold">{o.display_name || o.slug}</b>
 					<span className="text-[12.5px] text-[var(--g-ink-3)]">{o.role} · {plural(o.realms.length, 'realm')}</span>
-					<Count_badge value={o.counts.needs_you} label="waiting on you" />
 					<span className="ml-auto text-[var(--g-ink-3)]">→</span>
 				</button>
 			))}
@@ -521,7 +519,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const gs = progress.data;
 	const gs_done = Boolean(gs && gs.done_count >= gs.total);
 
-	const hugs_waiting = view_org ? view_org.counts.needs_you : 0;
 	// One flat list of resources, the same for everyone; org admins get one extra group.
 	// The inbox lives behind the bell (top right); problems also surface on the Dashboard.
 	// Order: Dashboard, Realms (realm shortcuts under it), Teams, HUGs. Notifications: the org's (below) and each realm's own section.
@@ -530,7 +527,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
-	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: UserRoundCheck, badge: hugs_waiting };
+	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: UserRoundCheck };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
 	// Members, Notifications and Org settings are views of the org page (`?tab=`): only the one open is current.
 	const org_tab = view_org && location.pathname === `/orgs/${view_org.id}` ? (new URLSearchParams(location.search).get('tab') ?? 'members') : null;
@@ -619,7 +616,6 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 									>
 										<Realm_dot realm={r} />
 										<span className="truncate" title={realm_label(r) !== r.slug ? r.slug : undefined}>{realm_label(r)}</span>
-										<Count_badge value={r.needs_you} label={`${r.needs_you} waiting on you`} />
 									</Link>
 								);
 							})}

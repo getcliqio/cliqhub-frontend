@@ -355,6 +355,20 @@ function Fallback({ hug, me }: { hug: Hug; me: string | null }) {
 	);
 }
 
+/**
+ * A Hug's page in getHugs, or null for a Hug of the Hub's own: Core gives the Hub's own Hugs `…/hugs/<this Hug's id>`
+ * and a getHugs Hug its getHugs page (`…/hugs/<getHugs' id>`).
+ */
+export function external_hug_url(hug: { id: string; hug_url?: string | null }): string | null {
+	if (!hug.hug_url) return null;
+	try {
+		const url = new URL(hug.hug_url, window.location.origin);
+		return url.pathname.replace(/\/+$/, '').endsWith(`/hugs/${encodeURIComponent(hug.id)}`) ? null : url.toString();
+	} catch {
+		return null;
+	}
+}
+
 export function Component() {
 	const { hug_id = '' } = useParams();
 	const overview = use_overview();
@@ -366,6 +380,17 @@ export function Component() {
 	// A Hug that no longer takes answers keeps no draft.
 	const ended = h !== null && !is_answerable(h);
 	useEffect(() => { if (h && ended) save_draft(h.id, user?.id, null); }, [h?.id, ended, user?.id]);
+
+	// A Hug asked through getHugs is answered there (PLAN-gethugs-step6-ui-link.md): this page only opens it.
+	const elsewhere = h ? external_hug_url(h) : null;
+	useEffect(() => { if (elsewhere) window.location.replace(elsewhere); }, [elsewhere]);
+	if (elsewhere) {
+		return (
+			<Graphite_shell data={overview.data} title="Hug">
+				<p className="px-7 py-6 text-[13px] text-[var(--g-ink-3)]" data-testid="hug-elsewhere">Opening this Hug in getHugs… <a href={elsewhere} className="underline">Open it</a></p>
+			</Graphite_shell>
+		);
+	}
 
 	if (!h) {
 		return (
