@@ -22,7 +22,7 @@ const now = Date.now();
 function item(id: string, over: Partial<Inbox_item> = {}): Inbox_item {
 	return {
 		id, event: 'run.failed', title: `Title ${id}`, message: 'Boom', severity: 'error', org_id: ORG_A, org_slug: 'measureone',
-		realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, hug_id: null, channel_id: null,
+		realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, channel_id: null,
 		original_event: null, at: now - 60_000, ...over,
 	};
 }
@@ -33,7 +33,7 @@ function overview_with_inbox() {
 }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch(inbox: (body: Record<string, unknown>) => Inbox_data = () => ({ items: [item('a'), item('b', { event: 'hug.opened', hug_id: 'hug-9' })], next_until_ms: null, orgs: [], partial: false })) {
+function route_fetch(inbox: (body: Record<string, unknown>) => Inbox_data = () => ({ items: [item('a'), item('b', { event: 'run.completed' })], next_until_ms: null, orgs: [], partial: false })) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -111,7 +111,7 @@ describe('Shell nav', () => {
 describe('Inbox · events', () => {
 	afterEach(() => vi.restoreAllMocks());
 
-	it('one inbox call scoped to the org; HUG events are left out; filters map to event types; row links', async () => {
+	it('one inbox call scoped to the org; filters map to event types (no HUGs filter); row links', async () => {
 		const calls = route_fetch();
 		render_page('/inbox?org=measureone');
 		await screen.findByTestId('inbox-item-a');
@@ -119,14 +119,13 @@ describe('Inbox · events', () => {
 		expect(reads()).toHaveLength(1);
 		expect(reads()[0].body).toEqual({ limit: 50, org_id: ORG_A });
 		expect(within(screen.getByTestId('inbox-item-a')).getByRole('link', { name: 'Investigate' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1');
-		// A Hug belongs to HUGs, not the inbox.
-		expect(screen.queryByTestId('inbox-item-b')).toBeNull();
+		expect(screen.getByTestId('inbox-item-b')).toBeInTheDocument();
 		expect(screen.queryByRole('button', { name: 'HUGs' })).toBeNull();
 		const why = within(screen.getByTestId('inbox-item-a')).getByRole('link', { name: 'Why did I get this?' });
 		expect(why.getAttribute('href')).toBe('/notifications?tab=check&org=measureone&realm=r-prod&event=run.failed');
 
 		fireEvent.click(screen.getByRole('button', { name: 'Delivery problems' }));
-		await waitFor(() => expect(reads().at(-1)!.body).toEqual({ limit: 50, org_id: ORG_A, types: ['notification.failed', 'notification.no_access'] }));
+		await waitFor(() => expect(reads().at(-1)!.body).toEqual({ limit: 50, org_id: ORG_A, types: ['notification.failed'] }));
 	});
 
 	it('shows older pages with the cursor', async () => {
@@ -166,10 +165,8 @@ describe('Bell', () => {
 describe('inbox helpers', () => {
 	it('kinds and actions', () => {
 		expect(inbox_kind('run.crashed')).toBe('failed');
-		expect(inbox_kind('hug.expired')).toBe('hug');
-		expect(inbox_kind('notification.no_access')).toBe('delivery');
-		expect(inbox_action(item('h', { event: 'hug.reminded', hug_id: 'h 1' }))).toEqual({ label: 'Answer', href: '/hugs/h%201' });
-		expect(inbox_action(item('h', { event: 'hug.closed', hug_id: 'h1' }))).toEqual({ label: 'Open', href: '/hugs/h1' });
+		expect(inbox_kind('notification.failed')).toBe('delivery');
+		expect(inbox_kind('hug.expired')).toBe('info');
 		expect(inbox_kind('daemon.offline')).toBe('daemon');
 		expect(inbox_action(item('d', { event: 'daemon.offline', run_id: null }))).toEqual({ label: 'Open realm', href: '/o/measureone/realms/prod-us/inbox' });
 		expect(inbox_action(item('x', { realm_slug: null, org_slug: null, run_id: null, event: 'auth.api_key_created' }))).toBeNull();

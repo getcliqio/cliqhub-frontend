@@ -17,7 +17,7 @@ export interface Section_status {
 }
 
 export interface Inbox_item {
-	kind: 'hug' | 'input' | 'failed' | 'run';
+	kind: 'input' | 'failed' | 'run';
 	id: string;
 	run_id: string | null;
 	title: string;
@@ -26,11 +26,7 @@ export interface Inbox_item {
 	state: string;
 	at: number | null;
 	error: string | null;
-	/** When a Hug stops taking answers (epoch ms; Hugs only). */
-	expires_at: number | null;
-	/** Whether you have answered the Hug (Hugs only). */
-	responded: boolean | null;
-	/** Who initiated the run: `'hub'` or `'cli'`, null for Hugs / older runs. */
+	/** Who initiated the run: `'hub'` or `'cli'`, null for older runs. */
 	origin: string | null;
 }
 
@@ -38,8 +34,8 @@ export interface Realm_inbox_data {
 	realm: Control_realm;
 	items: Inbox_item[];
 	live: Inbox_item[];
-	counts: { hugs: number; awaiting_input: number; failed_24h: number; running: number };
-	sections: Record<'hugs' | 'awaiting_input' | 'failed' | 'running', Section_status>;
+	counts: { awaiting_input: number; failed_24h: number; running: number };
+	sections: Record<'awaiting_input' | 'failed' | 'running', Section_status>;
 	partial: boolean;
 	/** With `summary: true`: the realm page summary. */
 	summary?: Realm_summary;
@@ -268,7 +264,6 @@ export function run_href(org_slug: string, realm_slug: string, run_id: string): 
 }
 
 export function inbox_item_href(item: Inbox_item, org_slug: string, realm_slug: string): string {
-	if (item.kind === 'hug') return `/hugs/${encodeURIComponent(item.id)}`;
 	return run_href(org_slug, realm_slug, item.run_id ?? item.id);
 }
 

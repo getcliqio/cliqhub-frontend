@@ -10,9 +10,6 @@ import { INBOX_SEEN_EVENT, read_inbox_seen, type Inbox_summary } from '@/lib/inb
 import type { Org_status } from '@/lib/admin';
 
 export interface Overview_counts {
-	/** Open Hugs that reached you (a run awaiting input waits on one, so it isn't counted again). */
-	needs_you: number;
-	open_hugs: number;
 	awaiting_input: number;
 	active_runs: number;
 	failed_24h: number;
@@ -31,8 +28,6 @@ export interface Overview_realm {
 	daemons: { online: number; stale: number; offline: number; total: number };
 	active_runs: number;
 	awaiting_input: number;
-	open_hugs: number;
-	needs_you: number;
 	/** What you may do here (view < operate < admin); null when Core didn't say. Optional for older BFFs. */
 	level?: 'view' | 'operate' | 'admin' | null;
 }
@@ -68,11 +63,9 @@ export interface Overview_org {
 }
 
 export interface Overview_item {
-	kind: 'hug' | 'input' | 'run';
+	kind: 'input' | 'run';
 	id: string;
 	title: string;
-	/** A Hug's plain-text summary of what's asked (absent for runs and from an older BFF). */
-	summary?: string | null;
 	org_id: string;
 	org_slug: string;
 	realm_id: string | null;
@@ -87,7 +80,6 @@ export interface Overview_item {
 export interface Overview_data {
 	orgs: Overview_org[];
 	totals: Overview_counts & { orgs: number; realms: number };
-	needs_you: Overview_item[];
 	live_runs: Overview_item[];
 	/** Finished runs (completed / failed / cancelled), most recently ended first. Older BFFs omit it. */
 	recent_runs?: Overview_item[];
@@ -179,8 +171,6 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 	return {
 		orgs,
 		totals: {
-			needs_you: c?.needs_you ?? 0,
-			open_hugs: c?.open_hugs ?? 0,
 			awaiting_input: c?.awaiting_input ?? 0,
 			active_runs: c?.active_runs ?? 0,
 			failed_24h: c?.failed_24h ?? 0,
@@ -190,7 +180,6 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 			orgs: orgs.length,
 			realms: ok.reduce((n, o) => n + o.realms.length, 0),
 		},
-		needs_you: data.needs_you.filter((i) => i.org_id === org_id),
 		live_runs: data.live_runs.filter((i) => i.org_id === org_id),
 		recent_runs: (data.recent_runs ?? []).filter((i) => i.org_id === org_id),
 		inbox: data.inbox,
@@ -200,7 +189,6 @@ export function scope_overview(data: Overview_data, org_id: string | null): Over
 
 /** In-app link for an overview item. */
 export function item_href(item: Overview_item): string {
-	if (item.kind === 'hug') return `/hugs/${encodeURIComponent(item.id)}`;
 	const run_id = encodeURIComponent(item.run_id ?? item.id);
 	if (item.realm_slug) return `/o/${item.org_slug}/realms/${item.realm_slug}/runs/${run_id}`;
 	return `/runs/${run_id}`;

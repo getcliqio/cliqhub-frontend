@@ -108,7 +108,7 @@ function Realms_table({ org_id, realms_by_id, q, page, set }: {
 									</td>
 									<td className="px-4 py-2.5">
 										{r.active_runs ? <Pill tone="run">{r.active_runs} running</Pill> : <span className="text-[var(--g-ink-3)]">idle</span>}
-										{ov?.needs_you ? <> <Pill tone="warn">{ov.needs_you} need you</Pill></> : null}
+										{ov?.awaiting_input ? <> <Pill tone="warn">{ov.awaiting_input} waiting</Pill></> : null}
 									</td>
 									<td className="g-mono px-4 py-2.5">{r.member_count ?? '—'}</td>
 									<td className="px-4 py-2.5 text-[var(--g-ink-3)]" title={new Date(r.created_at).toLocaleString()}>{day(r.created_at)}</td>

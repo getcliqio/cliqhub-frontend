@@ -88,10 +88,10 @@ export function realms_in_view(data: Overview_data | null, scope: View_scope): O
 	return orgs.filter((o) => o.id === org_id).flatMap((o) => o.realms);
 }
 
-/** Waiting on you first, then most recent activity, then name. */
+/** Waiting for input first, then most recent activity, then name. */
 export function sort_realms(realms: Overview_realm[]): Overview_realm[] {
 	return [...realms].sort((a, b) =>
-		(b.needs_you - a.needs_you)
+		(b.awaiting_input - a.awaiting_input)
 		|| ((b.last_activity_at ?? 0) - (a.last_activity_at ?? 0))
 		|| a.slug.localeCompare(b.slug));
 }

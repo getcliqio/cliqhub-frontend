@@ -14,7 +14,7 @@ import { useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read, api_message } from '@/lib/use_bff_read';
 import { use_view_scope, view_href, type View_scope } from '@/lib/view_scope';
-import { INBOX_FILTERS, day_label, is_hug_event, mark_inbox_seen, read_inbox_seen, type Inbox_data, type Inbox_item } from '@/lib/inbox';
+import { INBOX_FILTERS, day_label, mark_inbox_seen, read_inbox_seen, type Inbox_data, type Inbox_item } from '@/lib/inbox';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 
@@ -22,7 +22,7 @@ const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-n
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 
 /** Event filters without HUGs (those live in HUGs). */
-const EVENT_FILTERS = INBOX_FILTERS.filter((f) => f.id !== 'hugs');
+const EVENT_FILTERS = INBOX_FILTERS;
 
 function Events({ scope, seen }: { scope: View_scope; seen: number }) {
 	const auth_fetch = useAuthFetch();
@@ -51,7 +51,7 @@ function Events({ scope, seen }: { scope: View_scope; seen: number }) {
 	const read = use_bff_read<Inbox_data>('/v1/inbox/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load notifications.' });
 	useEffect(() => { set_older(null); set_more_error(null); }, [read.data]);
 
-	const items = [...(read.data?.items ?? []), ...(older?.items ?? [])].filter((i) => !is_hug_event(i.event));
+	const items = [...(read.data?.items ?? []), ...(older?.items ?? [])];
 	const next = older ? older.next : read.data?.next_until_ms ?? null;
 
 	async function load_more() {

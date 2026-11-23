@@ -52,10 +52,10 @@ describe('sidebar_realms', () => {
 		expect(shown).toHaveLength(SIDEBAR_REALM_LIMIT);
 		expect(shown.map((r) => r.id)).toContain('r0');
 	});
-	it('sorts waiting-on-you, then activity, then name', () => {
-		const a = realm({ id: 'a', slug: 'b', org_id: ORG_A, org_slug: 'x', last_activity_at: 5, needs_you: 0 });
-		const b = realm({ id: 'b', slug: 'a', org_id: ORG_A, org_slug: 'x', last_activity_at: 5, needs_you: 0 });
-		const c = realm({ id: 'c', slug: 'c', org_id: ORG_A, org_slug: 'x', last_activity_at: 1, needs_you: 3 });
+	it('sorts waiting-for-input, then activity, then name', () => {
+		const a = realm({ id: 'a', slug: 'b', org_id: ORG_A, org_slug: 'x', last_activity_at: 5, awaiting_input: 0 });
+		const b = realm({ id: 'b', slug: 'a', org_id: ORG_A, org_slug: 'x', last_activity_at: 5, awaiting_input: 0 });
+		const c = realm({ id: 'c', slug: 'c', org_id: ORG_A, org_slug: 'x', last_activity_at: 1, awaiting_input: 3 });
 		expect(sort_realms([a, b, c]).map((r) => r.id)).toEqual(['c', 'b', 'a']);
 	});
 });

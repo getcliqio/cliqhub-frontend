@@ -51,7 +51,7 @@ import { ImpersonationRibbon } from '@/components/impersonation_ribbon';
 import { realm_label, type Overview_data, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
 import { sidebar_realms, use_view_scope, view_href, write_last_org, type View_scope } from '@/lib/view_scope';
-import { is_hug_event, mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
+import { mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import '@/styles/graphite.css';
 
@@ -343,8 +343,6 @@ function notifications_path(scope: View_scope): string {
 
 /** In a view, only show notifications that belong to it (account-wide ones always show). */
 function in_view_item(i: Inbox_item, scope: View_scope): boolean {
-	// HUGs have their own page and nav badge; the bell is for system events.
-	if (is_hug_event(i.event)) return false;
 	if (scope.kind === 'all' || !i.org_id) return true;
 	if (scope.kind === 'org') return i.org_id === scope.org.id;
 	return i.org_id === scope.realm.org_id && (!i.realm_id || i.realm_id === scope.realm.id);

@@ -158,11 +158,11 @@ describe('Overview page', () => {
 	it('Needs attention: only problems for this org from the latest events, with a way into the inbox', async () => {
 		const ev = (id: string, event: string, org_id: string | null = ORG_A): Inbox_item => ({
 			id, event, title: `T ${id}`, message: null, severity: null, org_id, org_slug: org_id === ORG_B ? 'acme-labs' : 'measureone',
-			realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, hug_id: null, channel_id: null, original_event: null, at: Date.now() - 60_000,
+			realm_id: 'r-prod', realm_slug: 'prod-us', team: 'recon', run_id: 'run-1', phase: null, channel_id: null, original_event: null, at: Date.now() - 60_000,
 		});
 		const d = multi_org_overview();
 		d.inbox = { new_count: 0, capped: false, status: 'ok', latest: [
-			ev('fail', 'run.failed'), ev('done', 'run.completed'), ev('hug', 'hug.reminded'),
+			ev('fail', 'run.failed'), ev('done', 'run.completed'),
 			ev('off', 'daemon.offline'), ev('on', 'daemon.online'), ev('other-org', 'run.crashed', ORG_B),
 		] };
 		respond(d);
@@ -179,7 +179,7 @@ describe('Overview page', () => {
 	});
 
 	it('shows onboarding when the user has no realms', async () => {
-		respond({ orgs: [], totals: { needs_you: 0, open_hugs: 0, awaiting_input: 0, active_runs: 0, failed_24h: 0, completed_24h: 0, daemons_online: 0, daemons_total: 0, orgs: 0, realms: 0 }, needs_you: [], live_runs: [], partial: false });
+		respond({ orgs: [], totals: { awaiting_input: 0, active_runs: 0, failed_24h: 0, completed_24h: 0, daemons_online: 0, daemons_total: 0, orgs: 0, realms: 0 }, live_runs: [], partial: false });
 		render_page();
 		expect(await screen.findByText('You don’t have any realms yet')).toBeInTheDocument();
 		expect(screen.getByRole('link', { name: 'Create a realm' })).toHaveAttribute('href', '/realms');
@@ -249,8 +249,8 @@ describe('Sidebar realms', () => {
 		expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/home?org=measureone');
 	});
 
-	it('caps at 5 (waiting on you first, then latest activity) with an "All N realms" link', async () => {
-		const many = Array.from({ length: 14 }, (_, i) => realm({ id: `r${i}`, slug: `realm-${String(i).padStart(2, '0')}`, org_id: ORG_A, org_slug: 'measureone', last_activity_at: i, needs_you: i === 3 ? 2 : 0 }));
+	it('caps at 5 (waiting for input first, then latest activity) with an "All N realms" link', async () => {
+		const many = Array.from({ length: 14 }, (_, i) => realm({ id: `r${i}`, slug: `realm-${String(i).padStart(2, '0')}`, org_id: ORG_A, org_slug: 'measureone', last_activity_at: i, awaiting_input: i === 3 ? 2 : 0 }));
 		const d = single_org_overview();
 		d.orgs = [org({ id: ORG_A, slug: 'measureone', display_name: 'MeasureOne', role: 'owner', counts: counts(), realms: many })];
 		d.totals = { ...d.totals, realms: 14 };

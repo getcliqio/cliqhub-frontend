@@ -12,8 +12,7 @@ describe('scope_overview', () => {
 		const d = multi_org_overview();
 		const v = scope_overview(d, ORG_B);
 		expect(v.orgs.map((o) => o.slug)).toEqual(['acme-labs']);
-		expect(v.totals).toMatchObject({ orgs: 1, realms: 1, needs_you: 1, active_runs: 0, daemons_total: 1 });
-		expect(v.needs_you.every((i) => i.org_id === ORG_B)).toBe(true);
+		expect(v.totals).toMatchObject({ orgs: 1, realms: 1, active_runs: 0, daemons_total: 1 });
 		expect(v.live_runs).toEqual([]);
 	});
 
@@ -22,14 +21,11 @@ describe('scope_overview', () => {
 		d.orgs[0] = { ...d.orgs[0], status: 'error', error: 'boom', realms: [] };
 		const v = scope_overview(d, ORG_A);
 		expect(v.partial).toBe(true);
-		expect(v.totals.needs_you).toBe(0);
+		expect(v.totals.awaiting_input).toBe(0);
 	});
 });
 
 describe('item_href', () => {
-	it('links a Hug to its page', () => {
-		expect(item_href(multi_org_overview().needs_you[0])).toBe('/hugs/hug-1');
-	});
 	it('links runs into their realm', () => {
 		expect(item_href(multi_org_overview().live_runs[0])).toBe('/o/measureone/realms/prod-us/runs/run-1843');
 	});
@@ -38,8 +34,8 @@ describe('item_href', () => {
 		expect(item_href(item)).toBe('/runs/run-1843');
 	});
 	it('encodes ids', () => {
-		const item = { ...multi_org_overview().needs_you[0], id: 'a/b' };
-		expect(item_href(item)).toBe('/hugs/a%2Fb');
+		const item = { ...multi_org_overview().live_runs[0], run_id: 'a/b' };
+		expect(item_href(item)).toBe('/o/measureone/realms/prod-us/runs/a%2Fb');
 	});
 });
 

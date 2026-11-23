@@ -1,132 +1,15 @@
+/**
+ * HUGs — /hugs. What's waiting on a person is in getHugs (PLAN-gethugs-step6-ui-link.md): this page opens getHugs'
+ * inbox, signed in to the org in view (PLAN-gethugs-step7-sign-in.md).
+ */
+import { useEffect } from 'react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { gethugs_open_url } from '@/lib/hug';
-/**
- * HUGs (Graphite) — everything in the org waiting on a person: reviews and agents asking a
- * question are all Hugs. Its own app, not part of the inbox.
- *
- *   Waiting — open Hugs that reached you and you haven't answered, from the overview the shell
- *             already loads (no extra call), oldest first.
- *   Done    — answered, closed or expired Hugs: the org's `hug.*` events from `POST /v1/inbox/get`.
- */
-import { useMemo, useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router';
-import { RefreshCw, UserRoundCheck } from 'lucide-react';
-import { use_overview, type Overview_item } from '@/lib/overview';
-import { use_bff_read } from '@/lib/use_bff_read';
-import { use_view_scope, type View_scope } from '@/lib/view_scope';
-import { day_label, type Inbox_data, type Inbox_item } from '@/lib/inbox';
+import { use_overview } from '@/lib/overview';
+import { use_view_scope } from '@/lib/view_scope';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
-import { Inbox_row } from '@/components/graphite/g_inbox_row';
-
-type Tab = 'waiting' | 'done';
-
-const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
-const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
-
-/** Hug events that mean "settled" or answered (the Done list). */
-export const HUG_DONE_TYPES = ['hug.responded', 'hug.closed', 'hug.expired'];
-
-/** Overview "needs you" Hug → the shared row shape (same row, same actions). */
-export function needs_to_item(i: Overview_item): Inbox_item {
-	return {
-		id: `${i.kind}-${i.id}`,
-		event: 'hug.opened',
-		title: i.title,
-		// What's asked, when the Hug says; else which phase is waiting.
-		message: i.summary?.trim() || (i.phase ? `Waiting for you · ${i.phase}` : null),
-		severity: null,
-		org_id: i.org_id,
-		org_slug: i.org_slug,
-		realm_id: i.realm_id,
-		realm_slug: i.realm_slug,
-		team: i.team,
-		run_id: i.run_id,
-		phase: i.phase,
-		hug_id: i.kind === 'hug' ? i.id : null,
-		channel_id: null,
-		original_event: null,
-		at: i.at ?? 0,
-	};
-}
-
-function in_view(i: { org_id: string | null; realm_id: string | null }, scope: View_scope): boolean {
-	if (scope.kind === 'all') return false;
-	if (scope.kind === 'org') return i.org_id === scope.org.id;
-	return i.realm_id === scope.realm.id;
-}
-
-function Empty({ title, body }: { title: string; body: string }) {
-	return (
-		<div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-			<UserRoundCheck aria-hidden className="h-6 w-6 text-[var(--g-ink-3)]" />
-			<p className="text-[14px] font-semibold">{title}</p>
-			<p className="text-[12.5px] text-[var(--g-ink-3)]">{body}</p>
-		</div>
-	);
-}
-
-function Waiting({ items, total, scope }: { items: Overview_item[]; total: number; scope: View_scope }) {
-	const [q, set_q] = useState('');
-	const mine = items.filter((i) => i.kind === 'hug' && in_view(i, scope));
-	const shown = mine
-		.filter((i) => !q.trim() || `${i.title} ${i.summary ?? ''} ${i.team ?? ''} ${i.realm_slug ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()))
-		// Oldest waiting first: the longest wait is the most urgent.
-		.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
-	return (
-		<div className="flex flex-col gap-3">
-			<div className="flex flex-wrap items-center gap-2">
-				<span className={PILL(true)}>Waiting <span className="g-mono text-[11px] text-[var(--g-ink-3)]">{mine.length}</span></span>
-				<input aria-label="Search HUGs" value={q} onChange={(e) => set_q(e.target.value)} placeholder="Search…" className={`${INPUT} ml-auto w-[220px]`} />
-			</div>
-			<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
-				{shown.length ? (
-					<>
-						<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">Oldest waiting first</div>
-						{shown.map((i) => <Inbox_row key={`${i.kind}-${i.id}`} item={needs_to_item(i)} is_new={false} show_realm_org={false} />)}
-						{total > mine.length && !q.trim() ? (
-							<p className="border-t border-[var(--g-line-2)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]" data-testid="needs-more">
-								Showing the {mine.length} most recent of {total}. Open a realm to see the rest.
-							</p>
-						) : null}
-					</>
-				) : <Empty title="Nothing is waiting on you" body="Reviews, and agents asking a question, show up here." />}
-			</div>
-		</div>
-	);
-}
-
-function Done({ scope }: { scope: View_scope }) {
-	const body = useMemo(() => {
-		const b: Record<string, unknown> = { limit: 50, types: HUG_DONE_TYPES };
-		if (scope.org) b.org_id = scope.org.id;
-		if (scope.kind === 'realm') b.realm_id = scope.realm.id;
-		return b;
-	}, [scope]);
-	const read = use_bff_read<Inbox_data>('/v1/inbox/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load past HUGs.' });
-	const items = (read.data?.items ?? []).filter((i) => in_view(i, scope));
-	const groups: Array<{ day: string; items: Inbox_item[] }> = [];
-	for (const i of items) {
-		const d = day_label(i.at);
-		if (groups.at(-1)?.day !== d) groups.push({ day: d, items: [] });
-		groups.at(-1)!.items.push(i);
-	}
-	if (read.status === 'loading') return <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />;
-	if (read.status === 'error' && !read.data) return <p role="alert" className="text-[13px] text-[var(--g-bad)]">{read.error}</p>;
-	return (
-		<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
-			{items.length ? groups.map((g) => (
-				<div key={g.day}>
-					<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
-					{g.items.map((i) => <Inbox_row key={i.id} item={i} is_new={false} show_realm_org={false} />)}
-				</div>
-			)) : <Empty title="No past HUGs yet" body="Answered, closed and expired HUGs show up here." />}
-		</div>
-	);
-}
 
 export function Component() {
-	// What's waiting on you is in getHugs' inbox (PLAN-gethugs-step6-ui-link.md), opened signed in to the org in view
-	// (PLAN-gethugs-step7-sign-in.md).
 	const { gethugs_app_url } = useAuth();
 	const inbox = gethugs_app_url ? `${gethugs_app_url}/hugs` : null;
 	const open_fetch = useAuthFetch();
@@ -140,38 +23,12 @@ export function Component() {
 	// Once the org in view is known: the link signs in once.
 	// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [inbox, settled]);
-	const [search, set_search] = useSearchParams();
-	const tab: Tab = search.get('tab') === 'done' ? 'done' : 'waiting';
-	const waiting_total = scope.kind === 'realm' ? scope.realm.needs_you : scope.org ? scope.org.counts.needs_you : 0;
-	const on_tab = (t: Tab) => set_search((prev) => { const p = new URLSearchParams(prev); if (t === 'waiting') p.delete('tab'); else p.set('tab', t); return p; }, { replace: true });
 
 	return (
-		<Graphite_shell
-			data={overview.data}
-			title="HUGs"
-			actions={
-				<button type="button" onClick={() => void overview.reload()} aria-label="Refresh" title="Refresh" className="grid h-8 w-8 place-items-center rounded-lg border border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">
-					<RefreshCw className="h-3.5 w-3.5" />
-				</button>
-			}
-		>
-			<div className="flex flex-col gap-[18px] px-7 py-6">
-				<div>
-					<h1 className="text-[24px] font-semibold tracking-[-0.02em]">HUGs</h1>
-					<p className="mt-1 text-[13.5px] text-[var(--g-ink-3)]">Reviews, and agents asking a question: the runs waiting on a person.</p>
-				</div>
-				<div role="tablist" aria-label="HUGs" className="flex gap-1 border-b border-[var(--g-line)]">
-					{([['waiting', 'Waiting', waiting_total], ['done', 'Done', 0]] as const).map(([id, label, n]) => (
-						<button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => on_tab(id)} className={`-mb-px flex items-center gap-1.5 border-b-2 px-3 py-2 text-[13px] font-medium ${tab === id ? 'border-[var(--g-acc)] text-[var(--g-ink)]' : 'border-transparent text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`}>
-							{label}
-							{n ? <span className="rounded-full bg-[var(--g-warn)] px-1.5 text-[10.5px] font-bold leading-[17px] text-[var(--g-on-color)]">{n}</span> : null}
-						</button>
-					))}
-				</div>
-				{overview.status === 'loading' ? <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />
-					: overview.status === 'error' && !overview.data ? <p role="alert" className="text-[13px] text-[var(--g-bad)]">{overview.error}</p>
-						: tab === 'waiting' ? <Waiting items={overview.data?.needs_you ?? []} total={waiting_total} scope={scope} /> : <Done scope={scope} />}
-			</div>
+		<Graphite_shell data={overview.data} title="HUGs">
+			<p className="px-7 py-6 text-[13px] text-[var(--g-ink-3)]" data-testid="hugs-elsewhere">
+				Opening your HUGs in getHugs…{inbox ? <> <a href={inbox} className="underline">Open them</a></> : null}
+			</p>
 		</Graphite_shell>
 	);
 }

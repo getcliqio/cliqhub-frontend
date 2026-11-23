@@ -142,8 +142,6 @@ const LABELS: Record<string, string> = {
 	'phase.started': 'Phase started', 'phase.completed': 'Phase completed', 'phase.failed': 'Phase failed', 'phase.skipped': 'Phase skipped',
 	'phase.escalated': 'Gate escalated', 'phase.resumed': 'Phase resumed',
 	'phase.timed_out': 'Phase timed out', 'phase.idle': 'Phase idle',
-	'hug.opened': 'Input requested', 'hug.reminded': 'HUG reminder', 'hug.responded': 'HUG answered', 'hug.closed': 'HUG closed',
-	'hug.expired': 'HUG expired',
 	'team.published': 'Team published', 'team.visibility_changed': 'Team visibility changed',
 	'daemon.enrolled': 'Daemon enrolled', 'daemon.removed': 'Daemon removed', 'daemon.online': 'Daemon online', 'daemon.offline': 'Daemon offline',
 	'daemon.outbox.dead': 'Daemon outbox stuck', 'daemon.outbox.recovered': 'Daemon outbox recovered',
@@ -164,7 +162,7 @@ const LABELS: Record<string, string> = {
 };
 
 const FAMILY: Record<string, string> = {
-	run: 'Runs', phase: 'Phases', hug: 'Reviews', team: 'Teams', daemon: 'Daemons', realm: 'Realm', auth: 'Access', notification: 'Notifications', custom: 'Custom events',
+	run: 'Runs', phase: 'Phases', team: 'Teams', daemon: 'Daemons', realm: 'Realm', auth: 'Access', notification: 'Notifications', custom: 'Custom events',
 	invite: 'Invites', org: 'Org', user: 'Accounts',
 };
 

@@ -80,8 +80,8 @@ describe('Realm runs page', () => {
 	it('columns: Run, Team (with version), State (no "Needs you": getHugs has it, PLAN-gethugs-step6-ui-link.md), Started, Daemon (its name)', async () => {
 		const base = runs().items[0];
 		route_fetch(() => ({ body: { ok: true, data: runs({ items: [
-			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', needs_you: 'hug', daemon_id: 'd-123456789', daemon_name: 'mac-1' },
-			{ ...base, run_id: 'w2', run_name: 'plain', team: '@cliq/dev', version: null, state: 'completed', needs_you: null, daemon_id: 'd-abcdefghij', daemon_name: null },
+			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', daemon_id: 'd-123456789', daemon_name: 'mac-1' },
+			{ ...base, run_id: 'w2', run_name: 'plain', team: '@cliq/dev', version: null, state: 'completed', daemon_id: 'd-abcdefghij', daemon_name: null },
 		], total: 2 }) } }));
 		render_page();
 		const w1 = await screen.findByTestId('run-w1');

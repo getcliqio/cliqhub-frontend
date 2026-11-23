@@ -10,7 +10,6 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 const STYLE: Record<Inbox_kind, { glyph: string; fg: string; bg: string; outline?: boolean }> = {
 	failed: { glyph: '!', fg: 'var(--g-bad)', bg: 'var(--g-bad-soft)' },
 	delivery: { glyph: '!', fg: 'var(--g-bad)', bg: 'transparent', outline: true },
-	hug: { glyph: 'H', fg: 'var(--g-hug)', bg: 'rgba(255,122,217,.13)' },
 	daemon: { glyph: '◌', fg: 'var(--g-warn-text)', bg: 'var(--g-soft)' },
 	done: { glyph: '✓', fg: 'var(--g-ok)', bg: 'rgba(62,207,142,.12)' },
 	timeout: { glyph: '⏱', fg: 'var(--g-warn-text)', bg: 'var(--g-warn-soft)' },
@@ -73,9 +72,7 @@ export function Inbox_row({ item, is_new, compact = false, show_realm_org = fals
 					<Link
 						to={action.href}
 						onClick={on_open}
-						className={kind === 'hug' && action.label === 'Answer'
-							? 'shrink-0 rounded-md bg-[var(--g-acc)] px-3 py-1.5 text-[12px] font-semibold text-[var(--g-on-acc)] hover:bg-[var(--g-acc-hover)]'
-							: `${ROW_ACTION_CLS} ${kind === 'delivery' ? 'border-[rgba(255,92,92,.45)] text-[var(--g-bad)]' : ''}`}
+						className={`${ROW_ACTION_CLS} ${kind === 'delivery' ? 'border-[rgba(255,92,92,.45)] text-[var(--g-bad)]' : ''}`}
 					>
 						{action.label}
 					</Link>

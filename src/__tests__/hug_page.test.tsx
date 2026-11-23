@@ -1,109 +1,28 @@
 /**
- * Hug page (/hugs/:hug_id), PLAN-hug-widgets §6.4 / §11.2: the review card (one metadata line, the title, the Hug's
- * summary), the run's workflow, and the response — the Hug's hug in a frame (`Hug_host` over `host_hug`, faked here:
- * the bridge itself is tested in @getcliqio/hug-frontend) in five states: (1) answering, Submit with the hug's label
- * and tone, enabled only when valid; (2) the answer as sent, "Change answer"; (3) changing it, Cancel; (4) a Hug not
- * sent to you; (5) ended, every answer in its own view frame. Without a frame (no hug, or its bundle gone) the
- * answers are key-values. Drafts are kept per viewer and Hug.
+ * Hug page (/hugs/:hug_id) and HUGs (/hugs): every Hug is asked and answered in getHugs (PLAN-gethugs-step8-cutover.md).
+ * The Hug page reads the Hug (`hugs/get_by_id`) and opens its getHugs page through a sign-in link
+ * (PLAN-gethugs-step7-sign-in.md), or the plain page when Core gives none; HUGs opens getHugs' inbox.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { act, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { single_org_overview, gs_response } from './fixtures_overview';
-import type { Hug, Hug_response, Hug_run } from '@/lib/hug';
-import { OVERVIEW_STALE_EVENT } from '@/lib/overview';
 
 const auth = {
 	user: { id: 'u1', username: 'ann', display_name: 'Ann', email: 'a@x.com', role: 'user' as const, preferences: {} },
-	loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn(),
+	loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn(), gethugs_app_url: 'https://app.gethugs.test',
 };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
 
-/** One fake host per frame the page makes: its options, and what the test drives. */
-interface Fake_host {
-	opts: any;
-	mode: 'answer' | 'view';
-	modes: Array<{ mode: string; viewing?: unknown }>;
-	destroyed: boolean;
-	submitted: unknown[];
-	/** What the page told the frame with `update` (§6.1). */
-	updates: unknown[];
-	/** Push an answer state, as the frame would (on_state). */
-	state(s: { values: Record<string, unknown>; valid: boolean; problems?: Array<{ message: string }>; submit?: { label: string; tone: 'primary' | 'danger' }; summary?: string }): void;
-}
-const hosts: Fake_host[] = [];
-vi.mock('@getcliqio/hug-frontend/host', () => ({
-	read_budget: () => ({ used: 0 }),
-	host_hug: (opts: any) => {
-		let last: any = null;
-		const h: Fake_host = {
-			opts, mode: opts.init.mode, modes: [], destroyed: false, submitted: [], updates: [],
-			state: (s) => {
-				last = { problems: [], submit: { label: 'Submit', tone: 'primary' }, ...s };
-				opts.on_state?.(last);
-			},
-		};
-		hosts.push(h);
-		const frame = document.createElement('iframe');
-		frame.setAttribute('sandbox', 'allow-scripts');
-		frame.src = opts.src;
-		opts.container.append(frame);
-		return {
-			frame,
-			state: () => last,
-			mode: () => h.mode,
-			set_mode: (mode: 'answer' | 'view', viewing?: unknown) => { h.mode = mode; h.modes.push({ mode, viewing }); },
-			close: vi.fn(),
-			update: (u: unknown) => { h.updates.push(u); },
-			destroy: () => { h.destroyed = true; frame.remove(); },
-			submit: async (send: (v: unknown, s: unknown) => Promise<any>) => {
-				const out = await send(last.values, last.summary);
-				h.submitted.push(out);
-				if (out.ok) h.mode = 'view';
-				return out;
-			},
-		};
-	},
-}));
+import { Component as HugPage } from '@/pages/hugs/hug_page';
+import { Component as HugsPage } from '@/pages/hugs_page';
 
-import { external_hug_url, Component as HugPage } from '@/pages/hugs/hug_page';
-
-const SHA = 'f'.repeat(64);
-const CONTENT = `https://content.test/hb/${SHA}/index.html`;
-const soon = () => new Date(Date.now() + 3_600_000).toISOString();
-
-/** An `approval` Hug, as Core returns it now. */
-function hug(over: Partial<Hug> = {}): Hug {
-	return {
-		id: 'h-1', hug_url: 'https://hub/hugs/h-1', run_id: 'run-1841', run_name: 'quiet-amber-heron', team: '@cliq/feature-dev-js', phase: 'approve', iteration: 0,
-		realm_id: 'r-prod', realm_name: 'Prod US', realm_slug: 'prod-us', org_slug: 'measureone',
-		title: 'Review: approve', hug: { name: 'approval', sha256: SHA }, summary: 'Approve the plan before it ships.',
-		params: { prompt: 'Please review the **plan**.', reject_choices: [{ value: 'draft' }] },
-		files: [{ name: 'evidence', accept: ['application/pdf'] }], attachments: [{ artifact_id: 'a-1', name: 'design.md', size: 20, content_type: 'text/markdown', sha256: 'abc' }],
-		channels: ['legal', 'ops'], status: 'open', outcome: null,
-		expires_at: soon(), created_at: new Date(Date.now() - 600_000).toISOString(), closed_at: null, last_reminded_at: null,
-		not_sent_to: [], responses: [], viewer: { can_answer: true, via: ['ops'] },
-		...over,
-	};
-}
-
-const response = (over: Partial<Hug_response> = {}): Hug_response => ({
-	response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['ops'], values: { decision: 'approve' }, summary: 'Approved',
-	responded_at: new Date(Date.now() - 120_000).toISOString(), ...over,
-});
+const HUG = { id: 'h-1', hug_url: 'https://app.gethugs.test/hugs/hug_9', run_id: 'run-1', phase: 'approve', realm_id: 'r-prod', org_slug: 'measureone', title: 'Ship?', status: 'open', outcome: null };
 
 type Handler = (body: Record<string, unknown>) => { status?: number; body: unknown };
 
-const RUN: Hug_run = {
-	run_id: 'run-1841', run_name: 'quiet-amber-heron', state: 'awaiting_input', team_label: '@cliq/feature-dev-js', team_version: '1.4.0',
-	phases: [
-		{ name: 'draft', type: 'standard', agent: 'claude-code', status: 'completed', depends_on: [] },
-		{ name: 'approve', type: 'gate', agent: 'hug', status: 'awaiting_input', depends_on: ['draft'] },
-	],
-};
-
-function route_fetch(h: Hug | (() => Hug), extra: Record<string, Handler> = {}, opts: { run?: Hug_run | null; content_url?: string | null; rounds?: unknown[] } = {}) {
+function route_fetch(extra: Record<string, Handler>) {
 	const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -112,440 +31,57 @@ function route_fetch(h: Hug | (() => Hug), extra: Record<string, Handler> = {}, 
 		if (extra[u]) { const r = extra[u](body); return new Response(JSON.stringify(r.body), { status: r.status ?? 200 }); }
 		if (u === '/v1/overview/get') return new Response(JSON.stringify({ ok: true, data: single_org_overview() }));
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
-		if (u === '/v1/hug_page/get') {
-			const data = { hug: typeof h === 'function' ? h() : h, content_url: opts.content_url === undefined ? CONTENT : opts.content_url, run: opts.run ?? null, rounds: opts.rounds ?? [] };
-			return new Response(JSON.stringify({ ok: true, data }));
-		}
 		throw new Error(`unexpected ${u}`);
 	});
 	return calls;
 }
 
-function render_page(id = 'h-1') {
-	return render(<MemoryRouter initialEntries={[`/hugs/${id}`]}><Routes><Route path="/hugs/:hug_id" element={<HugPage />} /></Routes></MemoryRouter>);
-}
-
-beforeEach(() => { hosts.length = 0; localStorage.clear(); sessionStorage.clear(); });
-afterEach(() => vi.restoreAllMocks());
+let replace: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+	replace = vi.fn();
+	vi.stubGlobal('location', { ...window.location, replace });
+});
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Hug page', () => {
-	it('the review card: one metadata line, the title and the Hug\'s summary — no context section (the hug draws its own)', async () => {
-		const calls = route_fetch(hug());
-		render_page();
-		expect(await screen.findByRole('heading', { level: 1, name: 'Review: approve' })).toBeInTheDocument();
-		expect(calls.find((c) => c.url === '/v1/hug_page/get')?.body).toEqual({ hug_id: 'h-1' });
-		expect(screen.getByTestId('hug-summary')).toHaveTextContent('Approve the plan before it ships.');
-		expect(screen.queryByRole('region', { name: 'Context' })).toBeNull();
-		const meta = screen.getByTestId('hug-meta');
-		expect(meta).toHaveTextContent('Target channel legal, ops');
-		expect(meta).toHaveTextContent(/Opened .*, 10m ago/);
-		expect(meta).toHaveTextContent('HUG ID h-1');
-		expect(screen.queryByTestId('not-sent')).toBeNull();
-	});
-
-	it("the workflow: the team and version, the Hug's phase highlighted, a phase opens its output", async () => {
-		const calls = route_fetch(hug(), {
-			'/v1/run_detail/get': () => ({ body: { ok: true, data: { phase_outputs: [{ artifact_id: 'o1', phase: 'draft', created_at: null, raw: 'Plan drafted', complete: true,
-				view: { kind: 'text', summary: 'Plan drafted', body_markdown: 'Plan drafted for **review**', steps: [], verdict: null, commands: null, sources: [], sub_run: null } }] } } }),
-		}, { run: RUN });
-		render_page();
-		const wf = await screen.findByRole('region', { name: 'Workflow' });
-		expect(within(wf).getByTestId('hug-team')).toHaveTextContent('@cliq/feature-dev-js v1.4.0');
-		expect(within(wf).getByRole('button', { name: /^approve,/ })).toHaveAttribute('aria-label', expect.stringContaining('waiting'));
-		fireEvent.click(within(wf).getByRole('button', { name: /^draft,/ }));
-		expect(await within(wf).findByTestId('phase-output')).toHaveTextContent('Plan drafted for review');
-		expect(calls.find((c) => c.url === '/v1/run_detail/get')?.body).toEqual({ run_id: 'run-1841' });
-	});
-
-	it('state 1 — answering: one sandboxed frame from the content origin, given the Hug, its params, slots and attachments', async () => {
-		route_fetch(hug());
-		render_page();
-		const answer = await screen.findByRole('region', { name: 'Your response' });
-		const frame = within(answer).getByTestId('hug-frame').querySelector('iframe')!;
-		expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
-		expect(frame).toHaveAttribute('src', CONTENT);
-		expect(hosts).toHaveLength(1);
-		const init = hosts[0]!.opts.init;
-		expect(init).toMatchObject({
-			mode: 'answer', mine: null, viewing: null, draft: null,
-			hug: { id: 'h-1', name: 'approval', title: 'Review: approve', summary: 'Approve the plan before it ships.', status: 'open', run: { id: 'run-1841', name: 'quiet-amber-heron' } },
-			params: hug().params, files: hug().files, attachments: hug().attachments, viewer: { name: 'Ann', via: ['ops'] },
+	it('reads the Hug and opens its getHugs page through a sign-in link', async () => {
+		const calls = route_fetch({
+			'/v1/hugs/get_by_id': () => ({ body: { ok: true, data: HUG } }),
+			'/v1/hugs/create_sign_in_link': () => ({ body: { ok: true, data: { url: 'https://app.gethugs.test/sign-in/statement#x' } } }),
 		});
-		expect(init.theme).toMatchObject({ scheme: expect.stringMatching(/light|dark/) });
+		render(<MemoryRouter initialEntries={['/hugs/h-1']}><Routes><Route path="/hugs/:hug_id" element={<HugPage />} /></Routes></MemoryRouter>);
+		await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.test/sign-in/statement#x'));
+		expect(calls.find((c) => c.url === '/v1/hugs/get_by_id')?.body).toEqual({ hug_id: 'h-1' });
+		expect(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')?.body).toEqual({ hug_id: 'h-1' });
+		expect(screen.getByTestId('hug-elsewhere').querySelector('a')?.getAttribute('href')).toBe(HUG.hug_url);
+		expect(calls.some((c) => c.url === '/v1/hug_page/get' || c.url === '/v1/hugs/respond')).toBe(false);
 	});
 
-	it("Submit is the Hub's: the hug's label and tone, enabled only when valid, a problem count; it sends the values and summary", async () => {
-		let stale = 0;
-		window.addEventListener(OVERVIEW_STALE_EVENT, () => { stale += 1; });
-		const calls = route_fetch(hug(), { '/v1/hugs/respond': () => ({ body: { ok: true, data: { response_id: 'r1', seq: 1 } } }) });
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		const submit = screen.getByTestId('hug-submit');
-		expect(submit).toBeDisabled();
-		act(() => hosts[0]!.state({ values: { decision: 'reject' }, valid: false, problems: [{ message: 'Say why' }], submit: { label: 'Reject', tone: 'danger' } }));
-		expect(submit).toHaveTextContent('Reject');
-		expect(submit).toBeDisabled();
-		expect(screen.getByTestId('hug-problems')).toHaveTextContent('1 problem');
-		act(() => hosts[0]!.state({ values: { decision: 'reject', reason: 'too risky' }, valid: true, submit: { label: 'Reject', tone: 'danger' }, summary: 'Rejected' }));
-		expect(submit).toBeEnabled();
-		fireEvent.click(submit);
-		expect(await screen.findByTestId('hug-sent')).toHaveTextContent('Response submitted. You can change it while the Hug is open.');
-		expect(calls.find((c) => c.url === '/v1/hugs/respond')?.body).toEqual({ hug_id: 'h-1', values: { decision: 'reject', reason: 'too risky' }, summary: 'Rejected' });
-		expect(stale).toBeGreaterThan(0);
-		// State 2 right after Submit: the answer as sent, Change answer, the next steps.
-		expect(screen.getByTestId('hug-change')).toBeInTheDocument();
-		expect(screen.queryByTestId('hug-submit')).toBeNull();
-		expect(screen.getByTestId('hug-next')).toBeInTheDocument();
-	});
-
-	it("Core's refusal is shown by Submit; the answer stays to fix", async () => {
-		route_fetch(hug(), { '/v1/hugs/respond': () => ({ status: 422, body: { ok: false, error: { code: 'HUG_FILE_INVALID', message: 'evidence: file f-1 was not uploaded by you' } } }) });
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		act(() => hosts[0]!.state({ values: { decision: 'approve' }, valid: true }));
-		fireEvent.click(screen.getByTestId('hug-submit'));
-		expect(await screen.findByTestId('hug-error')).toHaveTextContent('evidence: file f-1 was not uploaded by you');
-		expect(screen.getByTestId('hug-submit')).toBeInTheDocument();
-	});
-
-	it('states 2 and 3: my answer is shown as sent; Change answer edits it from mine; Cancel goes back — one frame, one mode message each', async () => {
-		const mine = response();
-		route_fetch(hug({ responses: [mine] }));
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		expect(hosts[0]!.opts.init).toMatchObject({ mode: 'view', mine: { values: { decision: 'approve' }, summary: 'Approved' }, viewing: { values: { decision: 'approve' } } });
-		expect(screen.getByTestId('hug-bar')).toHaveTextContent(/Submitted .*Change answer/);
-		expect(screen.getByText('Answered', { selector: 'span' })).toBeInTheDocument();
-		fireEvent.click(screen.getByTestId('hug-change'));
-		expect(hosts[0]!.modes.at(-1)).toEqual({ mode: 'answer', viewing: undefined });
-		expect(screen.getByTestId('hug-submit')).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-		expect(hosts[0]!.modes.at(-1)).toMatchObject({ mode: 'view', viewing: { values: { decision: 'approve' } } });
-		expect(hosts).toHaveLength(1);
-	});
-
-	it('the page re-reads the Hug: a new expiry is passed to the frame; an expiry while changing an answer ends in state 5 with nothing sent (§6.4, §15)', async () => {
-		vi.useFakeTimers({ shouldAdvanceTime: true });
-		try {
-			let current = hug({ responses: [response()] });
-			const calls = route_fetch(() => current);
-			render_page();
-			await screen.findByRole('region', { name: 'Your response' });
-			await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-			fireEvent.click(screen.getByTestId('hug-change'));     // state 3: changing the answer
-			hosts[0]!.state({ values: { decision: 'reject', reason: 'not yet' }, valid: true });
-
-			const later = new Date(Date.now() + 7_200_000).toISOString();
-			current = { ...current, expires_at: later };
-			await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
-			expect(hosts[0]!.updates).toContainEqual(expect.objectContaining({ expires_at: later }));
-
-			current = { ...current, status: 'expired', closed_at: new Date().toISOString() };
-			await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
-			const outcome = await screen.findByRole('region', { name: 'Outcome' });
-			expect(outcome).toHaveTextContent('This Hug no longer takes responses.');
-			expect(screen.queryByTestId('hug-submit')).toBeNull();
-			expect(hosts[0]!.destroyed).toBe(true);
-			expect(calls.some((c) => c.url === '/v1/hugs/respond')).toBe(false);
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("the requester's status line: shown above Submit, given to the frame, and updated when it changes (§6.1 progress)", async () => {
-		vi.useFakeTimers({ shouldAdvanceTime: true });
-		try {
-			let current = hug({ progress: "1 answer couldn't be used; waiting for a valid one" });
-			route_fetch(() => current);
-			render_page();
-			expect(await screen.findByTestId('hug-progress')).toHaveTextContent("1 answer couldn't be used; waiting for a valid one");
-			await waitFor(() => expect(hosts).toHaveLength(1));      // the frame's host is made after the line is drawn
-			expect(hosts[0]!.opts.init.progress).toBe("1 answer couldn't be used; waiting for a valid one");
-			current = { ...current, progress: 'eng-leads approved; waiting for product' };
-			await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
-			expect(screen.getByTestId('hug-progress')).toHaveTextContent('eng-leads approved; waiting for product');
-			expect(hosts[0]!.updates).toContainEqual(expect.objectContaining({ progress: 'eng-leads approved; waiting for product' }));
-		} finally {
-			vi.useRealTimers();
-		}
-	});
-
-	it("others who responded: one quiet line built from their answers' summaries", async () => {
-		route_fetch(hug({ responses: [response({ response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' }, summary: 'Rejected' }), response({ response_id: 'r3', responder: { user_id: 'u3', name: 'Cy' }, summary: undefined })] }));
-		render_page();
-		expect(await screen.findByTestId('others-responded')).toHaveTextContent(/Bo responded: Rejected, 2m ago · Cy responded, 2m ago/);
-	});
-
-	it('a draft is kept per viewer and Hug while answering, given back on return, and dropped after Submit', async () => {
-		route_fetch(hug(), { '/v1/hugs/respond': () => ({ body: { ok: true, data: { response_id: 'r1' } } }) });
-		const first = render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		act(() => hosts[0]!.state({ values: { decision: 'approve', note: 'half' }, valid: true }));
-		first.unmount();
-		hosts.length = 0;
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		expect(hosts[0]!.opts.init.draft).toEqual({ decision: 'approve', note: 'half' });
-		act(() => hosts[0]!.state({ values: { decision: 'approve' }, valid: true }));
-		fireEvent.click(screen.getByTestId('hug-submit'));
-		await screen.findByTestId('hug-sent');
-		expect(sessionStorage.getItem('hug-draft:u1:h-1')).toBeNull();
-		expect(Object.keys(localStorage).filter((k) => k.startsWith('hug-draft:'))).toEqual([]);   // this tab's only (§9.2.9: for the session)
-	});
-
-	it('a change to my answer is a draft too: a reload goes back to editing it; Cancel drops it', async () => {
-		route_fetch(hug({ responses: [response()] }));
-		const first = render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		fireEvent.click(screen.getByTestId('hug-change'));
-		act(() => hosts[0]!.state({ values: { decision: 'reject', reason: 'second thoughts' }, valid: true }));
-		expect(JSON.parse(sessionStorage.getItem('hug-draft:u1:h-1')!)).toEqual({ decision: 'reject', reason: 'second thoughts' });
-		first.unmount();
-		hosts.length = 0;
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		expect(hosts[0]!.opts.init).toMatchObject({ mode: 'answer', mine: { values: { decision: 'approve' } }, draft: { decision: 'reject', reason: 'second thoughts' } });
-		expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
-		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-		expect(sessionStorage.getItem('hug-draft:u1:h-1')).toBeNull();
-		expect(screen.getByTestId('hug-change')).toBeInTheDocument();
-	});
-
-	it('a Hug that has ended keeps no draft', async () => {
-		sessionStorage.setItem('hug-draft:u1:h-1', JSON.stringify({ decision: 'approve' }));
-		route_fetch(hug({ status: 'closed', outcome: 'Approved', closed_at: new Date().toISOString(), responses: [response()] }));
-		render_page();
-		await screen.findByRole('region', { name: 'Outcome' });
-		expect(sessionStorage.getItem('hug-draft:u1:h-1')).toBeNull();
-	});
-
-	it("state 4 — a Hug that wasn't sent to me (viewer.can_answer false): read-only from the start — no answer frame, no Submit", async () => {
-		const calls = route_fetch(hug({ viewer: { can_answer: false, via: [] }, responses: [response({ response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' } })] }));
-		render_page();
-		const four = await screen.findByTestId('not-for-you');
-		expect(four).toHaveTextContent('Only people this Hug was sent to can answer it (legal, ops).');
-		expect(screen.getByText('Open', { selector: 'span' })).toBeInTheDocument();   // not "Waiting on you"
-		expect(screen.queryByRole('region', { name: 'Your response' })).toBeNull();
-		expect(screen.queryByTestId('hug-submit')).toBeNull();
-		expect(screen.queryByTestId('hug-change')).toBeNull();
-		// The widget host mounts after the page (async): wait for it rather than racing a slow CI runner.
-		await waitFor(() => expect(hosts.map((h) => h.opts.init.mode)).toEqual(['view']));
-		expect(calls.some((c) => c.url === '/v1/hugs/respond')).toBe(false);
-	});
-
-	it('state 4 with no answers yet says so', async () => {
-		route_fetch(hug({ viewer: { can_answer: false, via: [] } }));
-		render_page();
-		expect(await screen.findByTestId('not-for-you')).toHaveTextContent('No answers yet.');
-		expect(hosts).toHaveLength(0);
-	});
-
-	it("Core still refusing at Submit (its view changed while the page was open) switches to read-only", async () => {
-		route_fetch(hug({ responses: [response({ response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' } })] }), {
-			'/v1/hugs/respond': () => ({ status: 403, body: { ok: false, error: { code: 'forbidden', message: 'This Hug was not sent to you' } } }),
+	it('no sign-in link (refused): the plain getHugs page', async () => {
+		route_fetch({
+			'/v1/hugs/get_by_id': () => ({ body: { ok: true, data: HUG } }),
+			'/v1/hugs/create_sign_in_link': () => ({ status: 409, body: { ok: false, error: { code: 'not_in_gethugs' } } }),
 		});
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		act(() => hosts[0]!.state({ values: { decision: 'approve' }, valid: true }));
-		fireEvent.click(screen.getByTestId('hug-submit'));
-		const four = await screen.findByTestId('not-for-you');
-		expect(four).toHaveTextContent('Only people this Hug was sent to can answer it (legal, ops).');
-		expect(within(four).getAllByTestId('hug-response')).toHaveLength(1);
-		expect(hosts.at(-1)!.opts.init).toMatchObject({ mode: 'view', viewing: { responder: { name: 'Bo' } } });
+		render(<MemoryRouter initialEntries={['/hugs/h-1']}><Routes><Route path="/hugs/:hug_id" element={<HugPage />} /></Routes></MemoryRouter>);
+		await waitFor(() => expect(replace).toHaveBeenCalledWith(HUG.hug_url));
 	});
 
-	it('round 2 of a gate: the round in the details line, and every round with who answered what (e2e: a log of the iterations)', async () => {
-		route_fetch(hug({ iteration: 1 }), {}, { rounds: [
-			{ hug_id: 'h-0', round: 1, status: 'closed', outcome: 'Rejected by Elan', created_at: 1, closed_at: 2, current: false,
-				answers: [{ responder: 'Elan', summary: 'Rejected', note: "I don't like it", responded_at: '2026-11-10T21:55:33Z' }] },
-			{ hug_id: 'h-1', round: 2, status: 'open', outcome: null, created_at: 3, closed_at: null, current: true, answers: [] },
-		] });
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		expect(screen.getByTestId('hug-round')).toHaveTextContent('Round 2');
-		const rows = within(screen.getByRole('region', { name: 'Rounds' })).getAllByTestId('hug-round-row');
-		expect(rows[0]).toHaveTextContent("Round 1 · Rejected by ElanElan: Rejected — “I don't like it”");
-		expect(within(rows[0]!).getByRole('link', { name: 'Round 1' })).toHaveAttribute('href', '/hugs/h-0');
-		expect(rows[1]).toHaveTextContent('Round 2 · this Hug');
-	});
-
-	it('a first round shows no round and no Rounds section', async () => {
-		route_fetch(hug());
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		expect(screen.queryByTestId('hug-round')).toBeNull();
-		expect(screen.queryByRole('region', { name: 'Rounds' })).toBeNull();
-	});
-
-	it('a rejected approval reads red — pill and heading; an approved one green', async () => {
-		const no = response({ summary: 'Rejected', values: { decision: 'reject', reason: 'not yet' } });
-		route_fetch(hug({ status: 'closed', outcome: 'Rejected by Ann', closed_at: new Date().toISOString(), responses: [no] }));
-		const first = render_page();
-		await screen.findByRole('region', { name: 'Outcome' });
-		expect(screen.getByTestId('status-pill')).toHaveAttribute('data-tone', 'bad');
-		first.unmount();
-		route_fetch(hug({ status: 'closed', outcome: 'Approved', closed_at: new Date().toISOString(), responses: [response()] }));
-		render_page();
-		await screen.findByRole('region', { name: 'Outcome' });
-		expect(screen.getByTestId('status-pill')).toHaveAttribute('data-tone', 'good');
-	});
-
-	it('state 5 — ended: how, and every answer (mine first) in its own view frame, loaded as it scrolls into view; nothing to submit', async () => {
-		const bo = response({ response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' }, summary: 'Rejected', values: { decision: 'reject', reason: 'p99' } });
-		route_fetch(hug({ status: 'closed', outcome: 'Rejected', closed_at: new Date().toISOString(), responses: [bo, response()], not_sent_to: [{ name: 'kai', channel: 'legal' }] }));
-		render_page();
-		const outcome = await screen.findByRole('region', { name: 'Outcome' });
-		expect(outcome).toHaveTextContent('Rejected · This Hug no longer takes responses.');
-		const rows = within(outcome).getAllByTestId('hug-response');
-		expect(rows[0]).toHaveTextContent('Ann (you)');
-		expect(within(rows[1]!).getByTestId('hug-decision')).toHaveTextContent('Rejected');
-		// The view frames mount a tick after the Outcome region: wait for them (CI's Node is slower than a laptop's).
-		await waitFor(() => expect(hosts.map((h) => [h.opts.init.mode, h.opts.init.viewing.responder.name, h.opts.loading])).toEqual([['view', 'Ann', 'lazy'], ['view', 'Bo', 'lazy']]));
-		expect(screen.queryByTestId('hug-submit')).toBeNull();
-		expect(screen.getByTestId('not-sent')).toHaveTextContent('Not sent to kai (via legal)');
-		expect(within(outcome).getByRole('link', { name: 'Back to the run' })).toHaveAttribute('href', '/o/measureone/realms/prod-us/runs/run-1841');
-	});
-
-	it('the file picker: checks the file against the slot, uploads it into that slot, and says why it can\'t', async () => {
-		route_fetch(hug());
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		const slot = { name: 'evidence', accept: ['application/pdf'], max_bytes: 10 };
-		let picked: File | null = null;
-		vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
-			Object.defineProperty(this, 'files', { value: picked ? [picked] : [], configurable: true });
-			this.dispatchEvent(new Event(picked ? 'change' : 'cancel'));
-		});
-		const sent: string[] = [];
-		vi.stubGlobal('XMLHttpRequest', class {
-			status = 0; responseText = ''; upload = {}; onload: () => void = () => undefined; onerror = () => undefined; onabort = () => undefined;
-			private url = '';
-			open(_m: string, url: string) { this.url = url; }
-			setRequestHeader() { /* not needed here */ }
-			send() {
-				sent.push(this.url);
-				this.status = 200;
-				this.responseText = JSON.stringify({ ok: true, data: { artifact_id: 'art-9', name: 'proof.pdf', size: 4, content_type: 'application/pdf', sha256: 'h' } });
-				queueMicrotask(() => this.onload());
-			}
-			abort() { /* not needed here */ }
-		});
-		try {
-			const upload = hosts[0]!.opts.upload as (s: unknown) => Promise<unknown>;
-			expect(await upload(slot)).toBe('upload_cancelled');
-			picked = new File(['%PDF'], 'proof.pdf', { type: 'application/pdf' });
-			expect(await upload(slot)).toMatchObject({ artifact_id: 'art-9', name: 'proof.pdf' });
-			expect(sent).toEqual(['/v1/artifacts/upload?hug_id=h-1&requested_input=evidence&name=proof.pdf']);
-			picked = new File(['x'.repeat(11)], 'big.pdf', { type: 'application/pdf' });
-			expect(await upload(slot)).toBe('file_too_large');
-			picked = new File(['x'], 'notes.txt', { type: 'text/plain' });
-			expect(await upload(slot)).toBe('file_type');
-			expect(sent).toHaveLength(1);
-		} finally {
-			vi.unstubAllGlobals();
-		}
-	});
-
-	it('every frame on the page shares one read budget (§6.3: ≤ 50 MB per Hug page)', async () => {
-		const bo = response({ response_id: 'r2', responder: { user_id: 'u2', name: 'Bo' } });
-		route_fetch(hug({ status: 'closed', outcome: 'done', closed_at: new Date().toISOString(), responses: [bo, response()] }));
-		render_page();
-		await screen.findByRole('region', { name: 'Outcome' });
-		expect(hosts).toHaveLength(2);
-		expect(hosts[0]!.opts.read_budget).toBeDefined();
-		expect(hosts[1]!.opts.read_budget).toBe(hosts[0]!.opts.read_budget);
-	});
-
-	it('the fallback view — no frame (a Hug opened before hugs, or its bundle is gone): answers as key-values, nothing to answer', async () => {
-		const old = response({ values: { release: 'autumn', contract: { artifact_id: 'a-9', name: 'MSA.pdf', size: 1, content_type: 'application/pdf' } }, summary: undefined });
-		route_fetch(hug({ hug: null, responses: [old] }), {}, { content_url: null });
-		render_page();
-		const fb = await screen.findByTestId('hug-fallback');
-		expect(fb).toHaveTextContent("This Hug’s page is no longer available.");
-		const values = within(fb).getByTestId('hug-values');
-		expect(values).toHaveTextContent('releaseautumn');
-		expect(within(values).getByRole('link', { name: 'MSA.pdf' })).toHaveAttribute('href', expect.stringContaining('a-9'));
-		expect(hosts).toHaveLength(0);
-		expect(screen.queryByRole('region', { name: 'Your response' })).toBeNull();
-	});
-
-	it("an open Hug with no page to answer in isn't \"Waiting on you\"", async () => {
-		route_fetch(hug({ hug: null, responses: [] }), {}, { content_url: null });
-		render_page();
-		await screen.findByTestId('hug-fallback');
-		expect(screen.getByText('Open', { selector: 'span' })).toBeInTheDocument();
-		expect(screen.queryByText('Waiting on you')).toBeNull();
-	});
-
-	it("the frame's requests go through the Hub: a read is a download with the viewer's permissions; a link not in the params is confirmed first", async () => {
-		const calls = route_fetch(hug(), { '/v1/artifacts/download': () => ({ body: 'file bytes' }) });
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		const blob = await hosts[0]!.opts.read({ artifact_id: 'a-1', name: 'design.md' });
-		// The file's bytes as the download answered them (route_fetch sends bodies as JSON) — not `instanceof Blob`: on
-		// Node 22 fetch's Blob isn't jsdom's Blob class; a browser has one.
-		expect(await blob.text()).toBe(JSON.stringify('file bytes'));
-		expect(calls.find((c) => c.url === '/v1/artifacts/download')?.body).toEqual({ artifact_id: 'a-1' });
-		const open = vi.spyOn(window, 'open').mockReturnValue(null);
-		const confirm = vi.spyOn(window, 'confirm');
-		hosts[0]!.opts.open_link('https://listed.example/x', true);
-		expect(open.mock.calls.map((c) => c[0])).toEqual(['https://listed.example/x']);
-		// Not in the params: the Hub's dialog, with the whole URL; Cancel (focused) opens nothing, Open link opens it.
-		let asked!: Promise<void>;
-		act(() => { asked = hosts[0]!.opts.open_link('https://evil.example/y', false) as Promise<void>; });
-		const dialog = await screen.findByRole('alertdialog', { name: 'Open this link?' });
-		expect(dialog).toHaveTextContent('https://evil.example/y');
-		expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus();
-		fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
-		await asked;
-		expect(screen.queryByRole('alertdialog')).toBeNull();
-		act(() => { asked = hosts[0]!.opts.open_link('https://evil.example/z', false) as Promise<void>; });
-		fireEvent.keyDown(await screen.findByRole('alertdialog'), { key: 'Escape' });
-		await asked;
-		act(() => { asked = hosts[0]!.opts.open_link('https://evil.example/w', false) as Promise<void>; });
-		fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Open link' }));
-		await asked;
-		expect(open.mock.calls.map((c) => c[0])).toEqual(['https://listed.example/x', 'https://evil.example/w']);
-		expect(confirm).not.toHaveBeenCalled();
-	});
-
-	it("the frame gets the Hub's colours from where Graphite defines them (.theme-graphite), as the kit's tokens", async () => {
-		const { hub_theme } = await import('@/components/hug/hug_host');
-		const shell = document.createElement('div');
-		shell.className = 'theme-graphite';
-		shell.style.setProperty('--g-line', '#26282d');
-		shell.style.setProperty('--g-ink-2', '#a2a2ad');
-		const inside = document.createElement('div');
-		shell.append(inside);
-		document.body.append(shell);
-		expect(hub_theme(inside).tokens).toMatchObject({ '--cliq-line': '#26282d', '--cliq-ink-2': '#a2a2ad' });
-		expect(hub_theme(document.documentElement).tokens).not.toHaveProperty('--cliq-line');
-		shell.remove();
-	});
-
-	it('a refused read is read_denied', async () => {
-		route_fetch(hug(), { '/v1/artifacts/download': () => ({ status: 403, body: { ok: false } }) });
-		render_page();
-		await screen.findByRole('region', { name: 'Your response' });
-		await waitFor(() => expect(hosts.length).toBeGreaterThan(0));
-		await waitFor(async () => expect(await hosts[0]!.opts.read({ artifact_id: 'a-2', name: 'x' })).toBe('read_denied'));
+	it('a Hug that can’t be read: the error, nothing opened', async () => {
+		route_fetch({ '/v1/hugs/get_by_id': () => ({ status: 404, body: { ok: false, error: { code: 'not_found', message: 'Hug not found' } } }) });
+		render(<MemoryRouter initialEntries={['/hugs/h-1']}><Routes><Route path="/hugs/:hug_id" element={<HugPage />} /></Routes></MemoryRouter>);
+		await screen.findByRole('alert');
+		expect(replace).not.toHaveBeenCalled();
 	});
 });
 
-describe('a Hug asked through getHugs (PLAN-gethugs-step6-ui-link.md)', () => {
-	it('opens in getHugs: its hug_url names another Hug id; the Hub’s own Hugs stay here', () => {
-		expect(external_hug_url({ id: 'abc', hug_url: 'https://app.gethugs.ai/hugs/hug_123' })).toBe('https://app.gethugs.ai/hugs/hug_123');
-		expect(external_hug_url({ id: 'abc', hug_url: 'https://cliqhub.io/hugs/abc' })).toBeNull();
-		expect(external_hug_url({ id: 'abc', hug_url: null })).toBeNull();
+describe('HUGs', () => {
+	it('opens getHugs’ inbox, signed in to the org in view', async () => {
+		const calls = route_fetch({
+			'/v1/hugs/create_sign_in_link': () => ({ body: { ok: true, data: { url: 'https://app.gethugs.test/sign-in/statement#y' } } }),
+		});
+		render(<MemoryRouter initialEntries={['/hugs']}><Routes><Route path="/hugs" element={<HugsPage />} /></Routes></MemoryRouter>);
+		await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.test/sign-in/statement#y'));
+		expect(Object.keys(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')!.body)).toEqual(['org_id']);
+		expect(screen.getByTestId('hugs-elsewhere').querySelector('a')?.getAttribute('href')).toBe('https://app.gethugs.test/hugs');
 	});
 });

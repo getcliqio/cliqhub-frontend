@@ -42,16 +42,6 @@ const REALM_GROUPS: Event_group[] = [
 		],
 	},
 	{
-		value: 'hug.*',
-		label: 'All HUG',
-		children: [
-			{ value: 'hug.reminded', label: 'HUG reminder' },
-			{ value: 'hug.responded', label: 'HUG answered' },
-			{ value: 'hug.closed', label: 'HUG closed' },
-			{ value: 'hug.expired', label: 'HUG expired' },
-		],
-	},
-	{
 		value: 'daemon.*',
 		label: 'All daemons',
 		children: [
