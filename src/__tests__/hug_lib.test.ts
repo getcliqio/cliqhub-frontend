@@ -2,8 +2,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
 	file_problem, is_answerable, load_draft, my_response, outcome_tone, respond, save_draft, status_label, upload_file, value_text,
-	type Hug_file_slot, type Hug_response,
-} from '@/lib/hug';
+	type Hug_file_slot, type Hug_response, gethugs_open_url } from '@/lib/hug';
 
 const mine: Hug_response = {
 	response_id: 'r1', responder: { user_id: 'u1', name: 'Ann' }, via: ['legal'], responded_at: '2026-10-26T10:00:00Z',
@@ -126,5 +125,17 @@ describe('upload_file', () => {
 		const b = upload_file('h-1', 'contract', file, () => {});
 		b.abort();
 		await expect(b.done).rejects.toThrow('Upload cancelled');
+	});
+});
+
+describe('gethugs_open_url (PLAN-gethugs-step7-sign-in.md)', () => {
+	it('the sign-in link when Core gives one; the plain page on any refusal or error', async () => {
+		const ok = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, data: { url: 'https://g/sign-in/statement#x' } })));
+		expect(await gethugs_open_url(ok, { hug_id: 'h1' }, 'https://g/hugs/hug_1')).toBe('https://g/sign-in/statement#x');
+		expect(ok).toHaveBeenCalledWith('/v1/hugs/create_sign_in_link', { method: 'POST', body: JSON.stringify({ hug_id: 'h1' }) });
+		const refused = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false }), { status: 403 }));
+		expect(await gethugs_open_url(refused, { org_id: 'o1' }, 'https://g/hugs')).toBe('https://g/hugs');
+		const broken = vi.fn().mockRejectedValue(new Error('offline'));
+		expect(await gethugs_open_url(broken, { org_id: 'o1' }, 'https://g/hugs')).toBe('https://g/hugs');
 	});
 });

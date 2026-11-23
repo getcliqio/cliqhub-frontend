@@ -24,7 +24,7 @@ import { useAuth, useAuthFetch } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { ago } from '@/lib/admin';
-import { hug_href, is_answerable, load_draft, my_response, outcome_tone, respond, save_draft, status_label, type Hug, type Hug_page_data, type Hug_round, type Hug_response, type Hug_run } from '@/lib/hug';
+import { hug_href, is_answerable, load_draft, my_response, outcome_tone, respond, save_draft, status_label, type Hug, type Hug_page_data, type Hug_round, type Hug_response, type Hug_run, gethugs_open_url } from '@/lib/hug';
 import type { Run_detail_data } from '@/lib/realm_inbox';
 import type { Team_phase } from '@/lib/team_page';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
@@ -383,7 +383,13 @@ export function Component() {
 
 	// A Hug asked through getHugs is answered there (PLAN-gethugs-step6-ui-link.md): this page only opens it.
 	const elsewhere = h ? external_hug_url(h) : null;
-	useEffect(() => { if (elsewhere) window.location.replace(elsewhere); }, [elsewhere]);
+	const open_fetch = useAuthFetch();
+	useEffect(() => {
+		if (!elsewhere || !h) return;
+		void gethugs_open_url(open_fetch, { hug_id: h.id }, elsewhere).then((url) => window.location.replace(url));
+	// Once per Hug: the link signs in once.
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [elsewhere]);
 	if (elsewhere) {
 		return (
 			<Graphite_shell data={overview.data} title="Hug">

@@ -1,4 +1,5 @@
-import { useAuth } from '@/lib/auth_context';
+import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { gethugs_open_url } from '@/lib/hug';
 /**
  * HUGs (Graphite) — everything in the org waiting on a person: reviews and agents asking a
  * question are all Hugs. Its own app, not part of the inbox.
@@ -124,12 +125,21 @@ function Done({ scope }: { scope: View_scope }) {
 }
 
 export function Component() {
-	// What's waiting on you is in getHugs' inbox (PLAN-gethugs-step6-ui-link.md).
+	// What's waiting on you is in getHugs' inbox (PLAN-gethugs-step6-ui-link.md), opened signed in to the org in view
+	// (PLAN-gethugs-step7-sign-in.md).
 	const { gethugs_app_url } = useAuth();
 	const inbox = gethugs_app_url ? `${gethugs_app_url}/hugs` : null;
-	useEffect(() => { if (inbox) window.location.replace(inbox); }, [inbox]);
+	const open_fetch = useAuthFetch();
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
+	const org_id = scope.kind === 'realm' ? scope.realm.org_id : scope.org?.id ?? null;
+	const settled = overview.data !== null || overview.status === 'error';
+	useEffect(() => {
+		if (!inbox || !settled) return;
+		void (org_id ? gethugs_open_url(open_fetch, { org_id }, inbox) : Promise.resolve(inbox)).then((url) => window.location.replace(url));
+	// Once the org in view is known: the link signs in once.
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [inbox, settled]);
 	const [search, set_search] = useSearchParams();
 	const tab: Tab = search.get('tab') === 'done' ? 'done' : 'waiting';
 	const waiting_total = scope.kind === 'realm' ? scope.realm.needs_you : scope.org ? scope.org.counts.needs_you : 0;

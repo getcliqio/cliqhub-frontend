@@ -43,13 +43,28 @@ function render_page(path = '/hugs') {
 }
 
 describe('HUGs live in getHugs (PLAN-gethugs-step6-ui-link.md)', () => {
-	it('with a getHugs web app, /hugs opens its inbox', async () => {
+	it('with a getHugs web app, /hugs opens its inbox signed in to the org in view; without a sign-in link, the plain inbox', async () => {
 		const original = window.location;
 		const replace = vi.fn();
 		Object.defineProperty(window, 'location', { value: { ...original, replace }, writable: true, configurable: true });
 		(auth as Record<string, unknown>).gethugs_app_url = 'https://app.gethugs.ai';
-		vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ ok: true, data: multi_org_overview() })));
+		let signed = true;
+		const asked: unknown[] = [];
+		vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+			if (String(input).includes('/v1/hugs/create_sign_in_link')) {
+				asked.push(JSON.parse(String(init?.body)));
+				return signed
+					? new Response(JSON.stringify({ ok: true, data: { url: 'https://app.gethugs.ai/sign-in/statement#s1' } }))
+					: new Response(JSON.stringify({ ok: false, error: { code: 'not_configured' } }), { status: 409 });
+			}
+			return new Response(JSON.stringify({ ok: true, data: multi_org_overview() }));
+		});
 		try {
+			const first = render_page();
+			await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.ai/sign-in/statement#s1'));
+			expect(asked).toEqual([{ org_id: expect.any(String) }]);
+			first.unmount();
+			signed = false;
 			render_page();
 			await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.ai/hugs'));
 		} finally {
