@@ -3,6 +3,7 @@
  * (PLAN-gethugs-step8-cutover.md); the Hub links to it (`/hugs/:id` opens its getHugs page).
  */
 
+import { useEffect } from 'react';
 import { use_bff_read } from '@/lib/use_bff_read';
 
 export type Hug_status = 'open' | 'closed' | 'expired' | 'cancelled';
@@ -66,6 +67,26 @@ export async function gethugs_open_url(auth_fetch: Auth_fetch, body: { hug_id: s
 	return fallback;
 }
 
+/**
+ * The address of getHugs' embed for a Hug (`hug_id`) or the person's Hugs in an org (`org_id`), signed in by a
+ * statement (PLAN-gethugs-partner-ux.md §4), or null when Core can't give one (not in getHugs yet, getHugs down…).
+ */
+export async function gethugs_embed_url(auth_fetch: Auth_fetch, body: { hug_id: string } | { org_id: string }): Promise<string | null> {
+	try {
+		const res = await auth_fetch('/v1/hugs/create_sign_in_link', { method: 'POST', body: JSON.stringify({ ...body, embed: true }) });
+		const d = await res.json().catch(() => null) as { ok?: boolean; data?: { url?: unknown } } | null;
+		return res.ok && d?.ok && typeof d.data?.url === 'string' ? d.data.url : null;
+	} catch {
+		return null;
+	}
+}
+
+/** The event that asks the HUGs badge again (someone just answered in getHugs' embed). */
+const HUGS_CHANGED = 'cliq:hugs-changed';
+export function notify_hugs_changed(): void {
+	window.dispatchEvent(new Event(HUGS_CHANGED));
+}
+
 /** The last count seen per org, shown while a page's new read is on its way (no flicker between pages). */
 const last_count = new Map<string, number>();
 
@@ -76,6 +97,13 @@ const last_count = new Map<string, number>();
  */
 export function use_unanswered_hugs(org_id: string | null): number | null {
 	const read = use_bff_read<{ total: number | null }>('/v1/hugs/get', org_id ? { unanswered: true, org_id, limit: 1 } : null, { refresh_ms: 60_000 });
+	// Someone answered in the embed: ask again now, not at the next minute.
+	const reload = read.reload;
+	useEffect(() => {
+		const on_change = () => void reload();
+		window.addEventListener(HUGS_CHANGED, on_change);
+		return () => window.removeEventListener(HUGS_CHANGED, on_change);
+	}, [reload]);
 	const total = read.data?.total;
 	if (org_id && typeof total === 'number') last_count.set(org_id, total);
 	if (!org_id) return null;
