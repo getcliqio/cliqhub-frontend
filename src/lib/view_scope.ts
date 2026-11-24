@@ -118,3 +118,16 @@ export function view_href(path: string, scope: View_scope, multi_org: boolean): 
 	if (!org || !multi_org) return path;
 	return `${path}${path.includes('?') ? '&' : '?'}org=${encodeURIComponent(org)}`;
 }
+
+/**
+ * The org HUGs is about (its count and its page; PLAN-gethugs-partner-ux.md): the org in view, else the one last
+ * worked in, else the first — never none for someone in an org, so "all orgs" still shows their Hugs.
+ */
+export function hugs_org_id(data: Overview_data | null, scope: View_scope): string | null {
+	if (scope.kind === 'realm') return scope.realm.org_id;
+	if (scope.org) return scope.org.id;
+	const orgs = data?.orgs ?? [];
+	const last = read_last_org();
+	return orgs.find((o) => o.slug === last)?.id ?? orgs[0]?.id ?? null;
+}
+

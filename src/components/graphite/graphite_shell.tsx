@@ -51,7 +51,7 @@ import { Cliq_mark } from '@/components/cliq_mark';
 import { ImpersonationRibbon } from '@/components/impersonation_ribbon';
 import { realm_label, type Overview_data, type Overview_org, type Overview_realm } from '@/lib/overview';
 import { realm_path } from '@/lib/realm_url';
-import { sidebar_realms, use_view_scope, view_href, write_last_org, type View_scope } from '@/lib/view_scope';
+import { hugs_org_id, sidebar_realms, use_view_scope, view_href, write_last_org, type View_scope } from '@/lib/view_scope';
 import { mark_inbox_seen, read_inbox_seen, type Inbox_item } from '@/lib/inbox';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 import '@/styles/graphite.css';
@@ -496,7 +496,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		&& ORG_PAGES.some((p) => (p.endsWith('/') ? location.pathname.startsWith(p) : location.pathname === p || location.pathname.startsWith(`${p}/`))));
 	const progress = use_bff_read<Getting_started_data>('/v1/getting_started/get', {}, { refresh_ms: 120_000 });
 	// The HUGs badge: Hugs waiting on the person in the org in view, from getHugs (PLAN-gethugs-partner-ux.md §1).
-	const unanswered = use_unanswered_hugs(scope_org_id);
+	const unanswered = use_unanswered_hugs(hugs_org_id(data, scope));
 	// The page getHugs offers a way back to (PLAN-gethugs-partner-ux.md §3).
 	useEffect(() => { remember_page(window.location); }, [location.pathname, location.search]);
 

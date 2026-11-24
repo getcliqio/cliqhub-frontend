@@ -2,12 +2,13 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { gs_response, multi_org_overview, ORG_A } from './fixtures_overview';
+import { gs_response, multi_org_overview, ORG_A, ORG_B } from './fixtures_overview';
+import { LAST_ORG_KEY } from '@/lib/view_scope';
 
 const auth = { user: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah', email: 's@x.com', role: 'user' as const, preferences: {} }, scopes: [], loading: false, logout: vi.fn(), acting_as: null, stop_act_as: vi.fn() };
 const stable_fetch = (url: string, init?: RequestInit) => fetch(url, init);
 vi.mock('@/lib/auth_context', () => ({ useAuth: () => auth, useAuthFetch: () => stable_fetch }));
-vi.mock('@/lib/org_context', () => ({ useOrgOptional: () => ({ current_id: ORG_A, switch_org: vi.fn() }) }));
+vi.mock('@/lib/org_context', () => ({ useOrgOptional: () => ({ current_id: null, switch_org: vi.fn() }) }));
 
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 
@@ -54,5 +55,20 @@ describe('Graphite shell — the HUGs badge', () => {
 		render_at(`/teams?org=${slug()}`);
 		await waitFor(() => expect(asked.length).toBeGreaterThan(1));
 		expect(screen.getByRole('link', { name: /HUGs/ })).toHaveTextContent(/^HUGs$/);
+	});
+
+	it('no org in view ("all orgs"): the org last worked in, else the first', async () => {
+		const orgs = multi_org_overview().orgs;
+		const b = orgs.find((o) => o.id === ORG_B)!;
+		localStorage.setItem(LAST_ORG_KEY, b.slug);
+		const first = render_at('/teams');
+		await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+		expect(asked.at(-1)!.org_id).toBe(ORG_B);
+		first.unmount();
+		localStorage.removeItem(LAST_ORG_KEY);
+		asked.length = 0;
+		render_at('/teams');
+		await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+		expect(asked.at(-1)!.org_id).toBe(orgs[0]!.id);
 	});
 });

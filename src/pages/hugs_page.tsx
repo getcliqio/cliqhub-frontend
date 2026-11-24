@@ -4,7 +4,7 @@
  */
 import { useAuth } from '@/lib/auth_context';
 import { use_overview } from '@/lib/overview';
-import { use_view_scope } from '@/lib/view_scope';
+import { hugs_org_id, use_view_scope } from '@/lib/view_scope';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Gethugs_frame } from '@/components/hug/gethugs_frame';
 
@@ -13,7 +13,7 @@ export function Component() {
 	const inbox = gethugs_app_url ? `${gethugs_app_url}/hugs` : null;
 	const overview = use_overview();
 	const scope = use_view_scope(overview.data);
-	const org_id = scope.kind === 'realm' ? scope.realm.org_id : scope.org?.id ?? null;
+	const org_id = hugs_org_id(overview.data, scope);
 	const settled = overview.data !== null || overview.status === 'error';
 
 	return (
