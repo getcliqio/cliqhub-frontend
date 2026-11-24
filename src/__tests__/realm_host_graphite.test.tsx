@@ -74,7 +74,7 @@ describe('Daemon page', () => {
 		expect(screen.getByTestId('workspace-w1')).toBeInTheDocument();
 		expect(screen.getByTestId('run-run-1')).toBeInTheDocument();
 		expect(calls.find((c) => c.url === '/v1/daemon_page/get')?.body).toEqual({ org_slug: 'measureone', slug: 'prod-us', daemon_id: 'd1' });
-		expect(calls.filter((c) => !c.url.startsWith('/v1/daemon_page') && c.url !== '/v1/realm_inbox/get' /* realm header */).length).toBe(0);
+		expect(calls.filter((c) => !c.url.startsWith('/v1/daemon_page') && c.url !== '/v1/realm_inbox/get' /* realm header */ && c.url !== '/v1/hugs/get' /* the shell's HUGs badge */).length).toBe(0);
 	});
 
 	it('install / uninstall send the Core calls', async () => {

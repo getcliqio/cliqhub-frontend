@@ -41,6 +41,7 @@ import {
 	PanelLeftOpen,
 } from 'lucide-react';
 import { useAuth, useAuthFetch } from '@/lib/auth_context';
+import { remember_page, use_unanswered_hugs } from '@/lib/hug';
 import { useOrgOptional } from '@/lib/org_context';
 import { apply_theme, sync_from_profile, use_theme, type Theme } from '@/lib/theme';
 import { avatar_outline } from '@/lib/admin';
@@ -494,6 +495,10 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 	const needs_org = Boolean(data && data.orgs.length > 0 && !scope.org
 		&& ORG_PAGES.some((p) => (p.endsWith('/') ? location.pathname.startsWith(p) : location.pathname === p || location.pathname.startsWith(`${p}/`))));
 	const progress = use_bff_read<Getting_started_data>('/v1/getting_started/get', {}, { refresh_ms: 120_000 });
+	// The HUGs badge: Hugs waiting on the person in the org in view, from getHugs (PLAN-gethugs-partner-ux.md §1).
+	const unanswered = use_unanswered_hugs(scope_org_id);
+	// The page getHugs offers a way back to (PLAN-gethugs-partner-ux.md §3).
+	useEffect(() => { remember_page(window.location); }, [location.pathname, location.search]);
 
 	// ⌘J / Ctrl+J opens the switcher from anywhere.
 	useEffect(() => {
@@ -525,7 +530,7 @@ export function Graphite_shell({ children, data, title, actions, current_realm_i
 		{ to: view_href('/realms', scope, multi_org), label: 'Realms', icon: Layers },
 	];
 	const teams_item: Nav_item = { to: view_href('/teams', scope, multi_org), label: 'Teams', icon: UsersRound };
-	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: UserRoundCheck };
+	const hugs_item: Nav_item = { to: view_href('/hugs', scope, multi_org), label: 'HUGs', icon: UserRoundCheck, badge: unanswered ?? undefined };
 	const is_org_admin = view_org?.role === 'owner' || view_org?.role === 'admin';
 	// Members, Notifications and Org settings are views of the org page (`?tab=`): only the one open is current.
 	const org_tab = view_org && location.pathname === `/orgs/${view_org.id}` ? (new URLSearchParams(location.search).get('tab') ?? 'members') : null;

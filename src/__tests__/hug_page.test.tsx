@@ -52,7 +52,7 @@ describe('Hug page', () => {
 		render(<MemoryRouter initialEntries={['/hugs/h-1']}><Routes><Route path="/hugs/:hug_id" element={<HugPage />} /></Routes></MemoryRouter>);
 		await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.test/sign-in/statement#x'));
 		expect(calls.find((c) => c.url === '/v1/hugs/get_by_id')?.body).toEqual({ hug_id: 'h-1' });
-		expect(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')?.body).toEqual({ hug_id: 'h-1' });
+		expect(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')?.body).toEqual({ hug_id: 'h-1', return_url: expect.any(String) }); // the way back (PLAN-gethugs-partner-ux.md §3)
 		expect(screen.getByTestId('hug-elsewhere').querySelector('a')?.getAttribute('href')).toBe(HUG.hug_url);
 		expect(calls.some((c) => c.url === '/v1/hug_page/get' || c.url === '/v1/hugs/respond')).toBe(false);
 	});
@@ -81,7 +81,7 @@ describe('HUGs', () => {
 		});
 		render(<MemoryRouter initialEntries={['/hugs']}><Routes><Route path="/hugs" element={<HugsPage />} /></Routes></MemoryRouter>);
 		await waitFor(() => expect(replace).toHaveBeenCalledWith('https://app.gethugs.test/sign-in/statement#y'));
-		expect(Object.keys(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')!.body)).toEqual(['org_id']);
+		expect(Object.keys(calls.find((c) => c.url === '/v1/hugs/create_sign_in_link')!.body)).toEqual(['org_id', 'return_url']);
 		expect(screen.getByTestId('hugs-elsewhere').querySelector('a')?.getAttribute('href')).toBe('https://app.gethugs.test/hugs');
 	});
 });

@@ -58,7 +58,7 @@ describe('Realm teams page', () => {
 		render_page();
 		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
 		// The realm header's own read aside, one page read.
-		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get')).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
+		expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get' && c.url !== '/v1/hugs/get' /* the shell's HUGs badge */)).toEqual([{ url: '/v1/realm_teams/get', body: { org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0 } }]);
 		expect(within(fd).getByTestId('update-badge')).toHaveTextContent('↑ 2.5.0 available');
 		expect(screen.queryByRole('columnheader', { name: /Version/ })).toBeNull();
 		expect(screen.queryByRole('columnheader', { name: /Online daemons/ })).toBeNull();
@@ -162,7 +162,7 @@ describe('Realm teams page', () => {
 		render_page();
 		await screen.findByTestId('team-@cliq/feature-dev-js');
 		fireEvent.change(screen.getByLabelText('Search teams'), { target: { value: 'rec' } });
-		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get').at(-1)!.body).toMatchObject({ q: 'rec' }));
+		await waitFor(() => expect(calls.filter((c) => c.url !== '/v1/realm_inbox/get' && c.url !== '/v1/hugs/get' /* the shell's HUGs badge */).at(-1)!.body).toMatchObject({ q: 'rec' }));
 	});
 
 	it('a team only on a daemon is added with one Core write (no Run until it is on the list)', async () => {
