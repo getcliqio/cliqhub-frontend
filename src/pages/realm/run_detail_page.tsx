@@ -48,6 +48,7 @@ import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { use_access, type Gate } from '@/lib/access';
 import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
+import { phase_state_in_run } from '@/lib/phase_state';
 import { Origin_badge } from '@/components/graphite/g_origin_badge';
 import { G_run_logs } from '@/components/graphite/g_run_logs';
 import { Run_failure_card } from '@/components/graphite/g_run_failure';
@@ -299,12 +300,12 @@ function Phase_list({ phases, run_state, telemetry, on_open, selected = null, ou
 					<li key={`${p.phase}-${i}`} {...row({ on_open: on_open ? () => on_open(p.phase) : null })} aria-current={is_sel ? 'true' : undefined} data-phase-row={p.phase} className={`relative grid grid-cols-[28px_minmax(0,1fr)_auto] gap-3 sm:grid-cols-[28px_minmax(0,1fr)_200px_64px_52px] px-4 py-2.5 ${on_open ? ROW_OPENS : ''} ${is_sel ? 'bg-[var(--g-soft)] shadow-[inset_2px_0_0_var(--g-acc)]' : ''}`} data-testid="phase-row">
 						{i < phases.length - 1 ? <span aria-hidden className="absolute left-[29px] top-[26px] h-[calc(100%-12px)] w-px bg-[var(--g-line)]" /> : null}
 						<span className="relative z-[1] mt-1 grid h-4 w-4 place-items-center justify-self-center rounded-full bg-[var(--g-panel)]">
-							<State_dot state={p.status} pulse={live} />
+							<State_dot state={phase_state_in_run(p.status, run_state)} pulse={live} />
 						</span>
 						<div className="min-w-0">
 							<p className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold">
 								<span className="g-mono">{p.phase}</span>
-								<State_pill state={p.status} />
+								<State_pill state={phase_state_in_run(p.status, run_state)} />
 							</p>
 							<p className="mt-0.5 text-[12px] text-[var(--g-ink-3)]">
 								{[p.agent ? `agent ${p.agent}` : null, p.started_at ? `started ${relative_time(p.started_at)}` : 'not started', tel.get(p.phase)?.tokens_in != null ? `${fmt_count(tel.get(p.phase)!.tokens_in)} / ${fmt_count(tel.get(p.phase)!.tokens_out)} tokens` : null, ran > 1 ? `ran ${ran}×` : null, resumed && p.status === 'skipped' && p.started_at ? 'kept from an earlier attempt' : null].filter(Boolean).join(' · ')}

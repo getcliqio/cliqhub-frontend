@@ -1,3 +1,4 @@
+import { phase_state_in_run } from '@/lib/phase_state';
 import { useId } from 'react';
 
 export interface Prior_attempt {
@@ -168,7 +169,7 @@ function summarise(phases: readonly Run_phase_row[]): string {
 }
 
 function headline_for(phases: readonly Run_phase_row[], run_state?: string): string {
-	if (phases.some((p) => normalize_status(p.status) === 'awaiting_input')) return 'Needs you to continue';
+	if (phases.some((p) => normalize_status(phase_state_in_run(p.status, run_state)) === 'awaiting_input')) return 'Needs you to continue';
 	if (phases.some((p) => normalize_status(p.status) === 'crashed') || run_state === 'crashed') {
 		return 'This run crashed';
 	}
@@ -207,12 +208,9 @@ export function Run_phases_panel({
 	const pad_x = 12;
 	const pad_y = 28;
 	const layout_nodes = phases.map((row, i) => {
-		let status = normalize_status(row.status);
-		// Only the in-flight step becomes crashed/failed when the run dies.
-		// Pending/ready steps never started — keep them muted, not red.
-		if ((run_state === 'crashed' || run_state === 'failed') && status === 'running') {
-			status = run_state === 'crashed' ? 'crashed' : 'failed';
-		}
+		// Once the run has ended no step is waiting or running: the in-flight step becomes
+		// crashed / failed, a step left waiting on people shows as stopped (lib/phase_state.ts).
+		let status = normalize_status(phase_state_in_run(row.status, run_state));
 		if (
 			(run_state === 'crashed' || run_state === 'failed' || run_state === 'cancelled') &&
 			(status === 'ready' || status === 'pending')
@@ -235,7 +233,7 @@ export function Run_phases_panel({
 	if (empty && loading) return null;
 
 	const summary = empty ? 'No phase records for this run on Hub yet.' : summarise(phases);
-	const needs_you = phases.some((p) => normalize_status(p.status) === 'awaiting_input');
+	const needs_you = phases.some((p) => normalize_status(phase_state_in_run(p.status, run_state)) === 'awaiting_input');
 	const is_broken =
 		run_state === 'failed' ||
 		run_state === 'crashed' ||
