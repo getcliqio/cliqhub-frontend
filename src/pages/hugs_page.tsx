@@ -4,7 +4,9 @@
  *
  *   Waiting — open Hugs that reached you and you haven't answered, from the overview the shell
  *             already loads (no extra call), oldest first.
- *   Done    — answered, closed or expired Hugs: the org's `hug.*` events from `POST /v1/inbox/get`.
+ *   Done    — Hugs that reached you and are finished (answered, expired or cancelled), read from the
+ *             Hugs themselves (`POST /v1/hugs/get`, Core through the BFF), one row per Hug, newest
+ *             first. Not from notifications: muting Hug notifications must not hide your Hugs.
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
@@ -12,7 +14,7 @@ import { RefreshCw, UserRoundCheck } from 'lucide-react';
 import { use_overview, type Overview_item } from '@/lib/overview';
 import { use_bff_read } from '@/lib/use_bff_read';
 import { use_view_scope, type View_scope } from '@/lib/view_scope';
-import { day_label, type Inbox_data, type Inbox_item } from '@/lib/inbox';
+import { day_label, type Inbox_item } from '@/lib/inbox';
 import { Graphite_shell } from '@/components/graphite/graphite_shell';
 import { Inbox_row } from '@/components/graphite/g_inbox_row';
 
@@ -21,8 +23,55 @@ type Tab = 'waiting' | 'done';
 const PILL = (on: boolean) => `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-[12.5px] ${on ? 'border-[var(--g-acc-line)] bg-[var(--g-acc-soft)] text-[var(--g-ink)]' : 'border-[var(--g-line)] text-[var(--g-ink-3)] hover:text-[var(--g-ink)]'}`;
 const INPUT = 'h-8 rounded-md border border-[var(--g-line)] bg-[var(--g-bg)] px-2.5 text-[12.5px] text-[var(--g-ink)] outline-none focus:border-[var(--g-acc-line)]';
 
-/** Hug events that mean "settled" or answered (the Done list). */
-export const HUG_DONE_TYPES = ['hug.responded', 'hug.closed', 'hug.expired'];
+/** Hug statuses the Done list shows (Core's `hugs/get` filter). */
+export const HUG_DONE_STATUSES = ['closed', 'expired', 'cancelled'] as const;
+
+/** Most Hugs Core returns in one read. */
+const DONE_PAGE = 50;
+const DONE_MAX = 100;
+
+/** One Hug as Core's `hugs/get` lists it (the fields the Done list uses). */
+export interface Done_hug {
+	hug_id: string;
+	title: string;
+	summary: string | null;
+	realm_id: string;
+	realm_slug: string | null;
+	org_slug: string | null;
+	run_id: string;
+	team: string | null;
+	phase: string;
+	iteration: number;
+	status: string;
+	/** How it ended, in Core's words ("Approved by Sapan"), or null. */
+	outcome: string | null;
+	created_at: number;
+	closed_at: number | null;
+}
+
+/** A finished Hug → the shared row shape: how it ended, which step and round, what it asked. */
+export function done_to_item(h: Done_hug, org_id: string | null): Inbox_item {
+	const ended = h.outcome?.trim() || (h.status === 'expired' ? 'Expired' : h.status === 'cancelled' ? 'Cancelled' : 'Closed');
+	const step = h.phase ? `${h.phase}${h.iteration > 0 ? `, round ${h.iteration + 1}` : ''}` : '';
+	return {
+		id: `hug-done-${h.hug_id}`,
+		event: `hug.${h.status}`,
+		title: h.title,
+		message: [step ? `${ended} · ${step}` : ended, h.summary?.trim()].filter(Boolean).join(' — '),
+		severity: null,
+		org_id,
+		org_slug: h.org_slug,
+		realm_id: h.realm_id,
+		realm_slug: h.realm_slug,
+		team: h.team,
+		run_id: h.run_id,
+		phase: h.phase,
+		hug_id: h.hug_id,
+		channel_id: null,
+		original_event: null,
+		at: h.closed_at ?? h.created_at,
+	};
+}
 
 /** Overview "needs you" Hug → the shared row shape (same row, same actions). */
 export function needs_to_item(i: Overview_item): Inbox_item {
@@ -94,21 +143,25 @@ function Waiting({ items, total, scope }: { items: Overview_item[]; total: numbe
 }
 
 function Done({ scope }: { scope: View_scope }) {
+	const [limit, set_limit] = useState(DONE_PAGE);
+	const org_id = scope.org?.id ?? null;
 	const body = useMemo(() => {
-		const b: Record<string, unknown> = { limit: 50, types: HUG_DONE_TYPES };
-		if (scope.org) b.org_id = scope.org.id;
+		if (scope.kind === 'all') return null;
+		const b: Record<string, unknown> = { statuses: [...HUG_DONE_STATUSES], limit };
+		if (org_id) b.org_id = org_id;
 		if (scope.kind === 'realm') b.realm_id = scope.realm.id;
 		return b;
-	}, [scope]);
-	const read = use_bff_read<Inbox_data>('/v1/inbox/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load past HUGs.' });
-	const items = (read.data?.items ?? []).filter((i) => in_view(i, scope));
+	}, [scope, org_id, limit]);
+	const read = use_bff_read<{ items?: Done_hug[]; total?: number }>('/v1/hugs/get', body, { refresh_ms: 60_000, fallback_error: 'Could not load past HUGs.' });
+	const items = (read.data?.items ?? []).map((h) => done_to_item(h, org_id));
+	const total = read.data?.total ?? items.length;
 	const groups: Array<{ day: string; items: Inbox_item[] }> = [];
 	for (const i of items) {
 		const d = day_label(i.at);
 		if (groups.at(-1)?.day !== d) groups.push({ day: d, items: [] });
 		groups.at(-1)!.items.push(i);
 	}
-	if (read.status === 'loading') return <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />;
+	if (body && read.status === 'loading' && !read.data) return <div className="h-[300px] animate-pulse rounded-[10px] bg-[var(--g-panel)]" aria-busy="true" aria-label="Loading" />;
 	if (read.status === 'error' && !read.data) return <p role="alert" className="text-[13px] text-[var(--g-bad)]">{read.error}</p>;
 	return (
 		<div className="overflow-hidden rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]">
@@ -117,7 +170,13 @@ function Done({ scope }: { scope: View_scope }) {
 					<div className="border-b border-[var(--g-line-2)] bg-[var(--g-head)] px-4 py-2 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-[var(--g-ink-3)]">{g.day}</div>
 					{g.items.map((i) => <Inbox_row key={i.id} item={i} is_new={false} show_realm_org={false} />)}
 				</div>
-			)) : <Empty title="No past HUGs yet" body="Answered, closed and expired HUGs show up here." />}
+			)) : <Empty title="No past HUGs yet" body="Answered, expired and cancelled HUGs show up here." />}
+			{total > items.length ? (
+				<div className="flex items-center gap-3 border-t border-[var(--g-line-2)] px-4 py-2.5 text-[12px] text-[var(--g-ink-3)]" data-testid="done-more">
+					<span>Showing the {items.length} most recent of {total}.</span>
+					{limit < DONE_MAX ? <button type="button" className="text-[var(--g-acc)] hover:underline" onClick={() => set_limit(DONE_MAX)}>Show more</button> : <span>Open a realm to see the rest.</span>}
+				</div>
+			) : null}
 		</div>
 	);
 }
