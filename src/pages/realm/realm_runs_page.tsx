@@ -20,6 +20,7 @@ import { Realm_nav } from '@/components/graphite/realm_nav';
 import { State_pill } from '@/components/graphite/g_status';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { Person } from '@/components/graphite/g_person';
 
 export const RUNS_PAGE_SIZE = 25;
 export const RUNS_REFRESH_MS = 20_000;
@@ -169,6 +170,7 @@ export function Component() {
 											<Sort_th sort={cols} k="run_name" className="px-4 py-2.5 font-semibold">Run</Sort_th>
 											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<Sort_th sort={cols} k="state" className="px-4 py-2.5 font-semibold">State</Sort_th>
+											<th className="px-4 py-2.5 font-semibold">Started by</th>
 											<Sort_th sort={cols} k="started_at" className="px-4 py-2.5 font-semibold">Started</Sort_th>
 											<th className="px-4 py-2.5 font-semibold">Daemon</th>
 										</tr>
@@ -202,6 +204,10 @@ export function Component() {
 													<td className="px-4 py-2.5" data-testid="cell-state">
 														{r.needs_you ? <Needs_you_pill /> : <State_pill state={r.state} />}
 														{(r.needs_you || r.state === 'running') && r.current_phase ? <span className="g-mono mt-0.5 block truncate text-[11px] text-[var(--g-ink-3)]">at {r.current_phase}</span> : null}
+													</td>
+													{/* Who started it; a sub-team run was started by its main run, not a person. */}
+													<td className="max-w-[180px] px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]" data-testid="cell-started-by">
+														{r.started_by ? <Person p={r.started_by} /> : r.parent ? <span className="text-[var(--g-ink-3)]">main run</span> : <Person p={null} />}
 													</td>
 													<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]" title={r.started_at ? new Date(r.started_at).toLocaleString() : undefined}>
 														{relative_time(r.started_at)}

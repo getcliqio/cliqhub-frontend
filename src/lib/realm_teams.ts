@@ -10,6 +10,9 @@ export interface Realm_team_row {
 	label: string;
 	version: string | null;
 	latest_version: string | null;
+	/** Who published the latest version and when (absent from an older BFF; null when not recorded). */
+	latest_published_by?: { id: string; username: string | null; display_name: string | null } | null;
+	latest_published_at?: number | null;
 	update_available: boolean;
 	origin: 'hub' | 'cli';
 	in_team_list: boolean;

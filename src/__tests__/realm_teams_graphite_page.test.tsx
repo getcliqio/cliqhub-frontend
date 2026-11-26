@@ -29,7 +29,7 @@ function teams(over: Partial<Realm_teams_data> = {}): Realm_teams_data {
 }
 
 type Call = { url: string; body: Record<string, unknown> };
-function route_fetch() {
+function route_fetch(page: Realm_teams_data = teams()) {
 	const calls: Call[] = [];
 	vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
 		const u = String(url);
@@ -37,7 +37,7 @@ function route_fetch() {
 		if (u === '/v1/getting_started/get') return gs_response(u)!;
 		const body = init?.body ? JSON.parse(String(init.body)) : {};
 		calls.push({ url: u, body });
-		if (u === '/v1/realm_teams/get') return new Response(JSON.stringify({ ok: true, data: teams() }));
+		if (u === '/v1/realm_teams/get') return new Response(JSON.stringify({ ok: true, data: page }));
 		if (u === '/v1/teams/get_versions') return new Response(JSON.stringify({ ok: true, data: { name: body.name, scope: body.scope, version: '2.5.0', versions: [{ id: 'v-fdj-250', version: '2.5.0', changelog: 'Faster PRs', published_at: Date.now() }, { id: 'v-fdj-241', version: '2.4.1', changelog: null, published_at: null }] } }));
 		if (u === '/v1/team_list/get') return new Response(JSON.stringify({ ok: true, data: { items: [{ id: 't-hello', name: 'hello-world', scope: 'cliq', description: 'Say hi', latest_version: '1.0.0' }, { id: 't-fdj', name: 'feature-dev-js', scope: 'cliq', description: '', latest_version: '2.5.0' }], total: 2 } }));
 		return new Response(JSON.stringify({ ok: true, team_list: [] }));
@@ -72,6 +72,17 @@ describe('Realm teams page', () => {
 		expect(within(screen.getByTestId('team-@sapan/scratch')).getByText(/not on the realm’s team list/)).toBeInTheDocument();
 		expect(screen.queryByRole('group', { name: 'Coverage' })).toBeNull();
 		expect(within(screen.getByRole('navigation', { name: 'Realm sections' })).getByRole('link', { name: /^Teams/ })).toHaveAttribute('aria-current', 'page');
+	});
+
+	it('Last published by: who published the latest version, and when; "—" when not recorded', async () => {
+		const d = teams();
+		d.items[0] = { ...d.items[0], latest_published_by: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah' }, latest_published_at: Date.now() - 3 * 86_400_000 };
+		route_fetch(d);
+		render_page();
+		const fd = await screen.findByTestId('team-@cliq/feature-dev-js');
+		expect(screen.getByRole('columnheader', { name: 'Last published by' })).toBeInTheDocument();
+		expect(within(fd).getByTestId('cell-published-by')).toHaveTextContent(/Sapan Shah.*3 days ago|Sapan Shah.*3d/);
+		expect(within(screen.getByTestId('team-@measureone/recon')).getByTestId('cell-published-by')).toHaveTextContent('—');
 	});
 
 	it('a row shows the description only: when to use it and its inputs are on the team\'s page', async () => {

@@ -173,6 +173,8 @@ export interface Run_row {
 	state_lost_at?: number | null;
 	/** Who initiated this run: `'cli'` or `'hub'`, or null for pre-refactor runs. */
 	origin?: string | null;
+	/** The person who started it (Core API 8+; absent from older Cores). */
+	started_by?: { id: string; username: string | null; display_name: string | null } | null;
 	/** Team version at the time of the run. */
 	team_version?: string | null;
 }

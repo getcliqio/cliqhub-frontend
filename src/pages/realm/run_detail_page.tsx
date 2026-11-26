@@ -61,6 +61,7 @@ import type { Team_phase } from '@/lib/team_page';
 import { KIND_COLOR, fmt_count, fmt_usd, type Run_telemetry_data, type Telemetry_phase } from '@/lib/run_telemetry';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { person_name } from '@/components/graphite/g_person';
 
 export const LIVE_POLL_MS = 4_000;
 export const IDLE_POLL_MS = 20_000;
@@ -724,7 +725,7 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, re
 					</div>
 					{/* Everything about the run, once: team and version, when, how long, what it cost. */}
 					<p className="mt-1 flex flex-wrap items-center gap-x-1 text-[12.5px] text-[var(--g-ink-3)]" data-testid="run-meta">
-						<span>{[run.team_label || run.team_id, run.team_version ? `v${run.team_version}` : null, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}` : null, run.started_at ? `${live ? 'running for' : 'took'} ${format_duration((run.completed_at ?? Date.now()) - run.started_at)}` : null, telemetry?.totals.cost_usd != null ? fmt_usd(telemetry.totals.cost_usd) : null, telemetry?.totals.tokens_in ? `${fmt_count(telemetry.totals.tokens_in)} in · ${fmt_count(telemetry.totals.tokens_out)} out` : null].filter(Boolean).join(' · ')}</span>
+						<span>{[run.team_label || run.team_id, run.team_version ? `v${run.team_version}` : null, run.current_phase && live ? `in ${run.current_phase}` : null, run.started_at ? `started ${relative_time(run.started_at)}${person_name(run.started_by) ? ` by ${person_name(run.started_by)}` : ''}` : null, run.started_at ? `${live ? 'running for' : 'took'} ${format_duration((run.completed_at ?? Date.now()) - run.started_at)}` : null, telemetry?.totals.cost_usd != null ? fmt_usd(telemetry.totals.cost_usd) : null, telemetry?.totals.tokens_in ? `${fmt_count(telemetry.totals.tokens_in)} in · ${fmt_count(telemetry.totals.tokens_out)} out` : null].filter(Boolean).join(' · ')}</span>
 						{workflow_href(run) ? <Link to={workflow_href(run)!} className="ml-1 text-[var(--g-acc)] hover:underline" data-testid="run-workflow-link">View workflow ↗</Link> : null}
 					</p>
 				</div>
