@@ -1,8 +1,8 @@
 /** The run, phase by phase (PLAN-run-page S1–S5): what each phase does, folding, what opens by itself, how it stopped. */
 import { describe, it, expect } from 'vitest';
 import { phase_purpose } from '@/lib/phase_purpose';
-import { auto_open, fold_phases, route_backs_by, route_backs_of, stop_head } from '@/components/graphite/g_run_story';
-import type { Run_detail_phase, Run_phase_def, Run_route_back } from '@/lib/realm_inbox';
+import { auto_open, fail_reason, fold_phases, rerun_point, route_backs_by, route_backs_of, stop_head } from '@/components/graphite/g_run_story';
+import type { Run_detail_phase, Run_failure, Run_phase_def, Run_route_back } from '@/lib/realm_inbox';
 
 const def = (over: Partial<Run_phase_def>): Run_phase_def => ({
 	name: 'x', type: 'standard', agent: null, description: null, depends_on: [], route_targets: [], max_iterations: null, commands: [], hug: null, team: null, ...over,
@@ -64,5 +64,26 @@ describe('tries and stops (S3, S5)', () => {
 		expect(stop_head(phase('x', 'failed', { error: 'Phase timed out after 600s' }), undefined, [], 'failed')).toBe('Timed out');
 		expect(stop_head(phase('x', 'failed', { error: "Gate 'x' escalated: bad" }), undefined, [], 'failed')).toBe('Escalated');
 		expect(stop_head(phase('x', 'failed', { error: 'exit code 1' }), undefined, [], 'failed')).toBe('Failed');
+	});
+});
+
+describe('a failed phase with no error of its own (seen live, 26 Nov)', () => {
+	const failure = (chain: Run_failure['chain'], resume_from: string | null): Run_failure => ({
+		reason: 'agent_error' as Run_failure['reason'], summary: 'The agent reported an error', detail: 'parsewright type-pack exited 2', hint: null, chain, resume_from, review: null,
+	});
+	it('the reason comes from the run\'s failure explanation, else the run\'s error — never "no reason" when one exists', () => {
+		const p = phase('prepare-run', 'failed');
+		expect(fail_reason(p, [], failure([{ run_id: 'r', run_name: null, team: null, phase: 'prepare-run' }], 'prepare-run'), null)).toBe('parsewright type-pack exited 2');
+		expect(fail_reason(p, [], null, "Phase 'prepare-run' failed: HARNESS_FAILED")).toBe("Phase 'prepare-run' failed: HARNESS_FAILED");
+		expect(fail_reason(phase('x', 'failed', { error: 'own' }), [], null, 'run')).toBe('own');
+		expect(fail_reason(p, [], null, null)).toBeNull();
+	});
+	it('resume point: this run\'s own; a sub-team\'s failure resumes this run from the team phase, not a sub-team phase', () => {
+		const own = new Set(['prepare-run', 'build']);
+		expect(rerun_point(phase('prepare-run', 'failed'), undefined, failure([{ run_id: 'r', run_name: null, team: null, phase: 'prepare-run' }], 'prepare-run'), own)).toBe('prepare-run');
+		const sub = failure([{ run_id: 'r', run_name: null, team: null, phase: 'build' }, { run_id: 's', run_name: null, team: '@m/parser-builder', phase: 'others-unchanged' }], 'others-unchanged');
+		expect(rerun_point(phase('build', 'failed'), undefined, sub, own)).toBe('build');
+		// A gate resumes from where it sends work back.
+		expect(rerun_point(phase('check', 'failed'), def({ route_targets: ['build'] }), null, own)).toBe('build');
 	});
 });

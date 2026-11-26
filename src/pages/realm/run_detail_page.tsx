@@ -543,6 +543,8 @@ export function Run_view({ data, org_slug, slug, reload, gates = ALL_ALLOWED, re
 		route_backs: run.route_backs ?? [],
 		hugs: (data.hugs ?? []).map((h) => ({ id: h.id, title: h.title, phase: h.phase })),
 		failure: data.failure ?? null,
+		run_error: run.error ?? null,
+		stopped_at: [...phases].reverse().find((p) => p.status === 'failed' || p.status === 'crashed')?.phase ?? null,
 		on_rerun: can_resume && gates.run.ok && pending?.endpoint !== '/v1/resume'
 			? (phase) => { set_resume_initial(phase); set_panel('resume'); setTimeout(() => document.querySelector('[data-testid="resume-panel"]')?.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 0); }
 			: null,

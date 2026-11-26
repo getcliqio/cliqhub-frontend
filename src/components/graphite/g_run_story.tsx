@@ -179,16 +179,30 @@ export function stop_head(p: Run_detail_phase, def: Run_phase_def | undefined, r
 	return 'Failed';
 }
 
-function Fail_box({ p, def, routed, run_state, rerun_from, on_rerun, on_inspect }: {
+/**
+ * Why a failed phase stopped, verbatim, from the first place that has it: the phase's own error, the gate's last
+ * reason, the run's failure explanation when it is about this phase (detail, else summary), the run's error.
+ */
+export function fail_reason(p: Run_detail_phase, routed: Run_route_back[], failure_here: Run_failure | null, run_error: string | null): string | null {
+	return p.error ?? routed[routed.length - 1]?.reason ?? failure_here?.detail ?? failure_here?.summary ?? run_error ?? null;
+}
+
+function Fail_box({ p, def, routed, run_state, rerun_from, on_rerun, on_inspect, failure_here, run_error }: {
 	p: Run_detail_phase; def: Run_phase_def | undefined; routed: Run_route_back[]; run_state: string;
 	rerun_from: string | null; on_rerun: ((phase: string) => void) | null; on_inspect: (tab: Panel_tab) => void;
+	/** The run's failure explanation, when it is about this phase. */
+	failure_here: Run_failure | null;
+	/** The run's error (when this is the phase the run stopped at). */
+	run_error: string | null;
 }) {
 	const [more, set_more] = useState(false);
-	const why = p.error ?? routed[routed.length - 1]?.reason ?? null;
+	const why = fail_reason(p, routed, failure_here, run_error);
 	const fl = why ? first_line(why) : null;
+	const head = failure_here?.summary && !p.error && !routed.length ? failure_here.summary : stop_head(p, def, routed, run_state);
 	return (
 		<div className="rounded-[10px] border border-[var(--g-bad-line)] bg-[rgba(255,92,92,.05)] px-3.5 py-3" data-testid="fail-box">
-			<p className="text-[13.5px] font-semibold">{stop_head(p, def, routed, run_state)}</p>
+			<p className="text-[13.5px] font-semibold">{head}</p>
+			{failure_here?.hint ? <p className="mt-0.5 text-[12.5px] text-[var(--g-ink-2)]" data-testid="fail-hint">{failure_here.hint}</p> : null}
 			{fl ? (
 				<p className="mt-0.5 whitespace-pre-wrap break-words text-[12.5px] text-[var(--g-ink-2)]" data-testid="fail-reason">
 					{more ? why : fl.line}
@@ -224,6 +238,9 @@ export interface Story_props {
 	/** The run's open Hugs. */
 	hugs: Array<{ id: string; title: string; phase: string | null }>;
 	failure: Run_failure | null;
+	/** The run's error, and the phase it stopped at (the last failed one), for a failed phase with no error of its own. */
+	run_error: string | null;
+	stopped_at: string | null;
 	/** Which phase to resume from when one fails (Core's resume point, else the gate's route target, else the phase). */
 	on_rerun: ((phase: string) => void) | null;
 	on_inspect: (i: Inspect) => void;
@@ -233,9 +250,16 @@ export interface Story_props {
 	tree: { open: Set<string>; toggle: (run_id: string) => void; selected: { run_id: string; phase: string } | null; on_select: (s: Tree_step) => void; run_href: (run_id: string) => string };
 }
 
-function rerun_point(p: Run_detail_phase, def: Run_phase_def | undefined, failure: Run_failure | null): string {
-	if (failure?.resume_from && failure.chain[0]?.phase === p.phase) return failure.resume_from;
-	return def?.route_targets[0] ?? failure?.resume_from ?? p.phase;
+/**
+ * The phase of this run to resume from when `p` failed: Core's resume point when the failure is this run's own
+ * (a one-step chain); for a sub-team's failure that point is in the sub-team, so this run resumes from the team
+ * phase itself. Else the gate's route target, else the phase.
+ */
+export function rerun_point(p: Run_detail_phase, def: Run_phase_def | undefined, failure: Run_failure | null, own_phases?: Set<string>): string {
+	const own = failure && failure.chain.length <= 1 && failure.chain[0]?.phase === p.phase ? failure.resume_from : null;
+	if (own && (!own_phases || own_phases.has(own))) return own;
+	if (failure && failure.chain.length > 1 && failure.chain[0]?.phase === p.phase) return p.phase;
+	return def?.route_targets[0] ?? p.phase;
 }
 
 function Phase_body({ p, s, ...x }: Story_props & { p: Run_detail_phase; s: string }) {
@@ -255,7 +279,14 @@ function Phase_body({ p, s, ...x }: Story_props & { p: Run_detail_phase; s: stri
 	return (
 		<div className="flex cursor-default flex-col gap-2.5 pb-3 pl-[34px] pr-1 pt-1" onClick={(e) => e.stopPropagation()} data-testid="phase-open">
 			{open_hug ? <Hug_box hug_id={open_hug.id} title={open_hug.title} on_answered={x.on_answered} /> : null}
-			{FAILED.has(s) ? <Fail_box p={p} def={def} routed={routed_by_me.length ? routed_by_me : routed_here} run_state={x.run_state} rerun_from={rerun_point(p, def, x.failure)} on_rerun={x.on_rerun} on_inspect={inspect} /> : null}
+			{FAILED.has(s) ? (
+				<Fail_box
+					p={p} def={def} routed={routed_by_me.length ? routed_by_me : routed_here} run_state={x.run_state}
+					rerun_from={rerun_point(p, def, x.failure, new Set(x.phases.map((q) => q.phase)))} on_rerun={x.on_rerun} on_inspect={inspect}
+					failure_here={x.failure && x.failure.chain[0]?.phase === p.phase ? x.failure : null}
+					run_error={x.stopped_at === p.phase ? x.run_error : null}
+				/>
+			) : null}
 			{s === 'running' ? (
 				<p className="text-[12.5px] text-[var(--g-run-text)]">Working · started {relative_time(p.started_at)} · <button type="button" onClick={() => inspect('logs')} className="text-[var(--g-acc)] hover:underline">live logs</button></p>
 			) : null}
@@ -449,7 +480,7 @@ export function Phase_panel({ inspect, set_tab, on_close, x, realm_id, run_id, l
 	const tab = tabs.some(([t]) => t === inspect.tab) ? inspect.tab : tabs[0][0];
 	const routed = route_backs_by(x.route_backs, p.phase).length ? route_backs_by(x.route_backs, p.phase) : route_backs_of(x.route_backs, p.phase);
 	const finished_before = x.phases.filter((q) => DONE.has(phase_state_in_run(q.status, x.run_state))).length;
-	const resume_at = rerun_point(p, def, x.failure);
+	const resume_at = rerun_point(p, def, x.failure, new Set(x.phases.map((q) => q.phase)));
 	return (
 		<aside className="flex min-h-0 flex-col rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label={`Phase ${p.phase}`} data-testid="phase-panel">
 			<div className="border-b border-[var(--g-line)] px-4 pt-3">
@@ -469,7 +500,11 @@ export function Phase_panel({ inspect, set_tab, on_close, x, realm_id, run_id, l
 				{tab === 'what' ? (
 					<div className="flex flex-col gap-1" data-testid="what-happened">
 						<p className={LBL}>Why it stopped</p>
-						<p>{stop_head(p, def, routed, x.run_state)}{p.error ? <span className="mt-1 block whitespace-pre-wrap break-words text-[var(--g-ink-2)]">{p.error}</span> : null}</p>
+						{(() => {
+							const here = x.failure && x.failure.chain[0]?.phase === p.phase ? x.failure : null;
+							const why = fail_reason(p, routed, here, x.stopped_at === p.phase ? x.run_error : null);
+							return <p>{stop_head(p, def, routed, x.run_state)}{why ? <span className="mt-1 block whitespace-pre-wrap break-words text-[var(--g-ink-2)]" data-testid="what-reason">{why}</span> : <span className="mt-1 block text-[var(--g-ink-3)]">No reason was recorded; the Logs tab has what the phase printed.</span>}</p>;
+						})()}
 						{routed.length ? (
 							<>
 								<p className={LBL}>Each try</p>
