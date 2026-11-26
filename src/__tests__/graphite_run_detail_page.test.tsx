@@ -694,7 +694,7 @@ describe('Graphite run detail — run history', () => {
 		await ready();
 		const note = screen.getByTestId('child-succeeded-later');
 		expect(note).toHaveTextContent('Sub-team run lld-1 succeeded later, but this run is still failed.');
-		fireEvent.click(within(note).getByRole('button', { name: 'Rerun from design' }));
+		fireEvent.click(within(note).getByRole('button', { name: 'Resume from design' }));
 		expect(screen.getByTestId('resume-select')).toHaveValue('design');
 	});
 

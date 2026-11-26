@@ -196,7 +196,7 @@ function Fail_box({ p, def, routed, run_state, rerun_from, on_rerun, on_inspect 
 				</p>
 			) : <p className="mt-0.5 text-[12.5px] text-[var(--g-ink-3)]">The phase reported no reason; the logs have what it printed.</p>}
 			<div className="mt-2.5 flex flex-wrap gap-2">
-				{on_rerun && rerun_from ? <button type="button" className={SMALL_PRIMARY} onClick={() => on_rerun(rerun_from)}>Rerun from {rerun_from}</button> : null}
+				{on_rerun && rerun_from ? <button type="button" className={SMALL_PRIMARY} onClick={() => on_rerun(rerun_from)}>Resume from {rerun_from}</button> : null}
 				<button type="button" className={SMALL_BTN} onClick={() => on_inspect('what')}>What happened</button>
 				<button type="button" className={SMALL_BTN} onClick={() => on_inspect('logs')}>Logs</button>
 			</div>
@@ -224,7 +224,7 @@ export interface Story_props {
 	/** The run's open Hugs. */
 	hugs: Array<{ id: string; title: string; phase: string | null }>;
 	failure: Run_failure | null;
-	/** Which phase to rerun from when one fails (Core's resume point, else the gate's route target, else the phase). */
+	/** Which phase to resume from when one fails (Core's resume point, else the gate's route target, else the phase). */
 	on_rerun: ((phase: string) => void) | null;
 	on_inspect: (i: Inspect) => void;
 	inspecting: string | null;
@@ -262,7 +262,7 @@ function Phase_body({ p, s, ...x }: Story_props & { p: Run_detail_phase; s: stri
 			{succeeded_later ? (
 				<p role="note" className="rounded-md border border-[var(--g-warn-line)] bg-[var(--g-warn-soft)] px-2.5 py-1.5 text-[12px]" data-testid="child-succeeded-later">
 					Sub-team run <Link to={x.child_link(succeeded_later)} className="g-mono hover:underline">{succeeded_later.run_name || succeeded_later.run_id}</Link> succeeded later, but this run is still {x.run_state}.
-					{x.on_rerun ? <button type="button" onClick={() => x.on_rerun!(p.phase)} className="ml-2 font-semibold text-[var(--g-acc)] hover:underline">Rerun from {p.phase}</button> : null}
+					{x.on_rerun ? <button type="button" onClick={() => x.on_rerun!(p.phase)} className="ml-2 font-semibold text-[var(--g-acc)] hover:underline">Resume from {p.phase}</button> : null}
 				</p>
 			) : null}
 			{routed_here.length || earlier.length ? (
@@ -449,7 +449,7 @@ export function Phase_panel({ inspect, set_tab, on_close, x, realm_id, run_id, l
 	const tab = tabs.some(([t]) => t === inspect.tab) ? inspect.tab : tabs[0][0];
 	const routed = route_backs_by(x.route_backs, p.phase).length ? route_backs_by(x.route_backs, p.phase) : route_backs_of(x.route_backs, p.phase);
 	const finished_before = x.phases.filter((q) => DONE.has(phase_state_in_run(q.status, x.run_state))).length;
-	const rerun = rerun_point(p, def, x.failure);
+	const resume_at = rerun_point(p, def, x.failure);
 	return (
 		<aside className="flex min-h-0 flex-col rounded-[10px] border border-[var(--g-line)] bg-[var(--g-panel)]" aria-label={`Phase ${p.phase}`} data-testid="phase-panel">
 			<div className="border-b border-[var(--g-line)] px-4 pt-3">
@@ -490,9 +490,9 @@ export function Phase_panel({ inspect, set_tab, on_close, x, realm_id, run_id, l
 								<G_phase_output outputs={mine} handoffs={x.handoffs.get(p.phase)} run_link={x.run_link} />
 							</>
 						) : null}
-						<p className={LBL}>Rerun</p>
-						<p>Starts again at <span className="g-mono">{rerun}</span> and keeps the {finished_before} finished phase{finished_before === 1 ? '' : 's'} before it.</p>
-						{x.on_rerun ? <div className="mt-1"><button type="button" className={SMALL_PRIMARY} onClick={() => x.on_rerun!(rerun)}>Rerun from {rerun}</button></div> : null}
+						<p className={LBL}>Resume</p>
+						<p>Starts again at <span className="g-mono">{resume_at}</span> and keeps the {finished_before} finished phase{finished_before === 1 ? '' : 's'} before it.</p>
+						{x.on_rerun ? <div className="mt-1"><button type="button" className={SMALL_PRIMARY} onClick={() => x.on_rerun!(resume_at)}>Resume from {resume_at}</button></div> : null}
 					</div>
 				) : tab === 'output' ? (
 					mine.length || own_artifacts.length ? (
