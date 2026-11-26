@@ -73,10 +73,16 @@ function render_page(path = '/o/measureone/realms/prod-us/runs/run-77') {
 async function ready() {
 	return screen.findByTestId('run-title');
 }
-/** A phase's Output opens under its row: its output, then its artifacts. */
+/** A phase's row, by name. */
+function phase_row(phase: string) {
+	return screen.getAllByTestId('phase-row').find((r) => r.getAttribute('data-phase-row') === phase)!;
+}
+/** Open a phase in place (PLAN-run-page S2; a failed / waiting / running one is open already): its story under its line. */
 function open_output(phase: string) {
-	fireEvent.click(screen.getByRole('button', { name: `Show output of ${phase}` }));
-	return screen.getAllByTestId('phase-open').find((el) => el.closest('[data-phase-row]')?.getAttribute('data-phase-row') === phase)!;
+	const row = phase_row(phase);
+	const btn = within(row).getAllByRole('button').find((b) => b.getAttribute('aria-expanded') !== null)!;
+	if (btn.getAttribute('aria-expanded') !== 'true') fireEvent.click(btn);
+	return within(phase_row(phase)).getByTestId('phase-open');
 }
 const show_details = () => fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
 
@@ -104,20 +110,63 @@ describe('Graphite run detail', () => {
 		route_fetch({ ...run_detail(), hug_rounds } as never);
 		render_page();
 		await ready();
+		// match failed, so it is open; its rounds are its own story. fetch (asked once) is closed.
 		const lines = screen.getAllByTestId('phase-rounds');
-		expect(lines).toHaveLength(1);   // fetch asked once: no rounds line
-		expect(lines[0]).toHaveTextContent('people:round 1Rejected by Elanround 2waiting');
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toHaveTextContent('Round 1 · Rejected by Elan');
+		expect(lines[0]).toHaveTextContent('Round 2 · waiting');
 		expect(within(lines[0]!).getByRole('link', { name: 'round 1' })).toHaveAttribute('href', '/hugs/h-0');
+		// The row says how many times it asked.
+		expect(phase_row('match')).toHaveTextContent('2 rounds');
 	});
 
-	it('the failed phase is selected first; a phase with nothing to show has no Output; no separate Files section', async () => {
-		route_fetch(run_detail());
+	it('phases in order, each saying what it does; only the failed one opens by itself (PLAN-run-page S1–S2)', async () => {
+		route_fetch(run_detail({
+			phase_defs: [
+				{ name: 'fetch', type: 'standard', agent: 'fetcher', description: 'Downloads the month’s ledger', depends_on: [], route_targets: [], max_iterations: null, commands: [], hug: null, team: null },
+				{ name: 'match', type: 'gate', agent: 'matcher', description: null, depends_on: ['fetch'], route_targets: ['fetch'], max_iterations: 3, commands: [], hug: null, team: null },
+			],
+		}));
 		render_page();
 		await ready();
-		const rows = screen.getAllByTestId('phase-row');
-		expect(rows.map((r) => r.getAttribute('aria-current'))).toEqual([null, 'true']);
-		expect(screen.queryByRole('button', { name: /output of/ })).toBeNull();
+		expect(screen.getAllByTestId('phase-row').map((r) => r.getAttribute('data-phase-row'))).toEqual(['fetch', 'match']);
+		expect(within(phase_row('fetch')).getByTestId('phase-purpose')).toHaveTextContent('Downloads the month’s ledger');
+		// No description: a sentence from the team's own structure, marked as worked out.
+		const derived = within(phase_row('match')).getByTestId('phase-purpose');
+		expect(derived).toHaveTextContent('Gate. Checks fetch; sends it back to fetch with the problems, up to 3 times');
+		expect(derived).toHaveAttribute('title', expect.stringContaining('Worked out'));
+		expect(within(phase_row('fetch')).queryByTestId('phase-open')).toBeNull();
+		const fail = within(phase_row('match')).getByTestId('fail-box');
+		expect(fail).toHaveTextContent('ledger timeout');
+		// The graph is its own view now, not on top of the list.
+		expect(screen.queryByTestId('run-workflow')).toBeNull();
+		expect(screen.getByRole('tab', { name: 'Run' })).toHaveAttribute('aria-selected', 'true');
 		expect(screen.queryByTestId('run-artifacts')).toBeNull();
+	});
+
+	it('a failed gate out of tries: why each try was sent back (route_backs), What happened in the side panel', async () => {
+		const now = Date.now();
+		const d = run_detail({
+			phase_defs: [{ name: 'match', type: 'gate', agent: 'matcher', description: null, depends_on: ['fetch'], route_targets: ['fetch'], max_iterations: 3, commands: [], hug: null, team: null }],
+		}, { route_backs: [
+			{ at: now - 200_000, phase: 'fetch', routed_by: 'match', reason: 'gross_pay null on 3 of 5', iteration: 1, max_iterations: 3 },
+			{ at: now - 100_000, phase: 'fetch', routed_by: 'match', reason: 'pay_date wrong format', iteration: 2, max_iterations: 3 },
+		] } as never);
+		route_fetch(d);
+		render_page();
+		await ready();
+		expect(within(phase_row('match')).getByTestId('fail-box')).toHaveTextContent('Still failing after 3 tries');
+		expect(phase_row('fetch')).toHaveTextContent('sent back 2×');
+		const fetch = open_output('fetch');
+		expect(within(fetch).getByTestId('phase-tries')).toHaveTextContent('Try 1 sent back by match“gross_pay null on 3 of 5”');
+		fireEvent.click(within(phase_row('match')).getByRole('button', { name: 'What happened' }));
+		const panel = screen.getByTestId('phase-panel');
+		expect(within(panel).getByTestId('what-happened')).toHaveTextContent('1 · gross_pay null on 3 of 5');
+		expect(within(panel).getByTestId('what-happened')).toHaveTextContent('Starts again at fetch');
+		fireEvent.click(within(panel).getByRole('tab', { name: 'About' }));
+		expect(within(panel).getByTestId('phase-about')).toHaveTextContent('Sends back tofetch · up to 3×');
+		fireEvent.click(within(panel).getByRole('button', { name: 'Close panel' }));
+		expect(screen.queryByTestId('phase-panel')).toBeNull();
 	});
 	it('a phase’s stored files link straight to the Hub download (the link never expires)', async () => {
 		const spy = route_fetch(run_detail({ artifacts: [{ artifact_id: 'a 1', phase: 'fetch', name: 'report.pdf', description: 'Weekly', mime_type: 'application/pdf', size_bytes: 2048, created_at: 5 }] }));
@@ -149,7 +198,7 @@ describe('Graphite run detail', () => {
 		await waitFor(() => expect(within(panel).getByTestId('artifact-text')).toHaveTextContent('the whole transcript'));
 		expect(calls(spy, '/v1/artifacts/get_by_id')).toEqual([{ artifact_id: 'rec:2' }]);
 	});
-	it('a phase’s output: one line on its row; Output opens the formatted output (and raw) under it', async () => {
+	it('a phase’s output: opening the phase shows the formatted output (and raw) under it', async () => {
 		const raw = JSON.stringify({ text: '## Exec Results\n\nFAIL fetch (exit 1)', data: { total: '1', failed: '1', results: [{ name: 'fetch', pass: 'false', exit_code: '1', duration_ms: '20' }] } });
 		route_fetch(run_detail({
 			phase_outputs: [{
@@ -163,18 +212,17 @@ describe('Graphite run detail', () => {
 		}));
 		render_page();
 		await ready();
-		expect(screen.getByTestId('phase-output-summary')).toHaveTextContent('1 of 1 command failed');
-		expect(screen.queryByTestId('phase-output')).toBeNull(); // closed until asked for
+		expect(within(phase_row('fetch')).queryByTestId('phase-output')).toBeNull(); // closed until asked for
 		const open = open_output('fetch');
 		const panel = within(open).getByTestId('phase-output');
 		expect(within(panel).getByTestId('output-commands')).toHaveTextContent('exit 1');
 		expect(within(panel).getByTestId('output-handoffs')).toHaveTextContent('use the cached ledger');
 		fireEvent.click(within(panel).getByRole('button', { name: 'Raw' }));
 		expect(within(panel).getByTestId('output-raw')).toHaveTextContent('"exit_code": "1"');
-		// The handoff is part of the output, not listed again as an artifact.
-		expect(within(open).getByTestId('run-artifacts')).toHaveTextContent('None from this phase.');
-		fireEvent.click(screen.getByRole('button', { name: 'Hide output of fetch' }));
-		expect(screen.queryByTestId('phase-open')).toBeNull();
+		// The handoff is part of the output, not listed again as a file.
+		expect(within(open).queryByTestId('run-artifacts')).toBeNull();
+		fireEvent.click(within(phase_row('fetch')).getByRole('button', { name: 'Close fetch' }));
+		expect(within(phase_row('fetch')).queryByTestId('phase-open')).toBeNull();
 	});
 	it('links a sub-team phase to its sub-run', async () => {
 		route_fetch(run_detail({
@@ -190,6 +238,56 @@ describe('Graphite run detail', () => {
 		await ready();
 		expect(within(open_output('match')).getByRole('link', { name: 'open the sub-run' })).toHaveAttribute('href', expect.stringContaining('/runs/run-sub'));
 	});
+	it('a waiting approval is answered in its phase (S4): Approve, or send back with a note; other hugs open their page', async () => {
+		const now = Date.now();
+		const phases = [
+			{ phase: 'fetch', status: 'completed', sequence: 0, started_at: now - 600_000, completed_at: now - 300_000, error: null, agent: 'fetcher' },
+			{ phase: 'review', status: 'awaiting_input', sequence: 1, started_at: now - 60_000, completed_at: null, error: null, agent: 'hug' },
+		];
+		const hug = (name: string) => ({
+			hug: {
+				id: 'h-7', title: 'Approve the parser?', summary: 'All 5 samples pass', hug: { name, sha256: 'x' }, params: { reject_choices: [{ value: 'fetch', label: 'Send back to fetch' }] },
+				status: 'open', responses: [], viewer: { can_answer: true, via: ['hub'] }, expires_at: new Date(now + 86_400_000).toISOString(),
+			},
+			content_url: null,
+		});
+		let name = 'approval';
+		const spy = route_fetch(
+			run_detail({ phases, hugs: [{ id: 'h-7', title: 'Approve the parser?', phase: 'review', created_at: now - 60_000, expires_at: null, responded: false }] }, { state: 'awaiting_input', error: null }),
+			{
+				'/v1/hug_page/get': () => ({ body: { ok: true, data: hug(name) } }),
+				'/v1/hugs/respond': () => ({ body: { ok: true, data: { response_id: 'r1' } } }),
+			},
+		);
+		const first = render_page();
+		await ready();
+		// The Hug is in its phase, not a banner on top.
+		expect(screen.queryByTestId('run-hugs-banner')).toBeNull();
+		const box = await within(phase_row('review')).findByTestId('hug-box');
+		expect(await within(box).findByText('All 5 samples pass')).toBeInTheDocument();
+		// Sending back needs a note.
+		fireEvent.click(within(box).getByRole('button', { name: 'Send back to fetch' }));
+		expect(within(box).getByRole('alert')).toHaveTextContent('Write what should change first.');
+		fireEvent.change(within(box).getByRole('textbox', { name: 'Note' }), { target: { value: 'pay_date must be ISO' } });
+		fireEvent.click(within(box).getByRole('button', { name: 'Send back to fetch' }));
+		await waitFor(() => expect(calls(spy, '/v1/hugs/respond')).toEqual([{ hug_id: 'h-7', values: { decision: 'reject', reason: 'pay_date must be ISO', choice: 'fetch' } }]));
+		fireEvent.click(within(box).getByRole('button', { name: 'Approve' }));
+		await waitFor(() => expect(calls(spy, '/v1/hugs/respond').at(-1)).toEqual({ hug_id: 'h-7', values: { decision: 'approve', comment: null } }));
+		// A form or a team's own hug is answered on its own page.
+		name = 'field-review';
+		first.unmount();
+		vi.restoreAllMocks();
+		route_fetch(
+			run_detail({ phases, hugs: [{ id: 'h-7', title: 'Approve the parser?', phase: 'review', created_at: now - 60_000, expires_at: null, responded: false }] }, { state: 'awaiting_input', error: null }),
+			{ '/v1/hug_page/get': () => ({ body: { ok: true, data: hug('field-review') } }) },
+		);
+		render_page();
+		const other = await screen.findByTestId('hug-box');
+		await within(other).findByText('All 5 samples pass');
+		expect(within(other).queryByRole('button', { name: 'Approve' })).toBeNull();
+		expect(within(other).getByTestId('hug-open')).toHaveAttribute('href', '/hugs/h-7');
+	});
+
 	it('says when artifacts could not be loaded', async () => {
 		const d = run_detail({ partial: true });
 		d.sections.artifacts = { status: 'error', error: 'storage down' };
@@ -439,7 +537,7 @@ describe('Graphite run detail', () => {
 		expect(calls(spy, '/v1/runs/get_logs')[0]).toMatchObject({ realm_id: REALM.id, run_ids: ['run-77'], offset: 0 });
 		fireEvent.click(screen.getByRole('button', { name: 'error' }));
 		await waitFor(() => expect(calls(spy, '/v1/runs/get_logs').at(-1)).toMatchObject({ levels: ['error'] }));
-		fireEvent.click(screen.getByRole('tab', { name: 'Phases' }));
+		fireEvent.click(screen.getByRole('tab', { name: 'Run' }));
 		expect(screen.getByTestId('where')).not.toHaveTextContent('tab=logs');
 	});
 
@@ -595,22 +693,20 @@ describe('Graphite run detail — run history', () => {
 		render_page();
 		await ready();
 		const note = screen.getByTestId('child-succeeded-later');
-		expect(note).toHaveTextContent('Sub-team run lld-1 succeeded later, but this run is still failed. Resume it from design to continue.');
-		fireEvent.click(within(note).getByRole('button', { name: 'Resume from design' }));
+		expect(note).toHaveTextContent('Sub-team run lld-1 succeeded later, but this run is still failed.');
+		fireEvent.click(within(note).getByRole('button', { name: 'Rerun from design' }));
 		expect(screen.getByTestId('resume-select')).toHaveValue('design');
 	});
 
-	it('shows earlier attempts of a phase compactly with "ran N×"', async () => {
+	it('shows earlier attempts of a phase: "sent back N×" on its line, each try in its story', async () => {
 		const now = Date.now();
 		const phases = design_phases();
 		phases[1] = { ...phases[1]!, attempts: 2, previous_attempts: [{ attempt: 0, status: 'failed', started_at: now - 30 * H, completed_at: now - 29 * H, error: 'first try' } as never] };
 		route_fetch(run_detail({ phases }));
 		render_page();
 		await ready();
-		const rows = screen.getAllByTestId('phase-row');
-		const design = rows.find((r) => r.textContent?.includes('design'))!;
-		expect(design).toHaveTextContent('ran 2×');
-		expect(within(design).getByTestId('phase-earlier-attempts')).toHaveTextContent('earlier:failed29h ago');
+		expect(within(phase_row('design')).getByTestId('phase-sent-back')).toHaveTextContent('sent back 1×');
+		expect(within(open_output('design')).getByTestId('phase-tries')).toHaveTextContent('earlier try · failed · 29h ago');
 	});
 });
 
