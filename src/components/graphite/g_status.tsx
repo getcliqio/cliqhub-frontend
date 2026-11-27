@@ -9,6 +9,8 @@ const STATE_META: Record<string, { label: string; fg: string; bg: string }> = {
 	crashed: { label: 'Crashed', fg: 'var(--g-bad)', bg: 'var(--g-bad-soft)' },
 	cancelled: { label: 'Cancelled', fg: 'var(--g-ink-3)', bg: 'var(--g-soft)' },
 	skipped: { label: 'Skipped', fg: 'var(--g-ink-3)', bg: 'var(--g-soft)' },
+	// A phase that was still waiting or running when its run ended (lib/phase_state.ts).
+	stopped: { label: 'Stopped', fg: 'var(--g-ink-3)', bg: 'var(--g-soft)' },
 };
 
 function meta(state: string) {

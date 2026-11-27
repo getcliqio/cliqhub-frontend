@@ -10,6 +10,8 @@ export interface Realm_run_row {
 	version: string | null;
 	/** Who initiated this run: `'cli'` or `'hub'`, or null for pre-refactor runs. */
 	origin: string | null;
+	/** The person who started it (absent from an older BFF; null when Core doesn't know). */
+	started_by?: { id: string; username: string | null; display_name: string | null } | null;
 	started_at: number | null;
 	completed_at: number | null;
 	updated_at: number | null;

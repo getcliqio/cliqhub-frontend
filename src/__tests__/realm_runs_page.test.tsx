@@ -77,15 +77,18 @@ describe('Realm runs page', () => {
 		expect(screen.queryByRole('button', { name: 'Edit realm' })).toBeNull();
 	});
 
-	it('columns: Run, Team (with version), State (no "Needs you": getHugs has it, PLAN-gethugs-step6-ui-link.md), Started, Daemon (its name)', async () => {
+	it('columns: Run, Team (with version), State (no "Needs you": getHugs has it, PLAN-gethugs-step6-ui-link.md), Started by, Started, Daemon (its name)', async () => {
 		const base = runs().items[0];
 		route_fetch(() => ({ body: { ok: true, data: runs({ items: [
-			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', daemon_id: 'd-123456789', daemon_name: 'mac-1' },
-			{ ...base, run_id: 'w2', run_name: 'plain', team: '@cliq/dev', version: null, state: 'completed', daemon_id: 'd-abcdefghij', daemon_name: null },
+			{ ...base, run_id: 'w1', run_name: 'waits', team: '@cliq/dev', version: '2.0.0', state: 'running', current_phase: 'human-review', daemon_id: 'd-123456789', daemon_name: 'mac-1', started_by: { id: 'u1', username: 'sapan', display_name: 'Sapan Shah' } },
+			{ ...base, run_id: 'w2', run_name: 'plain', team: '@cliq/dev', version: null, state: 'completed', daemon_id: 'd-abcdefghij', daemon_name: null, started_by: null },
 		], total: 2 }) } }));
 		render_page();
 		const w1 = await screen.findByTestId('run-w1');
-		expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.replace(/[↑↓⇅\s]+$/u, '').trim())).toEqual(['Run', 'Team', 'State', 'Started', 'Daemon']);
+		expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.replace(/[↑↓⇅\s]+$/u, '').trim())).toEqual(['Run', 'Team', 'State', 'Started by', 'Started', 'Daemon']);
+		// Who started it: initials + name; nobody known → "—".
+		expect(within(w1).getByTestId('cell-started-by')).toHaveTextContent('SSSapan Shah');
+		expect(within(screen.getByTestId('run-w2')).getByTestId('cell-started-by')).toHaveTextContent('—');
 		expect(within(w1).getByTestId('cell-team')).toHaveTextContent('@cliq/dev · 2.0.0');
 		expect(within(w1).getByTestId('cell-state')).toHaveTextContent(/at human-review$/);
 		expect(within(w1).getByTestId('cell-state')).not.toHaveTextContent(/Needs you/);
@@ -170,7 +173,7 @@ describe('Realm runs page', () => {
 		await waitFor(() => expect(calls.at(-1)).toEqual({ org_slug: 'measureone', slug: 'prod-us', limit: 25, offset: 0, sort_by: 'started_at', sort_dir: 'desc' }));
 		// Date columns start newest first.
 		expect(screen.getByTestId('where')).toHaveTextContent('?sort=started_at&dir=desc');
-		expect(await screen.findByRole('columnheader', { name: /Started/ })).toHaveAttribute('aria-sort', 'descending');
+		expect(await screen.findByRole('columnheader', { name: /^Started(?! by)/ })).toHaveAttribute('aria-sort', 'descending');
 	});
 });
 

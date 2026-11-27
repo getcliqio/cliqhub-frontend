@@ -10,6 +10,7 @@ import { fmt_ms, fmt_usd, type Telemetry_phase, type Telemetry_sub_run } from '@
 import { use_bff_read } from '@/lib/use_bff_read';
 import type { Run_detail_data, Run_failure } from '@/lib/realm_inbox';
 import { State_dot, State_pill } from '@/components/graphite/g_status';
+import { phase_state_in_run } from '@/lib/phase_state';
 import { G_phase_output } from '@/components/graphite/g_phase_output';
 
 const short_team = (t: string | null) => (t ?? '').replace(/^@[^/]+\//, '');
@@ -131,7 +132,7 @@ export function Step_details({ step, top, failure, run_href, on_close }: {
 			<div className="flex items-start gap-2">
 				<div className="min-w-0 flex-1">
 					<p className="truncate text-[11.5px] text-[var(--g-ink-3)]" data-testid="step-path">{[top, ...path].join(' › ')} ›</p>
-					<p className="mt-0.5 flex flex-wrap items-center gap-2"><span className="g-mono text-[13px] font-semibold">{p.name}</span><State_pill state={p.status} /></p>
+					<p className="mt-0.5 flex flex-wrap items-center gap-2"><span className="g-mono text-[13px] font-semibold">{p.name}</span><State_pill state={phase_state_in_run(p.status, run.state)} /></p>
 				</div>
 				<button type="button" onClick={on_close} aria-label="Close step details" className="text-[var(--g-ink-3)] hover:text-[var(--g-ink)]">✕</button>
 			</div>

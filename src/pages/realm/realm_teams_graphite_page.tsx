@@ -23,6 +23,7 @@ import { ROW_ACTION_CLS } from '@/components/graphite/g_kinds';
 import { Run_in_realm_dialog } from '@/components/run_in_realm_dialog';
 import { Blocking_error } from '@/pages/realm/realm_inbox_page';
 import { ROW_OPENS, use_row_open } from '@/components/graphite/g_row';
+import { Person } from '@/components/graphite/g_person';
 
 export const TEAMS_PAGE_SIZE = 25;
 
@@ -189,6 +190,11 @@ export function Component() {
 										</td>
 										{/* Called by another team in this realm: a dot, the callers on hover. */}
 			<td className="px-4 py-2.5 text-center" data-testid="sub-team-cell">{r.used_by?.length ? <span role="img" aria-label={`Sub-team of ${r.used_by.join(', ')}`} title={`Run by ${r.used_by.join(', ')}`} className="inline-block h-2 w-2 rounded-full bg-[var(--g-ink-3)]" data-testid="sub-team-dot" /> : null}</td>
+			{/* Who published the latest version and when; local installs and versions from before Core recorded it: "—". */}
+			<td className="max-w-[200px] px-4 py-2.5 text-[12px] text-[var(--g-ink-2)]" data-testid="cell-published-by" title={r.latest_version ? `Latest: ${r.latest_version}` : undefined}>
+				<Person p={r.latest_published_by} />
+				{r.latest_published_by && r.latest_published_at ? <span className="block text-[11px] text-[var(--g-ink-3)]">{relative_time(r.latest_published_at)}</span> : null}
+			</td>
 			<td className="whitespace-nowrap px-4 py-2.5 text-[var(--g-ink-2)]">{r.last_run_at ? relative_time(r.last_run_at) : 'never'}</td>
 										<td className="px-4 py-2.5 text-right">
 											{r.scope && r.in_team_list ? <button type="button" disabled={!runnable.ok} title={runnable.reason ?? undefined} onClick={(e) => { e.stopPropagation(); set_running(r); }} className={`${ROW_ACTION_CLS} ${GATED} inline-flex items-center gap-1`}><Play aria-hidden className="h-3 w-3" />Run</button> : null}
@@ -252,6 +258,7 @@ export function Component() {
 										<tr className="border-b border-[var(--g-line)] text-[10.5px] uppercase tracking-[0.07em] text-[var(--g-ink-3)]">
 											<Sort_th sort={cols} k="team" className="px-4 py-2.5 font-semibold">Team</Sort_th>
 											<th className="whitespace-nowrap px-4 py-2.5 text-center font-semibold" title="Run by another team in this realm">Is Sub Team</th>
+											<th className="px-4 py-2.5 font-semibold">Last published by</th>
 											<th className="px-4 py-2.5 font-semibold">Last run</th>
 											<th className="w-[140px] px-4 py-2.5" />
 										</tr>

@@ -169,6 +169,10 @@ export interface Run_row {
 	state_lost_at?: number | null;
 	/** Who initiated this run: `'cli'` or `'hub'`, or null for pre-refactor runs. */
 	origin?: string | null;
+	/** The person who started it (Core API 8+; absent from older Cores). */
+	started_by?: { id: string; username: string | null; display_name: string | null } | null;
+	/** Each time a gate sent a phase back, oldest first (Core API 7+). */
+	route_backs?: Run_route_back[] | null;
 	/** Team version at the time of the run. */
 	team_version?: string | null;
 }
@@ -243,6 +247,8 @@ export interface Run_detail_data {
 	artifacts: Run_artifact[];
 	/** Each phase output, oldest first (absent from an older BFF). */
 	phase_outputs?: Run_phase_output[];
+	/** Each phase as the run's team version defines it (absent from an older BFF; empty when unreadable). */
+	phase_defs?: Run_phase_def[];
 	/** The run's attempts, oldest first; null when its events couldn't be read (absent from an older BFF). */
 	attempts?: Run_attempt[] | null;
 	/** `events`: from the run's lifecycle events; `phases`: reconstructed from phase history. */
@@ -302,4 +308,33 @@ export interface Run_failure {
 	chain: Run_failure_step[];
 	resume_from: string | null;
 	review: { hug_id: string; status: string | null; policy: 'any' | 'all' | null; reviewers: Run_failure_reviewer[]; route_targets: string[] } | null;
+}
+
+/** One phase as the run's team version defines it (team.yml, read as written; `run_detail/get` `phase_defs`). */
+export interface Run_phase_def {
+	name: string;
+	/** standard | gate | team. */
+	type: string;
+	agent: string | null;
+	/** The team's own words for what it does; null when it has none. */
+	description: string | null;
+	depends_on: string[];
+	route_targets: string[];
+	max_iterations: number | null;
+	commands: string[];
+	/** The hug it asks with (`approval` for a review gate); null otherwise. */
+	hug: string | null;
+	team: string | null;
+}
+
+/** One time a gate sent a phase back for rework (`runs/get_by_id` `route_backs`, Core API 7+). */
+export interface Run_route_back {
+	at: number;
+	/** The phase sent back (qualified inside sub-teams: `parent.child`). */
+	phase: string | null;
+	routed_by: string;
+	/** The gate's reason, verbatim. */
+	reason: string | null;
+	iteration: number | null;
+	max_iterations: number | null;
 }

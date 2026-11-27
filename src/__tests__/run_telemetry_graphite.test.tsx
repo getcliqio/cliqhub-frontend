@@ -1,6 +1,6 @@
 /** Run page telemetry: the run line's cost and tokens, the phase list's clock (rounds, folded waits), Workflow, Usage; the Timeline component. */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, within, waitFor, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { run_detail, overview_for_realm, REALM } from './fixtures_realm';
 import { gs_response } from './fixtures_overview';
@@ -58,11 +58,6 @@ function route_fetch(tel: Run_telemetry_data | null = telemetry()) {
 }
 function open(path = '/o/measureone/realms/prod-us/runs/run-77') {
 	return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/o/:org/realms/:slug/runs/:run_id" element={<RunPage />} /></Routes></MemoryRouter>);
-}
-/** Unmount what's rendered and open the run again with `search`. */
-function cleanup_and_open(search: string) {
-	cleanup();
-	return open(`/o/measureone/realms/prod-us/runs/run-77${search}`);
 }
 afterEach(() => vi.restoreAllMocks());
 
@@ -136,7 +131,7 @@ describe('Timeline: people\'s time', () => {
 });
 
 describe('Run page telemetry', () => {
-	it('the run line carries cost and tokens; each phase its cost; views are Phases, Usage, Logs, Details', async () => {
+	it('the run line carries cost and tokens; each phase its cost; views are Run, Graph, Timeline, Usage, Logs, Details', async () => {
 		const calls = route_fetch();
 		open();
 		const meta = await screen.findByTestId('run-meta');
@@ -145,7 +140,7 @@ describe('Run page telemetry', () => {
 		expect(screen.queryByTestId('run-summary')).toBeNull();
 		expect(calls.find((c) => c.url === '/v1/run_telemetry/get')?.body).toEqual({ run_id: 'run-77' });
 		expect(screen.getAllByTestId('phase-cost').map((e) => e.textContent)).toContain('$1.25');
-		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Phases', 'Usage', 'Logs', 'Details']);
+		expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Run', 'Graph', 'Timeline', 'Usage', 'Logs', 'Details']);
 	});
 
 	it('phases: a team phase opens into its sub-team\'s steps, at any depth; a step opens its details beside', async () => {
@@ -177,47 +172,22 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('tree-step-grand-1-lint')).toBeInTheDocument();
 	});
 
-	it('list clock: each round is its own segment on the phase\'s row; a long wait on people is folded', async () => {
-		const base = telemetry();
-		// ~9m of agents working in a 40m run: the 26m wait on people folds.
-		const bars = base.bars.map((b) => (b.id === 'b3' ? { ...b, end_ms: t0 + 14 * M } : b));
-		const wait = { ...base.bars[0], id: 'w1', phase: 'review', agent: 'hug', kind: 'human' as const, start_ms: t0 + 14 * M, end_ms: t0 + 40 * M };
-		route_fetch(telemetry({ phases: [...base.phases, { ...base.phases[0], name: 'review', kind: 'human', status: 'completed', runs: 1, start_ms: t0 + 14 * M, end_ms: t0 + 40 * M }], bars: [...bars, wait], window: { start_ms: t0, end_ms: t0 + 40 * M } }));
-		open();
-		const match = await screen.findByTestId('clock-match');
-		expect(within(match).getAllByTestId('clock-seg')).toHaveLength(2);
-		expect(within(screen.getByTestId('clock-fetch')).getAllByTestId('clock-seg')).toHaveLength(1);
-		expect(within(match).getAllByTestId('clock-gap').length).toBeGreaterThan(0);
-		expect(screen.getByTestId('clock-legend')).toHaveTextContent('long wait folded');
-		// Old ?tab=timeline links land on the phases.
-		cleanup_and_open('?tab=timeline');
-		expect(await screen.findByTestId('clock-match')).toBeInTheDocument();
-		expect(screen.getByRole('tab', { name: 'Phases' })).toHaveAttribute('aria-selected', 'true');
-	});
-	it('list clock: a run that is mostly waiting isn\'t folded (a 0s script doesn\'t fill the bar)', async () => {
-		const base = telemetry();
-		const quick = { ...base.bars[0], start_ms: t0, end_ms: t0 + 5_000 };
-		const wait = { ...base.bars[0], id: 'w1', phase: 'match', agent: 'hug', kind: 'human' as const, start_ms: t0 + 10_000, end_ms: t0 + 30 * M };
-		route_fetch(telemetry({ phases: [{ ...base.phases[0], end_ms: t0 + 5_000 }, { ...base.phases[1], kind: 'human', runs: 1, start_ms: t0 + 10_000, end_ms: t0 + 30 * M }], bars: [quick, wait], window: { start_ms: t0, end_ms: t0 + 30 * M } }));
-		open();
-		const fetch_seg = within(await screen.findByTestId('clock-fetch')).getByTestId('clock-seg');
-		expect(parseFloat(fetch_seg.style.width)).toBeLessThan(2);
-		expect(screen.queryAllByTestId('clock-gap')).toHaveLength(0);
+	it('timeline: the run\'s clock is its own view (old ?tab=timeline links land there); a bar opens its phase in Run', async () => {
+		route_fetch();
+		open('/o/measureone/realms/prod-us/runs/run-77?tab=timeline');
+		expect(await screen.findByTestId('timeline')).toBeInTheDocument();
+		expect(screen.getByRole('tab', { name: 'Timeline' })).toHaveAttribute('aria-selected', 'true');
 	});
 
-	it('phases: the workflow graph on top, the table below — picking a phase in one marks it in the other', async () => {
+	it('graph: the workflow is its own view; picking a phase opens it in the Run view with its panel', async () => {
 		route_fetch();
-		open();
+		open('/o/measureone/realms/prod-us/runs/run-77?tab=graph');
 		const graph = await screen.findByTestId('run-workflow');
 		expect(graph).toHaveTextContent('fetch');
 		expect(graph).toHaveTextContent('match');
-		const row = (name: string) => screen.getAllByTestId('phase-row').find((r) => r.getAttribute('data-phase-row') === name)!;
-		expect(row('match')).toHaveAttribute('aria-current', 'true'); // the failed phase is picked first
 		fireEvent.click(within(graph).getAllByText('fetch')[0]);
-		await waitFor(() => expect(row('fetch')).toHaveAttribute('aria-current', 'true'));
-		expect(row('match')).not.toHaveAttribute('aria-current');
-		fireEvent.click(within(row('match')).getByText('match'));
-		await waitFor(() => expect(row('match')).toHaveAttribute('aria-current', 'true'));
+		await waitFor(() => expect(screen.getByRole('tab', { name: 'Run' })).toHaveAttribute('aria-selected', 'true'));
+		expect(screen.getByTestId('phase-panel')).toHaveAttribute('aria-label', 'Phase fetch');
 	});
 	it('usage: cost by phase, time, models and agents', async () => {
 		route_fetch();
@@ -229,11 +199,11 @@ describe('Run page telemetry', () => {
 		expect(screen.getByTestId('agent-matcher')).toHaveTextContent('1 failed → success');
 	});
 
-	it('old ?tab=dag / ?tab=workflow links open the phases (graph on top)', async () => {
+	it('old ?tab=dag / ?tab=workflow links open the Graph view', async () => {
 		route_fetch();
 		open('/o/measureone/realms/prod-us/runs/run-77?tab=dag');
 		expect(await screen.findByTestId('run-workflow')).toBeInTheDocument();
-		expect(screen.getByRole('tab', { name: 'Phases' })).toHaveAttribute('aria-selected', 'true');
+		expect(screen.getByRole('tab', { name: 'Graph' })).toHaveAttribute('aria-selected', 'true');
 	});
 	it('no telemetry yet / read fails: page still works', async () => {
 		route_fetch(telemetry({ bars: [], by_model: [], by_agent: [], totals: { ...telemetry().totals, cost_usd: null, tokens_in: null, tokens_out: null, cached_in: null, model_calls: null, agent_runs: 0, reworks: 0 }, sections: { usage: 'empty', spans: 'empty', phases: 'ok', workflow: 'ok' } }));
