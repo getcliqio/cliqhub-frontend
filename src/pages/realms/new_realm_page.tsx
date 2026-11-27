@@ -1,7 +1,7 @@
 /**
  * Realms › New realm (Graphite) — a side panel over the Realms list (/realms?new=1; /realms/new
  * redirects there). Four steps with Next / Back — Details (name, slug, description) · People (search
- * the org, or an email; at least one operator) · Enrollment (token name) · Review — and nothing is
+ * the org, or an email; optional, since the creator is the realm's admin) · Enrollment (token name) · Review — and nothing is
  * saved until Create realm: one `realms/create` (Core) saves the realm, its people, its invites,
  * hello-world and the enrollment token together, or none of it. Then the realm's page opens with the
  * token shown once (passed in navigation state, never in the URL). Reads: `users/get { org_id, query }`.
@@ -65,7 +65,6 @@ export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close
 
 	const eff_slug = slug_touched ? slug : slugify(name);
 	const eff_token = token_touched ? token_name : (eff_slug ? `${eff_slug}-enroll` : '');
-	const has_operator = people.some((p) => p.role === 'operator');
 	const me = user?.id ?? null;
 
 	// People search: members of the org (users/get { org_id, query }); an email is offered as an invite.
@@ -95,7 +94,6 @@ export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close
 			if (!name.trim()) return 'Give the realm a name.';
 			if (!eff_slug) return 'The slug needs letters or numbers.';
 		}
-		if (i === 1 && !has_operator) return 'Add at least one operator — someone who can run teams.';
 		if (i === 2 && !eff_token.trim()) return 'Give the enrollment token a name.';
 		return null;
 	}
@@ -152,7 +150,7 @@ export function New_realm_panel({ org, on_close }: { org: Overview_org; on_close
 		</div>,
 		// People
 		<div key="p" className="flex flex-col gap-3">
-			<p className="text-[12.5px] text-[var(--g-ink-3)]">Who can use this realm. Invites go out only when the realm is created. Add at least one <b className="text-[var(--g-ink)]">operator</b> — someone who can run teams.</p>
+			<p className="text-[12.5px] text-[var(--g-ink-3)]">Who can use this realm. Invites go out only when the realm is created. You're its admin, so you can go on with no one else and add people later.</p>
 			<div className="relative flex gap-2">
 				<input aria-label="Find a person" value={q} onChange={(e) => set_q(e.target.value)} placeholder={`Search people in ${org?.display_name || org?.slug || 'the org'}, or type an email`} className={`${G_INPUT} min-w-0 flex-1`} />
 				<select aria-label="Role for the next person" value={role} onChange={(e) => set_role(e.target.value as Role)} className={`${G_INPUT} w-[120px]`}><option value="operator">Operator</option><option value="member">Member</option><option value="admin">Admin</option></select>

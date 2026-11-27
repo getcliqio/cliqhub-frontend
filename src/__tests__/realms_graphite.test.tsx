@@ -110,9 +110,7 @@ describe('Realms page', () => {
 		fireEvent.change(screen.getByLabelText('Realm slug'), { target: { value: 'prod-us' } });
 		fireEvent.change(screen.getByLabelText('Realm description'), { target: { value: 'US delivery' } });
 		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-		// People: an operator is required
-		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-		expect(screen.getByRole('alert')).toHaveTextContent('at least one operator');
+		// People
 		fireEvent.change(screen.getByLabelText('Find a person'), { target: { value: 'bob' } });
 		fireEvent.click(await screen.findByRole('option', { name: /Bob Builder/ }));
 		fireEvent.change(screen.getByLabelText('Role for the next person'), { target: { value: 'member' } });
@@ -137,6 +135,22 @@ describe('Realms page', () => {
 		// The realm opens (on its teams), carrying the token once.
 		await waitFor(() => expect(screen.getByTestId('where').textContent).toContain('/o/measureone/realms/prod-us/teams'));
 		expect(screen.getByTestId('state').textContent).toContain('cliq_rt_abc');
+	});
+
+	it('the creator alone is enough: People can be left empty (they are the realm admin)', async () => {
+		const calls = route_fetch({
+			'/v1/realms/create': () => ({ realm: { id: 'r-solo', slug: 'solo', name: 'Solo', org_slug: 'measureone', qualified_slug: 'measureone.solo', description: null, members_added: [], invites: [], enroll_token: { id: 't1', name: 'solo-enroll', token: 'cliq_rt_solo' } } }),
+		});
+		open('/realms?new=1');
+		fireEvent.change(await screen.findByLabelText('Realm name'), { target: { value: 'Solo' } });
+		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		expect(screen.queryByRole('alert')).toBeNull();
+		expect(screen.getByLabelText('Token name')).toHaveValue('solo-enroll');
+		fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Create realm' }));
+		await waitFor(() => expect(calls.filter((c) => c.url === '/v1/realms/create')).toHaveLength(1));
+		expect(calls.find((c) => c.url === '/v1/realms/create')!.body).toMatchObject({ slug: 'solo', members: [], invites: [] });
 	});
 
 	it('Back keeps what was entered; Cancel leaves without saving', async () => {
